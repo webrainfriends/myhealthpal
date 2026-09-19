@@ -99,11 +99,7 @@ jobs:
             DB_HOST_PORT=4276
             if ! sudo docker inspect "$DB_CONTAINER" >/dev/null 2>&1; then
               DB_PASS_VAL=$(openssl rand -hex 16)
-              sudo docker run -d --name "$DB_CONTAINER" --restart unless-stopped \
-                -e POSTGRES_DB=myhealthpal -e POSTGRES_USER=myhealthpal -e POSTGRES_PASSWORD="${DB_PASS_VAL}" \
-                -p 127.0.0.1:${DB_HOST_PORT}:5432 \
-                -v myhealthpal_pgdata:/var/lib/postgresql/data \
-                postgres:16-alpine
+              sudo docker run -d --name "$DB_CONTAINER" --restart unless-stopped -e POSTGRES_DB=myhealthpal -e POSTGRES_USER=myhealthpal -e POSTGRES_PASSWORD="${DB_PASS_VAL}" -p 127.0.0.1:${DB_HOST_PORT}:5432 -v myhealthpal_pgdata:/var/lib/postgresql/data postgres:16-alpine
 
               for i in $(seq 1 30); do
                 sudo docker exec "$DB_CONTAINER" pg_isready -U myhealthpal >/dev/null 2>&1 && break
