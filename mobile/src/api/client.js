@@ -73,4 +73,48 @@ export async function searchHealthParameters(query) {
   return handleResponse(response);
 }
 
+export async function updateReportDate(reportId, effectiveDate) {
+  const response = await fetch(`${API_BASE_URL}/api/reports/${reportId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ effective_date: effectiveDate }),
+  });
+  return handleResponse(response);
+}
+
+export async function fetchTimeline(filters = {}) {
+  const params = new URLSearchParams(Object.entries(filters).filter(([, v]) => v));
+  const response = await fetch(`${API_BASE_URL}/api/timeline?${params.toString()}`);
+  return handleResponse(response);
+}
+
+export async function fetchDashboardSnapshot() {
+  const response = await fetch(`${API_BASE_URL}/api/dashboard/snapshot`);
+  return handleResponse(response);
+}
+
+export async function fetchParameterTrend(code, range = '90d') {
+  const response = await fetch(`${API_BASE_URL}/api/dashboard/parameters/${code}/trend?range=${range}`);
+  return handleResponse(response);
+}
+
+export async function fetchPinnedParameters() {
+  const response = await fetch(`${API_BASE_URL}/api/pinned-parameters`);
+  return handleResponse(response);
+}
+
+export async function pinParameter(healthParameterId) {
+  const response = await fetch(`${API_BASE_URL}/api/pinned-parameters`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ health_parameter_id: healthParameterId }),
+  });
+  return handleResponse(response);
+}
+
+export async function unpinParameter(healthParameterId) {
+  const response = await fetch(`${API_BASE_URL}/api/pinned-parameters/${healthParameterId}`, { method: 'DELETE' });
+  return handleResponse(response);
+}
+
 export { API_BASE_URL };

@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radii, spacing, typography } from '../theme/theme';
 import { searchHealthParameters } from '../api/client';
 
-export default function CanonicalMappingModal({ visible, onClose, onSelect }) {
+export default function ParameterPickerModal({ visible, onClose, onSelect, title = 'Choose a test', noneLabel }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
 
@@ -30,7 +30,7 @@ export default function CanonicalMappingModal({ visible, onClose, onSelect }) {
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <Text style={typography.title}>Map to a known test</Text>
+          <Text style={typography.title}>{title}</Text>
           <TouchableOpacity onPress={onClose}>
             <Text style={styles.closeLabel}>Close</Text>
           </TouchableOpacity>
@@ -43,15 +43,17 @@ export default function CanonicalMappingModal({ visible, onClose, onSelect }) {
           onChangeText={setQuery}
           autoFocus
         />
-        <TouchableOpacity
-          style={styles.clearRow}
-          onPress={() => {
-            onSelect(null);
-            onClose();
-          }}
-        >
-          <Text style={styles.clearLabel}>None of these — leave unmapped</Text>
-        </TouchableOpacity>
+        {noneLabel ? (
+          <TouchableOpacity
+            style={styles.clearRow}
+            onPress={() => {
+              onSelect(null);
+              onClose();
+            }}
+          >
+            <Text style={styles.clearLabel}>{noneLabel}</Text>
+          </TouchableOpacity>
+        ) : null}
         <FlatList
           data={results}
           keyExtractor={(item) => item.id}

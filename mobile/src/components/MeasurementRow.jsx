@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { colors, radii, spacing, typography } from '../theme/theme';
-import CanonicalMappingModal from './CanonicalMappingModal';
+import ParameterPickerModal from './ParameterPickerModal';
 
 function MappingChip({ measurement, editable, onPress }) {
   let label = 'Unmapped';
@@ -110,10 +110,12 @@ export default function MeasurementRow({ measurement, editable, onChange, onChan
         </View>
       </View>
 
-      <CanonicalMappingModal
+      <ParameterPickerModal
         visible={mappingModalVisible}
         onClose={() => setMappingModalVisible(false)}
         onSelect={(parameterId) => onChangeMapping(parameterId)}
+        title="Map to a known test"
+        noneLabel="None of these — leave unmapped"
       />
     </View>
   );

@@ -2,6 +2,9 @@ const pool = require('../db/pool');
 const { getAdapter } = require('../adapters');
 const { generateSummary } = require('./summaryService');
 const { runExtraction } = require('../extraction/extractionService');
+const { detectAndPersistReportDates } = require('../extraction/reportDateService');
+const { reconcileReportDuplicate } = require('../extraction/reportDedupService');
+const { refreshSummaryForReport } = require('../extraction/reportNarrativeService');
 
 // In-process async runner: kicks off processing without blocking the upload
 // response. Swappable for a real queue (BullMQ/SQS/etc.) behind the same
@@ -71,6 +74,14 @@ async function processReport(reportId) {
     });
     const summary = generateSummary(measurements);
 
+    await detectAndPersistReportDates({
+      reportId,
+      document,
+      measurements,
+      uploadTimestamp: report.upload_timestamp,
+    });
+    await reconcileReportDuplicate(reportId);
+
     const extractionStatus = document.contentKind === 'image_scanned' ? 'OCR Pending' : 'Text Extracted';
 
     await pool.query(
@@ -82,6 +93,8 @@ async function processReport(reportId) {
        WHERE id = $1`,
       [reportId, extractionStatus, summary]
     );
+
+    await refreshSummaryForReport(reportId);
 
     await pool.query(
       `UPDATE ingestion_jobs

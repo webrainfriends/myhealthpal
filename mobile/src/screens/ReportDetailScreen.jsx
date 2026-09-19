@@ -1,11 +1,52 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import StatusBadge from '../components/StatusBadge';
 import MeasurementRow from '../components/MeasurementRow';
 import PrimaryButton from '../components/PrimaryButton';
-import { colors, spacing, typography } from '../theme/theme';
-import { confirmReport, fetchReport, retryReport, updateMeasurement } from '../api/client';
+import { colors, radii, spacing, typography } from '../theme/theme';
+import { confirmReport, fetchReport, retryReport, updateMeasurement, updateReportDate } from '../api/client';
+
+function formatDate(value) {
+  if (!value) return null;
+  return new Date(value).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+function EffectiveDateRow({ report, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(report.effective_date ? report.effective_date.slice(0, 10) : '');
+
+  if (editing) {
+    return (
+      <View style={styles.dateEditRow}>
+        <TextInput
+          style={styles.dateInput}
+          value={value}
+          onChangeText={setValue}
+          placeholder="YYYY-MM-DD"
+          placeholderTextColor={colors.textTertiary}
+        />
+        <TouchableOpacity
+          onPress={() => {
+            onSave(value);
+            setEditing(false);
+          }}
+        >
+          <Text style={styles.dateSaveLabel}>Save</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  return (
+    <TouchableOpacity onPress={() => setEditing(true)} style={styles.dateRow}>
+      <Text style={typography.heading}>
+        {report.effective_date ? formatDate(report.effective_date) : 'Date needs review'}
+      </Text>
+      <Text style={styles.dateEditLabel}>{report.date_status === 'Confirmed' ? 'Edit' : 'Set date'}</Text>
+    </TouchableOpacity>
+  );
+}
 
 const POLL_STATUSES = new Set(['Uploaded', 'Processing']);
 const POLL_INTERVAL_MS = 2000;
@@ -15,6 +56,7 @@ export default function ReportDetailScreen({ route, navigation }) {
   const { reportId } = route.params;
   const [report, setReport] = useState(null);
   const [measurements, setMeasurements] = useState([]);
+  const [narrativeSummary, setNarrativeSummary] = useState(null);
   const [busy, setBusy] = useState(false);
   const pendingEdits = useRef({});
   const debounceTimers = useRef({});
@@ -23,6 +65,7 @@ export default function ReportDetailScreen({ route, navigation }) {
     const data = await fetchReport(reportId);
     setReport(data.report);
     setMeasurements(data.measurements);
+    setNarrativeSummary(data.narrativeSummary);
     return data.report.ingestion_status;
   }, [reportId]);
 
@@ -104,6 +147,15 @@ export default function ReportDetailScreen({ route, navigation }) {
     }
   }
 
+  async function handleDateSave(value) {
+    try {
+      await updateReportDate(reportId, value);
+      await load();
+    } catch (err) {
+      Alert.alert('Could not update date', err.message);
+    }
+  }
+
   if (!report) {
     return (
       <SafeAreaView style={styles.container}>
@@ -119,6 +171,7 @@ export default function ReportDetailScreen({ route, navigation }) {
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.headerRow}>
+          <EffectiveDateRow report={report} onSave={handleDateSave} />
           <StatusBadge status={report.ingestion_status} />
         </View>
 
@@ -134,10 +187,12 @@ export default function ReportDetailScreen({ route, navigation }) {
           </View>
         )}
 
-        {report.generated_summary && (
+        {(narrativeSummary?.summary_text || report.generated_summary) && (
           <View style={styles.summaryBox}>
             <Text style={typography.heading}>Summary</Text>
-            <Text style={[typography.bodySecondary, styles.summaryText]}>{report.generated_summary}</Text>
+            <Text style={[typography.bodySecondary, styles.summaryText]}>
+              {narrativeSummary?.summary_text || report.generated_summary}
+            </Text>
           </View>
         )}
 
@@ -195,6 +250,38 @@ const styles = StyleSheet.create({
   },
   headerRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  dateEditLabel: {
+    color: colors.primary,
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  dateEditRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flex: 1,
+  },
+  dateInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    fontSize: 15,
+    flex: 1,
+    backgroundColor: colors.surface,
+  },
+  dateSaveLabel: {
+    color: colors.primary,
+    fontWeight: '600',
   },
   processingNote: {
     fontStyle: 'italic',

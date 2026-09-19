@@ -6,6 +6,7 @@ const { upload, extensionOf } = require('../middleware/upload');
 const { enqueueProcessing } = require('../services/ingestionService');
 const registry = require('../extraction/registry');
 const { classifyValue } = require('../extraction/normalizationService');
+const { refreshSummaryForReport } = require('../extraction/reportNarrativeService');
 
 const router = express.Router();
 
@@ -26,9 +27,10 @@ router.get('/', async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT id, original_filename, mime_type, file_extension, file_size_bytes, upload_timestamp,
-              detected_report_date, source_provider, report_type, ingestion_status, extraction_status,
-              validation_status, processing_error, generated_summary, confirmed_at, created_at, updated_at
-       FROM reports WHERE user_id = $1 ORDER BY created_at DESC`,
+              effective_date, date_status, source_type, source_provider, report_type, likely_duplicate_of_report_id,
+              ingestion_status, extraction_status, validation_status, processing_error, generated_summary,
+              confirmed_at, created_at, updated_at
+       FROM reports WHERE user_id = $1 ORDER BY COALESCE(effective_date, created_at::date) DESC, created_at DESC`,
       [currentUserId(req)]
     );
     res.json({ reports: rows });
@@ -47,7 +49,23 @@ router.get('/:id', async (req, res, next) => {
     if (!report) return res.status(404).json({ error: 'Report not found' });
 
     const measurements = await pool.query(MEASUREMENT_LIST_QUERY, [req.params.id]);
-    res.json({ report, measurements: measurements.rows });
+    const dates = await pool.query('SELECT * FROM report_dates WHERE report_id = $1 ORDER BY date_type ASC', [
+      req.params.id,
+    ]);
+    const narrative = await pool.query(
+      `SELECT rsv.summary_text, rsv.provider, rsv.model, rsv.generated_at
+       FROM report_summaries rs
+       JOIN report_summary_versions rsv ON rsv.id = rs.current_version_id
+       WHERE rs.report_id = $1`,
+      [req.params.id]
+    );
+
+    res.json({
+      report,
+      measurements: measurements.rows,
+      dates: dates.rows,
+      narrativeSummary: narrative.rows[0] || null,
+    });
   } catch (err) {
     next(err);
   }
@@ -107,6 +125,38 @@ router.post('/:id/retry', async (req, res, next) => {
 
     enqueueProcessing(report.id);
     res.json({ status: 'queued' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/:id', async (req, res, next) => {
+  try {
+    const owned = await pool.query('SELECT * FROM reports WHERE id = $1 AND user_id = $2', [
+      req.params.id,
+      currentUserId(req),
+    ]);
+    if (owned.rows.length === 0) return res.status(404).json({ error: 'Report not found' });
+
+    if (req.body.effective_date === undefined) {
+      return res.status(400).json({ error: 'effective_date is required.' });
+    }
+    const effectiveDate = req.body.effective_date;
+    if (Number.isNaN(new Date(effectiveDate).getTime())) {
+      return res.status(400).json({ error: 'effective_date must be a valid date.' });
+    }
+
+    await pool.query(
+      `INSERT INTO report_dates (report_id, date_type, date_value, confidence, source)
+       VALUES ($1, 'report_publication', $2, 1.0, 'user_confirmed')`,
+      [req.params.id, effectiveDate]
+    );
+    const { rows } = await pool.query(
+      `UPDATE reports SET effective_date = $2, date_status = 'Confirmed', updated_at = now() WHERE id = $1 RETURNING *`,
+      [req.params.id, effectiveDate]
+    );
+
+    res.json({ report: rows[0] });
   } catch (err) {
     next(err);
   }
@@ -219,6 +269,10 @@ router.patch('/:id/measurements/:measurementId', async (req, res, next) => {
       ]
     );
 
+    if (correctionRows.length > 0) {
+      await refreshSummaryForReport(req.params.id);
+    }
+
     res.json({ measurement: rows[0] });
   } catch (err) {
     next(err);
@@ -240,10 +294,12 @@ router.post('/:id/confirm', async (req, res, next) => {
     await pool.query('UPDATE health_measurements SET is_confirmed = true, updated_at = now() WHERE report_id = $1', [
       req.params.id,
     ]);
-    const updated = await pool.query(
-      `UPDATE reports SET ingestion_status = 'Completed', confirmed_at = now(), updated_at = now() WHERE id = $1 RETURNING *`,
+    await pool.query(
+      `UPDATE reports SET ingestion_status = 'Completed', confirmed_at = now(), updated_at = now() WHERE id = $1`,
       [req.params.id]
     );
+    await refreshSummaryForReport(req.params.id);
+    const updated = await pool.query('SELECT * FROM reports WHERE id = $1', [req.params.id]);
 
     res.json({ report: updated.rows[0] });
   } catch (err) {

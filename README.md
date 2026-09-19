@@ -1,12 +1,17 @@
 # MyHealthPal
 
-Universal health report upload and document ingestion
-([issue #1](https://github.com/webrainfriends/myhealthpal/issues/1)) plus AI
-extraction and normalization of health parameters into a longitudinal,
-provider-agnostic dataset
-([issue #2](https://github.com/webrainfriends/myhealthpal/issues/2)): a
-light-themed React Native (Expo) app on top of an Express + PostgreSQL
-ingestion API.
+A light-themed React Native (Expo) app on top of an Express + PostgreSQL API,
+covering:
+
+- Universal health report upload and document ingestion
+  ([issue #1](https://github.com/webrainfriends/myhealthpal/issues/1)).
+- AI extraction and normalization of health parameters into a longitudinal,
+  provider-agnostic dataset
+  ([issue #2](https://github.com/webrainfriends/myhealthpal/issues/2)).
+- A dated timeline with versioned, plain-language AI report summaries
+  ([issue #3](https://github.com/webrainfriends/myhealthpal/issues/3)).
+- A personal dashboard with pinned metrics, trends, and drill-down to source
+  ([issue #4](https://github.com/webrainfriends/myhealthpal/issues/4)).
 
 ## Structure
 
@@ -38,7 +43,12 @@ Requires a running PostgreSQL instance matching `DATABASE_URL`.
 | `POST` | `/api/reports/:id/retry` | Re-run ingestion + extraction after a failure |
 | `PATCH` | `/api/reports/:id/measurements/:measurementId` | Correct a value/unit/date/mapping (recorded as a correction) |
 | `POST` | `/api/reports/:id/confirm` | Confirm reviewed measurements, mark report Completed |
-| `GET` | `/api/health-parameters?search=` | Search the canonical parameter registry (for mapping corrections) |
+| `PATCH` | `/api/reports/:id` | Correct a report's effective date |
+| `GET` | `/api/health-parameters?search=` | Search the canonical parameter registry (for mapping/pinning) |
+| `GET` | `/api/timeline` | Chronological reports, filterable by date range/type/source/category/search |
+| `GET` | `/api/dashboard/snapshot` | Pinned metrics + latest values, needs-attention list, recent reports |
+| `GET` | `/api/dashboard/parameters/:code/trend?range=` | Time series for one canonical parameter (`7d/30d/90d/6m/1y/all`) |
+| `GET`/`POST` `/api/pinned-parameters`, `DELETE .../:parameterId` | Manage the dashboard's tracked metrics |
 
 There is no authentication system yet; every request acts as a single seeded
 demo user (`DEMO_USER_ID`), overridable with an `x-user-id` header.
@@ -111,6 +121,72 @@ PDF, unreadable legacy `.doc`, missing `ANTHROPIC_API_KEY`) never deletes the
 original upload — the report moves to `Failed` with a human-readable
 `processing_error` and can be retried.
 
+### Timeline & report dating (issue #3)
+
+After extraction, `src/extraction/reportDateService.js` looks for the
+report's actual clinical date(s) — never the upload date, which is tracked
+separately and never silently substituted:
+
+1. Scans the document text for labeled dates ("Sample Date:", "Test Date:",
+   "Result Date:"/"Reported on:", "Report Date:", "Consultation/Visit Date:"),
+   falling back to a bare "Date:" label (lower confidence) and, failing that,
+   to whatever date(s) the extracted measurements themselves carried (e.g. a
+   CSV "Date" column) — agreement across multiple measurements counts for
+   more than a single one.
+2. Every date found is kept independently in `report_dates` (typed:
+   `sample_collection`/`test`/`result`/`report_publication`/`consultation`/
+   `upload`). One is chosen as `reports.effective_date` for timeline
+   ordering, by priority (sample collection first, upload never eligible).
+3. If nothing was found, the report is `date_status: 'Needs Review'` with no
+   effective date rather than defaulting to the upload date — `PATCH
+   /api/reports/:id` lets the user set/correct it (`date_status` becomes
+   `'Confirmed'`).
+
+`src/extraction/reportNarrativeService.js` generates a versioned,
+plain-language summary per report (`report_summaries` /
+`report_summary_versions`): what kind of report it is, what the source
+itself flags as abnormal, a comparison against the user's prior *confirmed*
+result for the same canonical parameter when one exists (explicitly labeled
+as a comparison, never presented as the source document's own claim), and
+what couldn't be confidently read. It always ends with a fixed
+not-medical-advice line. Regeneration is version-gated on `reports.
+data_version` (bumped by processing, measurement corrections, and
+confirmation) so an unrelated report reload never re-generates for nothing.
+Like extraction, it has a heuristic default and an optional Claude narrative
+mode (`SUMMARY_PROVIDER=claude`).
+
+`src/extraction/reportDedupService.js` looks at the *pattern* across a
+report's measurements (not just individual ones, per issue #2's
+`dedupService.js`): if most of a new report's mapped measurements turn out
+to duplicate an earlier confirmed report, the new report is linked via
+`likely_duplicate_of_report_id` so the timeline doesn't present it as an
+independent clinical event — still fully visible, never deleted.
+
+`GET /api/timeline` returns reports sorted by effective date (falling back
+to upload date only for ordering, never presented as if it were the real
+one) with per-report measurement/abnormal counts and the current narrative
+summary, filterable by date range, report type, source, parameter category,
+and free-text search over the filename or measurement names.
+
+### Dashboard (issue #4)
+
+`GET /api/dashboard/snapshot` returns three sections pulled from confirmed
+measurements only: **tracked metrics** (the user's pinned canonical
+parameters, each with its latest value/unit/date/source and, when
+comparable, the change from the prior confirmed value — never a misleading
+delta across incompatible units), **needs attention** (recent abnormal-
+flagged or unresolved-review measurements, linking back to their report),
+and **recent reports**. `user_pinned_parameters` tracks what's pinned;
+`/api/pinned-parameters` manages it.
+
+`GET /api/dashboard/parameters/:code/trend` returns a date-range-filtered
+time series for one canonical parameter, every point still carrying its
+source report id. Beyond ~60 points it's collapsed into weekly averages for
+chart readability (`aggregated: true` in the response) — the underlying
+per-measurement rows are untouched and still reachable by re-querying
+without that threshold, so "dense" and "sparse" data are never conflated
+into one misleading line.
+
 ### Known scope limits
 
 - `generateSummary` (`src/services/summaryService.js`) is a heuristic,
@@ -128,6 +204,19 @@ original upload — the report moves to `Failed` with a human-readable
   (no `ANTHROPIC_API_KEY` configured here); the heuristic provider was used
   for all testing described below. Its request/response shape was reviewed
   against the Anthropic Messages/tool-use API but not run live.
+- Report-level date detection is regex/label-based, not NLP — it handles
+  common lab-report phrasing but won't catch every layout. It always fails
+  toward `Needs Review` rather than guessing.
+- Only one data source exists: report upload (`reports.source_type =
+  'report_upload'`). Apple Health, Samsung Health, Accu-Chek, Libre, etc.
+  aren't implemented — there's no credentialed access to those APIs in this
+  environment — but `source_type` and the dedicated `measurement_sources`/
+  `health_measurements` provenance model exist specifically so a future
+  connector is a new writer into the same tables, not a schema change.
+  Dashboard/timeline source filters are wired but only ever see one value
+  today.
+- No push/local alerting — "needs attention" is a pull (dashboard) view, not
+  a background-triggered alert.
 - No authentication/authorization — see above.
 
 ## Mobile app
@@ -142,16 +231,33 @@ Set `expo.extra.apiBaseUrl` in `app.json` (or `EXPO_PUBLIC_API_BASE_URL`) to
 point at your server if it isn't reachable at `http://localhost:4000`
 (`http://10.0.2.2:4000` is used automatically for the Android emulator).
 
-Light theme tokens live in `src/theme/theme.js`. Screens:
+Light theme tokens live in `src/theme/theme.js`. Bottom tabs (Dashboard /
+Timeline / Upload) sit inside a stack so Report detail and Parameter trend
+push over them full-screen:
 
-- **Upload** (`src/screens/UploadScreen.jsx`) — supported formats/limits,
-  file picker (`expo-document-picker`), photo library and camera capture
-  (`expo-image-picker`), and a live, polling list of the user's reports.
+- **Dashboard** (`src/screens/DashboardScreen.jsx`) — pinned-metric cards
+  (value, date, source, change vs. prior; tap for the trend view; ✕ to
+  unpin), a "Needs attention" list, recent reports, and a picker
+  (`ParameterPickerModal.jsx`) to pin new metrics from the registry.
+- **Timeline** (`src/screens/TimelineScreen.jsx`) — search + category-filter
+  chips over `GET /api/timeline`, each item showing its effective date (or a
+  "Date needs review" flag), counts, a likely-duplicate note, and its current
+  AI summary; taps into Report detail.
+- **Upload** (`src/screens/UploadScreen.jsx`) — intentionally just the
+  upload action: supported formats/limits, file picker
+  (`expo-document-picker`), photo library and camera capture
+  (`expo-image-picker`); the report list lives on the Timeline tab instead.
 - **Report detail** (`src/screens/ReportDetailScreen.jsx`) — polls while
-  `Uploaded`/`Processing`; once `Needs Review`, shows each measurement's
-  canonical-mapping status (mapped/unmapped/ambiguous, tap to search the
-  registry and correct via `CanonicalMappingModal.jsx`), a possible-duplicate
-  banner, inline field editing, and confirm; retries a `Failed` report.
+  `Uploaded`/`Processing`; shows/edits the effective date inline; the
+  versioned narrative summary (falling back to the short heuristic one);
+  once `Needs Review`, each measurement's canonical-mapping status
+  (mapped/unmapped/ambiguous, tap to search the registry via
+  `ParameterPickerModal.jsx`), a possible-duplicate banner, inline field
+  editing, and confirm; retries a `Failed` report.
+- **Parameter trend** (`src/screens/ParameterTrendScreen.jsx`) — range chips
+  (7D/30D/90D/6M/1Y/All) over `GET .../trend`, a dependency-free sparkline
+  (`MiniTrendChart.jsx`, plain `View`s — no charting library), and a list of
+  points that jump back to their source report.
 
 ### Testing notes
 
@@ -160,10 +266,25 @@ generated CSV/XLSX/DOCX/PDF/PNG fixtures with the default heuristic provider:
 upload → processing → canonical mapping → review → edit a value → confirm; a
 corrupt file and an unsupported type were rejected as expected; re-uploading
 an already-confirmed CSV correctly flagged the unchanged rows as suspected
-duplicates while leaving a since-corrected row unflagged; an unmapped test
-name landed in `Needs Review` and was resolved via a mapping correction. The
-mobile app was verified by starting the Expo/Metro dev server and pulling a
-full JS bundle for it (`/index.bundle`), which resolves and transforms every
-screen, component, and third-party import with no errors. There was no
-device/simulator available in this environment, so the UI has not been
-visually exercised — that step is still needed before shipping.
+duplicates while leaving a since-corrected row unflagged and the *report*
+itself linked via `likely_duplicate_of_report_id`; an unmapped test name
+landed in `Needs Review` and was resolved via a mapping correction. Report
+date detection was verified for labeled-date CSV/measurement-date fallback,
+a bare "Date:" line, and the "nothing found → Needs Review, no upload-date
+fallback" case, plus a manual correction via `PATCH /api/reports/:id`. The
+versioned narrative summary was confirmed to include a real comparison
+against an earlier confirmed value (not just the current report's own
+flags), and to skip regeneration when `data_version` hadn't moved. Timeline
+filters (search, category) and the dashboard snapshot/trend/pin-unpin
+endpoints were all exercised directly and returned the expected shapes,
+including weekly-aggregation kicking in path for dense series (code path
+verified; a real dense CGM-scale dataset wasn't available to generate here).
+One real bug was caught this way and fixed: an ambiguous SQL column
+reference in the report-level dedup query.
+
+The mobile app was verified by starting the Expo/Metro dev server and
+pulling a full JS bundle for it (`/index.bundle`) after each round of
+changes, which resolves and transforms every screen, component, and
+third-party import with no errors (1019 modules in the final bundle). There
+was no device/simulator available in this environment, so the UI has not
+been visually exercised — that step is still needed before shipping.

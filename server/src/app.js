@@ -3,6 +3,9 @@ const cors = require('cors');
 const config = require('./config');
 const reportsRouter = require('./routes/reports');
 const healthParametersRouter = require('./routes/healthParameters');
+const timelineRouter = require('./routes/timeline');
+const dashboardRouter = require('./routes/dashboard');
+const pinnedParametersRouter = require('./routes/pinnedParameters');
 
 const app = express();
 
@@ -12,6 +15,9 @@ app.use(express.json());
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 app.use('/api/reports', reportsRouter);
 app.use('/api/health-parameters', healthParametersRouter);
+app.use('/api/timeline', timelineRouter);
+app.use('/api/dashboard', dashboardRouter);
+app.use('/api/pinned-parameters', pinnedParametersRouter);
 app.get('/api/config/supported-formats', (req, res) => {
   res.json({
     extensions: Object.keys(config.supportedExtensions),
