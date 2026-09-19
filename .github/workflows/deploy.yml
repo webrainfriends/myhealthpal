@@ -1,24 +1,30 @@
 # Deploys the MyHealthPal API to the EC2 host below by SSHing in, pulling
 # the latest code, and running the app directly with Node.js + pm2 - no
-# Dockerfile/image build needed for the app itself. Its Postgres, however,
-# runs in a small dedicated Docker container (postgres:16-alpine), the same
-# way exambuddy's stack on this same host does - trying to share/reuse the
-# host's native PostgreSQL install repeatedly hit unexplained auth failures
-# (pg_hba.conf and cluster-identity issues are exactly what a dedicated,
-# isolated container sidesteps), where the Docker approach has been 100%
-# reliable across 20+ deploys of exambuddy on this exact host. See
-# scripts/bootstrap-ec2.sh and the README's "Deploying to EC2" section.
+# Dockerfile/image build needed for the app itself. nginx fronts it on
+# NGINX_PORT and reverse-proxies to the app's own APP_PORT (127.0.0.1 only,
+# never exposed directly), so only one port needs opening in the security
+# group. Its Postgres, however, runs in a small dedicated Docker container
+# (postgres:16-alpine), the same way exambuddy's stack on this same host
+# does - trying to share/reuse the host's native PostgreSQL install
+# repeatedly hit unexplained auth failures (pg_hba.conf and cluster-identity
+# issues are exactly what a dedicated, isolated container sidesteps), where
+# the Docker approach has been 100% reliable across 20+ deploys of
+# exambuddy on this exact host. See scripts/bootstrap-ec2.sh and the
+# README's "Deploying to EC2" section.
 #
 # One-time setup required before this workflow can run:
 #
-# 1. On the EC2 instance itself, install Node.js, pm2, Docker, and git (see
-#    scripts/bootstrap-ec2.sh - SSH in and run it once; safe to re-run and
-#    safe on a host that already runs other apps, including one that
-#    already has Docker from bootstrapping a different app).
-# 2. In the EC2 instance's security group, allow inbound TCP 4010 (the app)
-#    from the internet, and keep 22 (SSH) restricted to your IP / GitHub's
-#    range as you prefer. Postgres's port is only bound to 127.0.0.1, so it
-#    never needs a security group rule.
+# 1. On the EC2 instance itself, install Node.js, pm2, Docker, nginx, and
+#    git (see scripts/bootstrap-ec2.sh - SSH in and run it once; safe to
+#    re-run and safe on a host that already runs other apps, including one
+#    that already has Docker/nginx from bootstrapping a different app).
+# 2. In the EC2 instance's security group, allow inbound TCP on NGINX_PORT
+#    (the app, via nginx) from the internet, and keep 22 (SSH) restricted
+#    to your IP / GitHub's range as you prefer. Postgres's port is bound to
+#    127.0.0.1 only, so it never needs a rule. The app's own APP_PORT isn't
+#    bound to localhost at the OS level (Node's default), so don't open it
+#    in the security group either - leaving it closed there is what keeps
+#    it unreachable except through nginx.
 # 3. In this repository's Settings -> Secrets and variables -> Actions, add
 #    a repository secret named EC2_SSH_KEY containing the private key
 #    (PEM) that matches the EC2 instance's key pair (the same key used by
@@ -28,7 +34,9 @@
 # and the myhealthpal-postgres container are created once, directly on the
 # host, the first time this workflow runs, and are left untouched on every
 # deploy after that (the container's data lives in a named Docker volume,
-# so it survives redeploys and even container recreation).
+# so it survives redeploys and even container recreation). The nginx site
+# config is plain, secret-free config, so it's simply rewritten every
+# deploy to match NGINX_PORT/APP_PORT below.
 
 name: Deploy to EC2
 
@@ -43,6 +51,7 @@ env:
   AWS_REGION: ap-southeast-1
   APP_DIR: myhealthpal
   APP_PORT: 4010
+  NGINX_PORT: 5250
 
 permissions:
   contents: read
@@ -70,7 +79,7 @@ jobs:
           username: ${{ env.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: 15m
-          envs: APP_DIR,BRANCH,REPO_URL,APP_PORT,PUBLIC_HOST
+          envs: APP_DIR,BRANCH,REPO_URL,APP_PORT,NGINX_PORT,PUBLIC_HOST
           script_stop: true
           script: |
             set -euo pipefail
@@ -98,6 +107,33 @@ jobs:
               sudo apt-get update
               sudo apt-get install -y postgresql-client
             fi
+            if ! command -v nginx >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y nginx
+              sudo systemctl enable --now nginx
+            fi
+
+            echo "[deploy] configuring nginx on port ${NGINX_PORT}"
+            printf '%s\n' \
+              'server {' \
+              "    listen ${NGINX_PORT};" \
+              '    server_name _;' \
+              '' \
+              '    client_max_body_size 25m;' \
+              '' \
+              '    location / {' \
+              "        proxy_pass http://127.0.0.1:${APP_PORT};" \
+              '        proxy_http_version 1.1;' \
+              '        proxy_set_header Host $host;' \
+              '        proxy_set_header X-Real-IP $remote_addr;' \
+              '        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' \
+              '        proxy_set_header X-Forwarded-Proto $scheme;' \
+              '    }' \
+              '}' \
+              | sudo tee /etc/nginx/sites-available/myhealthpal >/dev/null
+            sudo ln -sf /etc/nginx/sites-available/myhealthpal /etc/nginx/sites-enabled/myhealthpal
+            sudo nginx -t
+            sudo systemctl reload nginx
 
             DB_CONTAINER=myhealthpal-postgres
             DB_HOST_PORT=4276
@@ -167,7 +203,7 @@ jobs:
             pm2 describe myhealthpal-server > /dev/null 2>&1 && pm2 restart myhealthpal-server --update-env || pm2 start src/index.js --name myhealthpal-server
             pm2 save
 
-            echo "Deployed. API listening on: http://${PUBLIC_HOST}:${APP_PORT}"
+            echo "Deployed. API listening on: http://${PUBLIC_HOST}:${NGINX_PORT}"
         env:
           BRANCH: ${{ github.ref_name }}
           REPO_URL: https://github.com/${{ github.repository }}.git
