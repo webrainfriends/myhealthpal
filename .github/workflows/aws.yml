@@ -31,13 +31,13 @@ on:
     branches: [ "claude/light-theme-implementation-4sl9ir" ]
 
 env:
-  AWS_REGION: ap-southeast-1                  # set this to your preferred AWS region, e.g. us-west-1
-  ECR_REPOSITORY: MY_ECR_REPOSITORY           # set this to your Amazon ECR repository name
-  ECS_SERVICE: MY_ECS_SERVICE                 # set this to your Amazon ECS service name
-  ECS_CLUSTER: MY_ECS_CLUSTER                 # set this to your Amazon ECS cluster name
-  ECS_TASK_DEFINITION: MY_ECS_TASK_DEFINITION # set this to the path to your Amazon ECS task definition
+  AWS_REGION: ${{ vars.AWS_REGION }}                   # set this to your preferred AWS region, e.g. us-west-1
+  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}           # set this to your Amazon ECR repository name
+  ECS_SERVICE: ${{ vars.ECS_SERVICE }}                 # set this to your Amazon ECS service name
+  ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}                 # set this to your Amazon ECS cluster name
+  ECS_TASK_DEFINITION: ${{ vars.ECS_TASK_DEFINITION }} # set this to the path to your Amazon ECS task definition
                                                # file, e.g. .aws/task-definition.json
-  CONTAINER_NAME: MY_CONTAINER_NAME           # set this to the name of the container in the
+  CONTAINER_NAME: ${{ vars.CONTAINER_NAME }}           # set this to the name of the container in the
                                                # containerDefinitions section of your task definition
 
 permissions:
@@ -53,7 +53,43 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
+    - name: Validate deployment configuration
+      id: deploy-config
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      run: |
+        missing=()
+        required_vars=(AWS_REGION ECR_REPOSITORY ECS_SERVICE ECS_CLUSTER ECS_TASK_DEFINITION CONTAINER_NAME)
+        for var_name in "${required_vars[@]}"; do
+          if [ -z "${!var_name}" ]; then
+            missing+=("$var_name")
+          fi
+        done
+
+        if [ -z "$AWS_ACCESS_KEY_ID" ]; then
+          missing+=("AWS_ACCESS_KEY_ID (secret)")
+        fi
+        if [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+          missing+=("AWS_SECRET_ACCESS_KEY (secret)")
+        fi
+
+        if [ "${#missing[@]}" -gt 0 ]; then
+          echo "deploy_enabled=false" >> "$GITHUB_OUTPUT"
+          echo "::warning::Skipping ECS deploy because required configuration is missing: ${missing[*]}"
+          exit 0
+        fi
+
+        if [ ! -f "$ECS_TASK_DEFINITION" ]; then
+          echo "deploy_enabled=false" >> "$GITHUB_OUTPUT"
+          echo "::warning::Skipping ECS deploy because task definition file does not exist: $ECS_TASK_DEFINITION"
+          exit 0
+        fi
+
+        echo "deploy_enabled=true" >> "$GITHUB_OUTPUT"
+
     - name: Configure AWS credentials
+      if: steps.deploy-config.outputs.deploy_enabled == 'true'
       uses: aws-actions/configure-aws-credentials@v1
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -61,10 +97,12 @@ jobs:
         aws-region: ${{ env.AWS_REGION }}
 
     - name: Login to Amazon ECR
+      if: steps.deploy-config.outputs.deploy_enabled == 'true'
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v1
 
     - name: Build, tag, and push image to Amazon ECR
+      if: steps.deploy-config.outputs.deploy_enabled == 'true'
       id: build-image
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -78,6 +116,7 @@ jobs:
         echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
     - name: Fill in the new image ID in the Amazon ECS task definition
+      if: steps.deploy-config.outputs.deploy_enabled == 'true'
       id: task-def
       uses: aws-actions/amazon-ecs-render-task-definition@v1
       with:
@@ -86,6 +125,7 @@ jobs:
         image: ${{ steps.build-image.outputs.image }}
 
     - name: Deploy Amazon ECS task definition
+      if: steps.deploy-config.outputs.deploy_enabled == 'true'
       uses: aws-actions/amazon-ecs-deploy-task-definition@v1
       with:
         task-definition: ${{ steps.task-def.outputs.task-definition }}
