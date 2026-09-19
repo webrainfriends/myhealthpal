@@ -37,6 +37,52 @@ npm start               # listens on PORT (default 4000)
 
 Requires a running PostgreSQL instance matching `DATABASE_URL`.
 
+### Deploying to EC2
+
+The repo includes a GitHub Actions workflow, `.github/workflows/deploy.yml`,
+that deploys the server to an EC2 instance over SSH on every push to `main`
+(or on demand via **Actions -> Deploy to EC2 -> Run workflow**). It runs the
+API directly with Node.js + pm2 - no image build needed for the app itself.
+Postgres runs in a small dedicated Docker container (the same way
+exambuddy's stack on this host does) rather than the host's native
+PostgreSQL install, since sharing that repeatedly hit unexplained
+authentication failures that a dedicated, isolated container sidesteps.
+
+| Setting | Value |
+|---|---|
+| Host | `ec2-13-250-133-109.ap-southeast-1.compute.amazonaws.com` |
+| AWS region | `ap-southeast-1` |
+| SSH user | `ubuntu` |
+| App URL after deploy | `http://ec2-13-250-133-109.ap-southeast-1.compute.amazonaws.com:4010` |
+
+This is the same host used by other apps in the org (each on its own port),
+so the bootstrap script below is safe to re-run and won't touch an existing
+Docker install or other apps'/containers' data.
+
+One-time setup before the first deploy:
+
+1. **Bootstrap the instance** (installs Node.js 20, pm2, Docker, and git) —
+   SSH in once and run:
+   ```bash
+   ssh ubuntu@ec2-13-250-133-109.ap-southeast-1.compute.amazonaws.com \
+     'bash -s' < scripts/bootstrap-ec2.sh
+   ```
+2. **Open the app port** in the instance's security group: allow inbound TCP
+   **4010** from the internet (keep 22/SSH restricted as you prefer).
+   Postgres's port is only bound to `127.0.0.1`, so it never needs a
+   security group rule.
+3. **Add a GitHub secret**: in this repo's Settings -> Secrets and variables
+   -> Actions, add `EC2_SSH_KEY` containing the private key (PEM) that
+   matches the EC2 instance's key pair (the same key already used for other
+   apps on this host works, if it's the same instance).
+
+That's it — every push to `main` after that pulls the latest code, runs
+`npm ci`, applies migrations, and restarts the app under pm2. The
+`myhealthpal-postgres` container and `server/.env` (DB password,
+`DATABASE_URL`) are created once, directly on the host, the first time the
+workflow runs, and are left untouched on every deploy after that - the
+container's data lives in a named Docker volume, so it survives redeploys.
+
 ### API
 
 | Method | Path | Purpose |

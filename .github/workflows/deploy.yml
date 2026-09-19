@@ -1,0 +1,174 @@
+# Deploys the MyHealthPal API to the EC2 host below by SSHing in, pulling
+# the latest code, and running the app directly with Node.js + pm2 - no
+# Dockerfile/image build needed for the app itself. Its Postgres, however,
+# runs in a small dedicated Docker container (postgres:16-alpine), the same
+# way exambuddy's stack on this same host does - trying to share/reuse the
+# host's native PostgreSQL install repeatedly hit unexplained auth failures
+# (pg_hba.conf and cluster-identity issues are exactly what a dedicated,
+# isolated container sidesteps), where the Docker approach has been 100%
+# reliable across 20+ deploys of exambuddy on this exact host. See
+# scripts/bootstrap-ec2.sh and the README's "Deploying to EC2" section.
+#
+# One-time setup required before this workflow can run:
+#
+# 1. On the EC2 instance itself, install Node.js, pm2, Docker, and git (see
+#    scripts/bootstrap-ec2.sh - SSH in and run it once; safe to re-run and
+#    safe on a host that already runs other apps, including one that
+#    already has Docker from bootstrapping a different app).
+# 2. In the EC2 instance's security group, allow inbound TCP 4010 (the app)
+#    from the internet, and keep 22 (SSH) restricted to your IP / GitHub's
+#    range as you prefer. Postgres's port is only bound to 127.0.0.1, so it
+#    never needs a security group rule.
+# 3. In this repository's Settings -> Secrets and variables -> Actions, add
+#    a repository secret named EC2_SSH_KEY containing the private key
+#    (PEM) that matches the EC2 instance's key pair (the same key used by
+#    other apps on this host works if it's the same instance).
+#
+# Nothing else needs configuring - server/.env (DB password, DATABASE_URL)
+# and the myhealthpal-postgres container are created once, directly on the
+# host, the first time this workflow runs, and are left untouched on every
+# deploy after that (the container's data lives in a named Docker volume,
+# so it survives redeploys and even container recreation).
+
+name: Deploy to EC2
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+env:
+  EC2_HOST: ec2-13-250-133-109.ap-southeast-1.compute.amazonaws.com
+  EC2_USER: ubuntu
+  AWS_REGION: ap-southeast-1
+  APP_DIR: myhealthpal
+  APP_PORT: 4010
+
+permissions:
+  contents: read
+
+# Multiple pushes to main in quick succession (e.g. several merged PRs) can
+# trigger overlapping runs, which would otherwise race on the same EC2
+# host/Postgres role - e.g. two runs each generating and setting a different
+# DB password, leaving the loser's own .env pointing at a password that no
+# longer works. Queue instead of running concurrently.
+concurrency:
+  group: deploy-ec2
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ env.EC2_HOST }}
+          username: ${{ env.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 15m
+          envs: APP_DIR,BRANCH,REPO_URL,APP_PORT,PUBLIC_HOST
+          script_stop: true
+          script: |
+            set -euo pipefail
+
+            if [ ! -d "$APP_DIR/.git" ]; then
+              git clone --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
+            fi
+            cd "$APP_DIR"
+            git fetch origin "$BRANCH"
+            git checkout "$BRANCH"
+            git reset --hard "origin/$BRANCH"
+
+            if ! command -v docker >/dev/null 2>&1; then
+              curl -fsSL https://get.docker.com | sudo sh
+              sudo usermod -aG docker "${USER:-ubuntu}"
+            fi
+            if ! command -v node >/dev/null 2>&1; then
+              curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+              sudo apt-get install -y nodejs
+            fi
+            if ! command -v pm2 >/dev/null 2>&1; then
+              sudo npm install -g pm2
+            fi
+            if ! command -v psql >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y postgresql-client
+            fi
+
+            DB_CONTAINER=myhealthpal-postgres
+            DB_HOST_PORT=4276
+
+            # Trust nothing from a previous attempt - check whether the
+            # *actual* running container (if any) is reachable with
+            # whatever DATABASE_URL is currently in server/.env, not just
+            # whether that file happens to exist. Earlier failed runs
+            # (including from before this workflow used Docker at all)
+            # left a server/.env on the host pointing at credentials that
+            # don't match anything real - a bare "does .env exist" check
+            # treated that as "already configured" and never healed it.
+            cd server
+            [ -f .env ] || cp .env.example .env
+            CURRENT_DB_URL=$(grep '^DATABASE_URL=' .env | cut -d= -f2-)
+            cd ..
+
+            DB_OK=0
+            if sudo docker inspect "$DB_CONTAINER" >/dev/null 2>&1 \
+              && PGCONNECT_TIMEOUT=5 psql "$CURRENT_DB_URL" -c '\q' >/dev/null 2>&1; then
+              DB_OK=1
+            fi
+
+            if [ "$DB_OK" -ne 1 ]; then
+              echo "[deploy] (re)creating $DB_CONTAINER with fresh credentials"
+              sudo docker rm -f "$DB_CONTAINER" >/dev/null 2>&1 || true
+              sudo docker volume rm myhealthpal_pgdata >/dev/null 2>&1 || true
+
+              DB_PASS_VAL=$(openssl rand -hex 16)
+              sudo docker run -d --name "$DB_CONTAINER" --restart unless-stopped \
+                -e POSTGRES_DB=myhealthpal -e POSTGRES_USER=myhealthpal -e POSTGRES_PASSWORD="${DB_PASS_VAL}" \
+                -p 127.0.0.1:${DB_HOST_PORT}:5432 \
+                -v myhealthpal_pgdata:/var/lib/postgresql/data \
+                postgres:16-alpine
+              echo "[deploy] container started, waiting for it to accept connections"
+
+              ready=0
+              for i in $(seq 1 30); do
+                if sudo docker exec "$DB_CONTAINER" pg_isready -U myhealthpal >/dev/null 2>&1; then
+                  ready=1
+                  echo "[deploy] ready after ${i}s"
+                  break
+                fi
+                sleep 1
+              done
+              if [ "$ready" -ne 1 ]; then
+                echo "::error::$DB_CONTAINER never reported ready after 30s"
+                sudo docker logs --tail 50 "$DB_CONTAINER"
+                exit 1
+              fi
+
+              echo "[deploy] writing server/.env"
+              cd server
+              cp .env.example .env.new
+              sed -i "s#^PORT=.*#PORT=${APP_PORT}#" .env.new
+              sed -i "s#^DATABASE_URL=.*#DATABASE_URL=postgres://myhealthpal:${DB_PASS_VAL}@localhost:${DB_HOST_PORT}/myhealthpal#" .env.new
+              mv .env.new .env
+              echo "(Re)created $DB_CONTAINER and regenerated .env."
+              cd ..
+            fi
+
+            echo "[deploy] installing app dependencies"
+            cd server
+            npm ci --omit=dev
+            npm run migrate
+
+            pm2 describe myhealthpal-server > /dev/null 2>&1 && pm2 restart myhealthpal-server --update-env || pm2 start src/index.js --name myhealthpal-server
+            pm2 save
+
+            echo "Deployed. API listening on: http://${PUBLIC_HOST}:${APP_PORT}"
+        env:
+          BRANCH: ${{ github.ref_name }}
+          REPO_URL: https://github.com/${{ github.repository }}.git
+          PUBLIC_HOST: ec2-13-250-133-109.ap-southeast-1.compute.amazonaws.com
