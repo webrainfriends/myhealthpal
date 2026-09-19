@@ -42,7 +42,14 @@ if ! command -v docker >/dev/null 2>&1; then
   echo "Added $USER to the docker group - log out and back in (or run 'newgrp docker') for it to take effect."
 fi
 
+if ! command -v psql >/dev/null 2>&1; then
+  echo "Installing the Postgres client (psql) - used only to verify the myhealthpal-postgres container is reachable, not to run a server..."
+  sudo apt-get update
+  sudo apt-get install -y postgresql-client
+fi
+
 node --version
 pm2 --version
 docker --version
+psql --version
 echo "Bootstrap complete. The Deploy to EC2 workflow can now be run (push to the repo, or trigger it manually from the Actions tab) - it creates the myhealthpal-postgres container itself on first run."
