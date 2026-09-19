@@ -1,24 +1,34 @@
 # Deploys the MyHealthPal API to the EC2 host below by SSHing in, pulling
-# the latest code, and running it directly with Node.js + pm2 - no Docker
-# involved. See scripts/bootstrap-ec2.sh and the README's "Deploying to EC2"
-# section.
+# the latest code, and running the app directly with Node.js + pm2 - no
+# Dockerfile/image build needed for the app itself. Its Postgres, however,
+# runs in a small dedicated Docker container (postgres:16-alpine), the same
+# way exambuddy's stack on this same host does - trying to share/reuse the
+# host's native PostgreSQL install repeatedly hit unexplained auth failures
+# (pg_hba.conf and cluster-identity issues are exactly what a dedicated,
+# isolated container sidesteps), where the Docker approach has been 100%
+# reliable across 20+ deploys of exambuddy on this exact host. See
+# scripts/bootstrap-ec2.sh and the README's "Deploying to EC2" section.
 #
 # One-time setup required before this workflow can run:
 #
-# 1. On the EC2 instance itself, install Node.js, pm2, PostgreSQL, and git
-#    (see scripts/bootstrap-ec2.sh - SSH in and run it once; safe to re-run
-#    and safe on a host that already runs other apps).
+# 1. On the EC2 instance itself, install Node.js, pm2, Docker, and git (see
+#    scripts/bootstrap-ec2.sh - SSH in and run it once; safe to re-run and
+#    safe on a host that already runs other apps, including one that
+#    already has Docker from bootstrapping a different app).
 # 2. In the EC2 instance's security group, allow inbound TCP 4010 (the app)
 #    from the internet, and keep 22 (SSH) restricted to your IP / GitHub's
-#    range as you prefer.
+#    range as you prefer. Postgres's port is only bound to 127.0.0.1, so it
+#    never needs a security group rule.
 # 3. In this repository's Settings -> Secrets and variables -> Actions, add
 #    a repository secret named EC2_SSH_KEY containing the private key
 #    (PEM) that matches the EC2 instance's key pair (the same key used by
 #    other apps on this host works if it's the same instance).
 #
 # Nothing else needs configuring - server/.env (DB password, DATABASE_URL)
-# is generated once, directly on the host, the first time this workflow
-# runs, and is left untouched on every deploy after that.
+# and the myhealthpal-postgres container are created once, directly on the
+# host, the first time this workflow runs, and are left untouched on every
+# deploy after that (the container's data lives in a named Docker volume,
+# so it survives redeploys and even container recreation).
 
 name: Deploy to EC2
 
@@ -73,31 +83,10 @@ jobs:
             git checkout "$BRANCH"
             git reset --hard "origin/$BRANCH"
 
-            cd server
-
-            # (Re)provision whenever the DB credentials currently in .env
-            # don't actually work - not just when .env is missing. Testing
-            # the real connection (rather than pattern-matching for the
-            # unmodified example password) also self-heals a password that
-            # went stale for any other reason, e.g. a concurrent run that
-            # rotated it after this one last generated .env. Written to a
-            # temp file and moved into place only once every step below
-            # succeeds, so a failed attempt never leaves a half configured
-            # .env for the next run to mistake as "already done".
-            [ -f .env ] || cp .env.example .env
-            CURRENT_DB_URL=$(grep '^DATABASE_URL=' .env | cut -d= -f2-)
-            if ! PGCONNECT_TIMEOUT=5 psql "$CURRENT_DB_URL" -c '\q' >/dev/null 2>&1; then
-              DB_PASS_VAL=$(openssl rand -hex 16)
-              sudo -u postgres psql -v ON_ERROR_STOP=1 -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'myhealthpal') THEN CREATE ROLE myhealthpal WITH LOGIN; END IF; END \$\$;"
-              sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='myhealthpal'" | grep -q 1 || sudo -u postgres psql -v ON_ERROR_STOP=1 -c "CREATE DATABASE myhealthpal OWNER myhealthpal;"
-              sudo -u postgres psql -v ON_ERROR_STOP=1 -c "ALTER ROLE myhealthpal WITH PASSWORD '${DB_PASS_VAL}';"
-              cp .env.example .env.new
-              sed -i "s#^PORT=.*#PORT=${APP_PORT}#" .env.new
-              sed -i "s#^DATABASE_URL=.*#DATABASE_URL=postgres://myhealthpal:${DB_PASS_VAL}@localhost:5432/myhealthpal#" .env.new
-              mv .env.new .env
-              echo "(Re)generated .env with working DB credentials."
+            if ! command -v docker >/dev/null 2>&1; then
+              curl -fsSL https://get.docker.com | sudo sh
+              sudo usermod -aG docker "${USER:-ubuntu}"
             fi
-
             if ! command -v node >/dev/null 2>&1; then
               curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
               sudo apt-get install -y nodejs
@@ -106,6 +95,34 @@ jobs:
               sudo npm install -g pm2
             fi
 
+            DB_CONTAINER=myhealthpal-postgres
+            DB_HOST_PORT=4276
+            if ! sudo docker inspect "$DB_CONTAINER" >/dev/null 2>&1; then
+              DB_PASS_VAL=$(openssl rand -hex 16)
+              sudo docker run -d --name "$DB_CONTAINER" --restart unless-stopped \
+                -e POSTGRES_DB=myhealthpal -e POSTGRES_USER=myhealthpal -e POSTGRES_PASSWORD="${DB_PASS_VAL}" \
+                -p 127.0.0.1:${DB_HOST_PORT}:5432 \
+                -v myhealthpal_pgdata:/var/lib/postgresql/data \
+                postgres:16-alpine
+
+              for i in $(seq 1 30); do
+                sudo docker exec "$DB_CONTAINER" pg_isready -U myhealthpal >/dev/null 2>&1 && break
+                sleep 1
+              done
+
+              cd server
+              cp .env.example .env.new
+              sed -i "s#^PORT=.*#PORT=${APP_PORT}#" .env.new
+              sed -i "s#^DATABASE_URL=.*#DATABASE_URL=postgres://myhealthpal:${DB_PASS_VAL}@localhost:${DB_HOST_PORT}/myhealthpal#" .env.new
+              mv .env.new .env
+              echo "Created $DB_CONTAINER and generated .env."
+              cd ..
+            elif [ ! -f server/.env ]; then
+              echo "::error::$DB_CONTAINER already exists but server/.env is missing, so its DB_PASS_VAL is lost. Either restore server/.env by hand, or wipe the container (docker rm -f $DB_CONTAINER && docker volume rm myhealthpal_pgdata) to let this workflow recreate it from scratch."
+              exit 1
+            fi
+
+            cd server
             npm ci --omit=dev
             npm run migrate
 
