@@ -1,0 +1,90 @@
+# Deploys the MyHealthPal API to the EC2 host below by SSHing in, pulling
+# the latest code, and running it directly with Node.js + pm2 - no Docker
+# involved. See scripts/bootstrap-ec2.sh and the README's "Deploying to EC2"
+# section.
+#
+# One-time setup required before this workflow can run:
+#
+# 1. On the EC2 instance itself, install Node.js, pm2, PostgreSQL, and git
+#    (see scripts/bootstrap-ec2.sh - SSH in and run it once; safe to re-run
+#    and safe on a host that already runs other apps).
+# 2. In the EC2 instance's security group, allow inbound TCP 4010 (the app)
+#    from the internet, and keep 22 (SSH) restricted to your IP / GitHub's
+#    range as you prefer.
+# 3. In this repository's Settings -> Secrets and variables -> Actions, add
+#    a repository secret named EC2_SSH_KEY containing the private key
+#    (PEM) that matches the EC2 instance's key pair (the same key used by
+#    other apps on this host works if it's the same instance).
+#
+# Nothing else needs configuring - server/.env (DB password, DATABASE_URL)
+# is generated once, directly on the host, the first time this workflow
+# runs, and is left untouched on every deploy after that.
+
+name: Deploy to EC2
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+env:
+  EC2_HOST: ec2-13-250-133-109.ap-southeast-1.compute.amazonaws.com
+  EC2_USER: ubuntu
+  AWS_REGION: ap-southeast-1
+  APP_DIR: myhealthpal
+  APP_PORT: 4010
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ env.EC2_HOST }}
+          username: ${{ env.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 15m
+          envs: APP_DIR,BRANCH,REPO_URL,APP_PORT,PUBLIC_HOST
+          script_stop: true
+          script: |
+            set -euo pipefail
+
+            if [ ! -d "$APP_DIR/.git" ]; then
+              git clone --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
+            fi
+            cd "$APP_DIR"
+            git fetch origin "$BRANCH"
+            git checkout "$BRANCH"
+            git reset --hard "origin/$BRANCH"
+
+            cd server
+
+            if [ ! -f .env ]; then
+              cp .env.example .env
+              DB_PASS_VAL=$(openssl rand -hex 16)
+              sudo -u postgres psql -c "ALTER ROLE myhealthpal WITH PASSWORD '${DB_PASS_VAL}';"
+              sed -i "s#^PORT=.*#PORT=${APP_PORT}#" .env
+              sed -i "s#^DATABASE_URL=.*#DATABASE_URL=postgres://myhealthpal:${DB_PASS_VAL}@localhost:5432/myhealthpal#" .env
+              echo "Generated a fresh .env on first deploy."
+            fi
+
+            npm ci --omit=dev
+            npm run migrate
+
+            pm2 describe myhealthpal-server > /dev/null 2>&1 \
+              && pm2 restart myhealthpal-server --update-env \
+              || pm2 start src/index.js --name myhealthpal-server
+            pm2 save
+
+            echo "Deployed. API listening on: http://${PUBLIC_HOST}:${APP_PORT}"
+        env:
+          BRANCH: ${{ github.ref_name }}
+          REPO_URL: https://github.com/${{ github.repository }}.git
+          PUBLIC_HOST: ec2-13-250-133-109.ap-southeast-1.compute.amazonaws.com
