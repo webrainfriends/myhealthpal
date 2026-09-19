@@ -60,10 +60,14 @@ jobs:
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       run: |
         missing=()
+        placeholder=()
         required_vars=(AWS_REGION ECR_REPOSITORY ECS_SERVICE ECS_CLUSTER ECS_TASK_DEFINITION CONTAINER_NAME)
         for var_name in "${required_vars[@]}"; do
-          if [ -z "${!var_name}" ]; then
+          value="${!var_name}"
+          if [ -z "$value" ]; then
             missing+=("$var_name")
+          elif [[ "$value" == MY_* ]]; then
+            placeholder+=("$var_name")
           fi
         done
 
@@ -77,6 +81,18 @@ jobs:
         if [ "${#missing[@]}" -gt 0 ]; then
           echo "deploy_enabled=false" >> "$GITHUB_OUTPUT"
           echo "::warning::Skipping ECS deploy because required configuration is missing: ${missing[*]}"
+          exit 0
+        fi
+
+        if [ "${#placeholder[@]}" -gt 0 ]; then
+          echo "deploy_enabled=false" >> "$GITHUB_OUTPUT"
+          echo "::warning::Skipping ECS deploy because these variables still have placeholder values (set real values in repository/environment Variables): ${placeholder[*]}"
+          exit 0
+        fi
+
+        if ! [[ "$AWS_REGION" =~ ^[a-z]{2}(-gov)?-[a-z]+-[0-9]$ ]]; then
+          echo "deploy_enabled=false" >> "$GITHUB_OUTPUT"
+          echo "::warning::Skipping ECS deploy because AWS_REGION is not a valid AWS region: $AWS_REGION"
           exit 0
         fi
 
