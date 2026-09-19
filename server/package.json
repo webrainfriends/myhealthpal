@@ -1,0 +1,30 @@
+{
+  "name": "myhealthpal-server",
+  "version": "1.0.0",
+  "description": "MyHealthPal ingestion API: Express + PostgreSQL service for uploading and processing health reports",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "migrate": "node db/migrate.js",
+    "seed": "node db/seed.js",
+    "fixtures": "node scripts/generate-fixtures.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "csv-parse": "^7.0.2",
+    "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
+    "express": "^4.21.2",
+    "mammoth": "^1.8.0",
+    "multer": "^2.0.0",
+    "pdfjs-dist": "^6.3.289",
+    "pg": "^8.13.1",
+    "uuid": "^11.0.0"
+  },
+  "devDependencies": {
+    "docx": "^9.1.1",
+    "pdfkit": "^0.20.2"
+  }
+}

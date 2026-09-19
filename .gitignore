@@ -1,0 +1,22 @@
+node_modules/
+.env
+.env.local
+npm-debug.log*
+
+# server
+server/uploads/*
+!server/uploads/.gitkeep
+server/test-fixtures/
+
+# expo / react native
+mobile/.expo/
+mobile/dist/
+mobile/web-build/
+mobile/*.jks
+mobile/*.p8
+mobile/*.p12
+mobile/*.key
+mobile/*.mobileprovision
+
+# os
+.DS_Store
