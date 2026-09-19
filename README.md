@@ -32,6 +32,45 @@ npm start               # listens on PORT (default 4000)
 
 Requires a running PostgreSQL instance matching `DATABASE_URL`.
 
+### Deploying to EC2
+
+The repo includes a GitHub Actions workflow, `.github/workflows/deploy.yml`,
+that deploys the server to an EC2 instance over SSH on every push to `main`
+(or on demand via **Actions -> Deploy to EC2 -> Run workflow**). It runs the
+API directly with Node.js + pm2 - no Docker involved.
+
+| Setting | Value |
+|---|---|
+| Host | `ec2-13-250-133-109.ap-southeast-1.compute.amazonaws.com` |
+| AWS region | `ap-southeast-1` |
+| SSH user | `ubuntu` |
+| App URL after deploy | `http://ec2-13-250-133-109.ap-southeast-1.compute.amazonaws.com:4010` |
+
+This is the same host used by other apps in the org (each on its own port),
+so the bootstrap script below is safe to re-run and won't touch an existing
+Postgres install or other apps' data.
+
+One-time setup before the first deploy:
+
+1. **Bootstrap the instance** (installs Node.js 20, pm2, PostgreSQL, git, and
+   creates the `myhealthpal` DB/role) — SSH in once and run:
+   ```bash
+   ssh ubuntu@ec2-13-250-133-109.ap-southeast-1.compute.amazonaws.com \
+     'bash -s' < scripts/bootstrap-ec2.sh
+   ```
+2. **Open the app port** in the instance's security group: allow inbound TCP
+   **4010** from the internet (keep 22/SSH restricted as you prefer).
+3. **Add a GitHub secret**: in this repo's Settings -> Secrets and variables
+   -> Actions, add `EC2_SSH_KEY` containing the private key (PEM) that
+   matches the EC2 instance's key pair (the same key already used for other
+   apps on this host works, if it's the same instance).
+
+That's it — every push to `main` after that pulls the latest code, runs
+`npm ci`, applies migrations, and restarts the app under pm2. `server/.env`
+(DB password, `DATABASE_URL`) is generated once, directly on the host, the
+first time the workflow runs, and is left untouched on every deploy after
+that, so data survives redeploys.
+
 ### API
 
 | Method | Path | Purpose |
