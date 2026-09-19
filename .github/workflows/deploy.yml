@@ -76,16 +76,8 @@ jobs:
             if [ ! -f .env ] || grep -q "myhealthpal_dev" .env; then
               cp .env.example .env.new
               DB_PASS_VAL=$(openssl rand -hex 16)
-              sudo -u postgres psql -v ON_ERROR_STOP=1 -c "
-                DO \$\$
-                BEGIN
-                  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'myhealthpal') THEN
-                    CREATE ROLE myhealthpal WITH LOGIN;
-                  END IF;
-                END
-                \$\$;"
-              sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='myhealthpal'" | grep -q 1 \
-                || sudo -u postgres psql -v ON_ERROR_STOP=1 -c "CREATE DATABASE myhealthpal OWNER myhealthpal;"
+              sudo -u postgres psql -v ON_ERROR_STOP=1 -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'myhealthpal') THEN CREATE ROLE myhealthpal WITH LOGIN; END IF; END \$\$;"
+              sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='myhealthpal'" | grep -q 1 || sudo -u postgres psql -v ON_ERROR_STOP=1 -c "CREATE DATABASE myhealthpal OWNER myhealthpal;"
               sudo -u postgres psql -v ON_ERROR_STOP=1 -c "ALTER ROLE myhealthpal WITH PASSWORD '${DB_PASS_VAL}';"
               sed -i "s#^PORT=.*#PORT=${APP_PORT}#" .env.new
               sed -i "s#^DATABASE_URL=.*#DATABASE_URL=postgres://myhealthpal:${DB_PASS_VAL}@localhost:5432/myhealthpal#" .env.new
@@ -104,9 +96,7 @@ jobs:
             npm ci --omit=dev
             npm run migrate
 
-            pm2 describe myhealthpal-server > /dev/null 2>&1 \
-              && pm2 restart myhealthpal-server --update-env \
-              || pm2 start src/index.js --name myhealthpal-server
+            pm2 describe myhealthpal-server > /dev/null 2>&1 && pm2 restart myhealthpal-server --update-env || pm2 start src/index.js --name myhealthpal-server
             pm2 save
 
             echo "Deployed. API listening on: http://${PUBLIC_HOST}:${APP_PORT}"
