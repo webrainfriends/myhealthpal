@@ -91,9 +91,29 @@ jobs:
               sudo -u postgres psql -v ON_ERROR_STOP=1 -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'myhealthpal') THEN CREATE ROLE myhealthpal WITH LOGIN; END IF; END \$\$;"
               sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='myhealthpal'" | grep -q 1 || sudo -u postgres psql -v ON_ERROR_STOP=1 -c "CREATE DATABASE myhealthpal OWNER myhealthpal;"
               sudo -u postgres psql -v ON_ERROR_STOP=1 -c "ALTER ROLE myhealthpal WITH PASSWORD '${DB_PASS_VAL}';"
+              NEW_DB_URL="postgres://myhealthpal:${DB_PASS_VAL}@localhost:5432/myhealthpal"
+
+              # Verify the password we just set actually authenticates
+              # *before* trusting it, with the real libpq error visible -
+              # a repeatable failure here even right after ALTER ROLE
+              # points at something structural (pg_hba.conf, the cluster
+              # this "localhost:5432" connection actually reaches, etc.),
+              # not a stale/mismatched password, so dump enough to diagnose
+              # that instead of failing opaquely inside npm run migrate.
+              if ! PGCONNECT_TIMEOUT=5 psql "$NEW_DB_URL" -c '\q'; then
+                echo "::error::Still can't authenticate as myhealthpal via $NEW_DB_URL right after setting that exact password - not a stale-credentials problem. Diagnostics:"
+                echo "-- postgres version --"; sudo -u postgres psql -tAc "SELECT version();"
+                echo "-- listen_addresses / port --"; sudo -u postgres psql -tAc "SHOW listen_addresses;"; sudo -u postgres psql -tAc "SHOW port;"
+                echo "-- role --"; sudo -u postgres psql -tAc "SELECT rolname, rolcanlogin, rolvaliduntil FROM pg_roles WHERE rolname='myhealthpal';"
+                echo "-- what's actually listening on 5432 --"; sudo ss -tlnp | grep 5432 || echo "(nothing listening on 5432)"
+                HBA_FILE=$(sudo -u postgres psql -tAc "SHOW hba_file;" | tr -d '[:space:]')
+                echo "-- $HBA_FILE (active rules) --"; sudo grep -Ev '^\s*(#|$)' "$HBA_FILE"
+                exit 1
+              fi
+
               cp .env.example .env.new
               sed -i "s#^PORT=.*#PORT=${APP_PORT}#" .env.new
-              sed -i "s#^DATABASE_URL=.*#DATABASE_URL=postgres://myhealthpal:${DB_PASS_VAL}@localhost:5432/myhealthpal#" .env.new
+              sed -i "s#^DATABASE_URL=.*#DATABASE_URL=${NEW_DB_URL}#" .env.new
               mv .env.new .env
               echo "(Re)generated .env with working DB credentials."
             fi
