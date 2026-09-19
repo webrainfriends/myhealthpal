@@ -1,7 +1,11 @@
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import DashboardScreen from '../screens/DashboardScreen';
+import TimelineScreen from '../screens/TimelineScreen';
 import UploadScreen from '../screens/UploadScreen';
 import ReportDetailScreen from '../screens/ReportDetailScreen';
+import ParameterTrendScreen from '../screens/ParameterTrendScreen';
 import { colors } from '../theme/theme';
 
 const navigationTheme = {
@@ -16,7 +20,27 @@ const navigationTheme = {
   },
 };
 
+const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
+
+function Tabs() {
+  return (
+    <Tab.Navigator
+      screenOptions={{
+        headerStyle: { backgroundColor: colors.surface },
+        headerTintColor: colors.textPrimary,
+        headerShadowVisible: false,
+        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border },
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textTertiary,
+      }}
+    >
+      <Tab.Screen name="DashboardTab" component={DashboardScreen} options={{ title: 'Dashboard', headerShown: false }} />
+      <Tab.Screen name="TimelineTab" component={TimelineScreen} options={{ title: 'Timeline', headerShown: false }} />
+      <Tab.Screen name="UploadTab" component={UploadScreen} options={{ title: 'Upload', headerShown: false }} />
+    </Tab.Navigator>
+  );
+}
 
 export default function RootNavigator() {
   return (
@@ -28,8 +52,9 @@ export default function RootNavigator() {
           headerShadowVisible: false,
         }}
       >
-        <Stack.Screen name="Upload" component={UploadScreen} options={{ title: 'MyHealthPal' }} />
+        <Stack.Screen name="Tabs" component={Tabs} options={{ headerShown: false }} />
         <Stack.Screen name="ReportDetail" component={ReportDetailScreen} options={{ title: 'Report' }} />
+        <Stack.Screen name="ParameterTrend" component={ParameterTrendScreen} options={{ title: 'Trend' }} />
       </Stack.Navigator>
     </NavigationContainer>
   );

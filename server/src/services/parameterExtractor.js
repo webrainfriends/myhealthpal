@@ -27,7 +27,10 @@ const NON_NUMERIC_VALUE_WORDS = [
   ['absent'],
   ['present'],
 ];
-const UNIT_TOKEN = /^[A-Za-z%µ][A-Za-z%/µ0-9^]*$/;
+// Allows units that start with a digit (e.g. "10^3/uL", "10^9/L") while still
+// requiring at least one unit-like character, so a bare number or the first
+// half of a "12.0 - 16.0" range never gets misread as a unit.
+const UNIT_TOKEN = /^(?=.*[A-Za-z%µ^])[A-Za-z%/µ0-9^.]+$/;
 const RANGE_TOKEN = /^\d+(?:\.\d+)?\s*-\s*\d+(?:\.\d+)?$/;
 const FLAG_TOKEN = /^(High|Low|Normal|Abnormal|H|L)$/i;
 

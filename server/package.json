@@ -12,6 +12,7 @@
     "fixtures": "node scripts/generate-fixtures.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.127.0",
     "cors": "^2.8.5",
     "csv-parse": "^7.0.2",
     "dotenv": "^16.4.5",

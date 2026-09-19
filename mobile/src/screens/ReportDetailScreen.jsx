@@ -1,11 +1,52 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import StatusBadge from '../components/StatusBadge';
-import ParameterRow from '../components/ParameterRow';
+import MeasurementRow from '../components/MeasurementRow';
 import PrimaryButton from '../components/PrimaryButton';
-import { colors, spacing, typography } from '../theme/theme';
-import { confirmReport, fetchReport, retryReport, updateParameter } from '../api/client';
+import { colors, radii, spacing, typography } from '../theme/theme';
+import { confirmReport, fetchReport, retryReport, updateMeasurement, updateReportDate } from '../api/client';
+
+function formatDate(value) {
+  if (!value) return null;
+  return new Date(value).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+function EffectiveDateRow({ report, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(report.effective_date ? report.effective_date.slice(0, 10) : '');
+
+  if (editing) {
+    return (
+      <View style={styles.dateEditRow}>
+        <TextInput
+          style={styles.dateInput}
+          value={value}
+          onChangeText={setValue}
+          placeholder="YYYY-MM-DD"
+          placeholderTextColor={colors.textTertiary}
+        />
+        <TouchableOpacity
+          onPress={() => {
+            onSave(value);
+            setEditing(false);
+          }}
+        >
+          <Text style={styles.dateSaveLabel}>Save</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  return (
+    <TouchableOpacity onPress={() => setEditing(true)} style={styles.dateRow}>
+      <Text style={typography.heading}>
+        {report.effective_date ? formatDate(report.effective_date) : 'Date needs review'}
+      </Text>
+      <Text style={styles.dateEditLabel}>{report.date_status === 'Confirmed' ? 'Edit' : 'Set date'}</Text>
+    </TouchableOpacity>
+  );
+}
 
 const POLL_STATUSES = new Set(['Uploaded', 'Processing']);
 const POLL_INTERVAL_MS = 2000;
@@ -14,7 +55,8 @@ const EDIT_DEBOUNCE_MS = 600;
 export default function ReportDetailScreen({ route, navigation }) {
   const { reportId } = route.params;
   const [report, setReport] = useState(null);
-  const [parameters, setParameters] = useState([]);
+  const [measurements, setMeasurements] = useState([]);
+  const [narrativeSummary, setNarrativeSummary] = useState(null);
   const [busy, setBusy] = useState(false);
   const pendingEdits = useRef({});
   const debounceTimers = useRef({});
@@ -22,7 +64,8 @@ export default function ReportDetailScreen({ route, navigation }) {
   const load = useCallback(async () => {
     const data = await fetchReport(reportId);
     setReport(data.report);
-    setParameters(data.parameters);
+    setMeasurements(data.measurements);
+    setNarrativeSummary(data.narrativeSummary);
     return data.report.ingestion_status;
   }, [reportId]);
 
@@ -52,20 +95,32 @@ export default function ReportDetailScreen({ route, navigation }) {
     };
   }, [load]);
 
-  function handleParameterChange(parameterId, changes) {
-    setParameters((prev) => prev.map((p) => (p.id === parameterId ? { ...p, ...changes } : p)));
-    pendingEdits.current[parameterId] = { ...pendingEdits.current[parameterId], ...changes };
+  function handleMeasurementChange(measurementId, changes) {
+    setMeasurements((prev) => prev.map((m) => (m.id === measurementId ? { ...m, ...changes } : m)));
+    pendingEdits.current[measurementId] = { ...pendingEdits.current[measurementId], ...changes };
 
-    if (debounceTimers.current[parameterId]) clearTimeout(debounceTimers.current[parameterId]);
-    debounceTimers.current[parameterId] = setTimeout(async () => {
-      const edits = pendingEdits.current[parameterId];
-      delete pendingEdits.current[parameterId];
+    if (debounceTimers.current[measurementId]) clearTimeout(debounceTimers.current[measurementId]);
+    debounceTimers.current[measurementId] = setTimeout(async () => {
+      const edits = pendingEdits.current[measurementId];
+      delete pendingEdits.current[measurementId];
       try {
-        await updateParameter(reportId, parameterId, edits);
+        await updateMeasurement(reportId, measurementId, edits);
       } catch (err) {
         Alert.alert('Could not save edit', err.message);
       }
     }, EDIT_DEBOUNCE_MS);
+  }
+
+  async function handleMappingChange(measurementId, healthParameterId) {
+    try {
+      await updateMeasurement(reportId, measurementId, { health_parameter_id: healthParameterId });
+      // The measurement list join (parameter display name/category) only
+      // comes from the report GET, so refresh from there rather than
+      // patching local state with the bare row the PATCH response returns.
+      await load();
+    } catch (err) {
+      Alert.alert('Could not update mapping', err.message);
+    }
   }
 
   async function handleConfirm() {
@@ -92,6 +147,15 @@ export default function ReportDetailScreen({ route, navigation }) {
     }
   }
 
+  async function handleDateSave(value) {
+    try {
+      await updateReportDate(reportId, value);
+      await load();
+    } catch (err) {
+      Alert.alert('Could not update date', err.message);
+    }
+  }
+
   if (!report) {
     return (
       <SafeAreaView style={styles.container}>
@@ -107,6 +171,7 @@ export default function ReportDetailScreen({ route, navigation }) {
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.headerRow}>
+          <EffectiveDateRow report={report} onSave={handleDateSave} />
           <StatusBadge status={report.ingestion_status} />
         </View>
 
@@ -122,24 +187,36 @@ export default function ReportDetailScreen({ route, navigation }) {
           </View>
         )}
 
-        {report.generated_summary && (
+        {(narrativeSummary?.summary_text || report.generated_summary) && (
           <View style={styles.summaryBox}>
             <Text style={typography.heading}>Summary</Text>
-            <Text style={[typography.bodySecondary, styles.summaryText]}>{report.generated_summary}</Text>
+            <Text style={[typography.bodySecondary, styles.summaryText]}>
+              {narrativeSummary?.summary_text || report.generated_summary}
+            </Text>
           </View>
         )}
 
-        {parameters.length > 0 && (
+        {measurements.some((m) => m.duplicate_status === 'suspected') && (
+          <View style={styles.duplicateBanner}>
+            <Text style={[typography.body, styles.duplicateBannerText]}>
+              Some values look like they may already be recorded from an earlier confirmed report — check the
+              highlighted rows below.
+            </Text>
+          </View>
+        )}
+
+        {measurements.length > 0 && (
           <View style={styles.section}>
             <Text style={[typography.heading, styles.sectionHeading]}>
               Extracted parameters {isEditable ? '(tap a field to correct it)' : ''}
             </Text>
-            {parameters.map((parameter) => (
-              <ParameterRow
-                key={parameter.id}
-                parameter={parameter}
+            {measurements.map((measurement) => (
+              <MeasurementRow
+                key={measurement.id}
+                measurement={measurement}
                 editable={isEditable}
-                onChange={(changes) => handleParameterChange(parameter.id, changes)}
+                onChange={(changes) => handleMeasurementChange(measurement.id, changes)}
+                onChangeMapping={(healthParameterId) => handleMappingChange(measurement.id, healthParameterId)}
               />
             ))}
           </View>
@@ -173,6 +250,38 @@ const styles = StyleSheet.create({
   },
   headerRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  dateEditLabel: {
+    color: colors.primary,
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  dateEditRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flex: 1,
+  },
+  dateInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    fontSize: 15,
+    flex: 1,
+    backgroundColor: colors.surface,
+  },
+  dateSaveLabel: {
+    color: colors.primary,
+    fontWeight: '600',
   },
   processingNote: {
     fontStyle: 'italic',
@@ -194,6 +303,14 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   summaryText: {},
+  duplicateBanner: {
+    backgroundColor: colors.warningMuted,
+    borderRadius: 12,
+    padding: spacing.md,
+  },
+  duplicateBannerText: {
+    color: colors.warning,
+  },
   section: {
     gap: spacing.sm,
   },
