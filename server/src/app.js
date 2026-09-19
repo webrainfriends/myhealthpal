@@ -6,6 +6,8 @@ const healthParametersRouter = require('./routes/healthParameters');
 const timelineRouter = require('./routes/timeline');
 const dashboardRouter = require('./routes/dashboard');
 const pinnedParametersRouter = require('./routes/pinnedParameters');
+const insightsRouter = require('./routes/insights');
+const chatRouter = require('./routes/chat');
 
 const app = express();
 
@@ -18,6 +20,8 @@ app.use('/api/health-parameters', healthParametersRouter);
 app.use('/api/timeline', timelineRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/pinned-parameters', pinnedParametersRouter);
+app.use('/api/insights', insightsRouter);
+app.use('/api/chat', chatRouter);
 app.get('/api/config/supported-formats', (req, res) => {
   res.json({
     extensions: Object.keys(config.supportedExtensions),

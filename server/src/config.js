@@ -22,6 +22,8 @@ module.exports = {
   supportedExtensions: SUPPORTED_EXTENSIONS,
   extractionProvider: process.env.EXTRACTION_PROVIDER || 'heuristic',
   summaryProvider: process.env.SUMMARY_PROVIDER || 'heuristic',
+  insightProvider: process.env.INSIGHT_PROVIDER || 'heuristic',
+  chatProvider: process.env.CHAT_PROVIDER || (process.env.ANTHROPIC_API_KEY ? 'claude' : 'unavailable'),
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || null,
   anthropicModel: process.env.ANTHROPIC_MODEL || 'claude-sonnet-5',
 };
