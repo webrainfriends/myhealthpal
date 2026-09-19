@@ -7,6 +7,7 @@ const { enqueueProcessing } = require('../services/ingestionService');
 const registry = require('../extraction/registry');
 const { classifyValue } = require('../extraction/normalizationService');
 const { refreshSummaryForReport } = require('../extraction/reportNarrativeService');
+const { runForMeasurement, supersedeInsightsForMeasurement } = require('../insights/insightService');
 
 const router = express.Router();
 
@@ -273,6 +274,14 @@ router.patch('/:id/measurements/:measurementId', async (req, res, next) => {
       await refreshSummaryForReport(req.params.id);
     }
 
+    // Corrections to an already-confirmed measurement can invalidate an
+    // insight generated from its old value — invalidate first, then
+    // re-evaluate against the corrected one.
+    if (existing.is_confirmed && correctionRows.length > 0) {
+      await supersedeInsightsForMeasurement(req.params.measurementId);
+      await runForMeasurement(req.params.measurementId);
+    }
+
     res.json({ measurement: rows[0] });
   } catch (err) {
     next(err);
@@ -291,14 +300,23 @@ router.post('/:id/confirm', async (req, res, next) => {
       return res.status(409).json({ error: `Report cannot be confirmed from status "${report.ingestion_status}".` });
     }
 
-    await pool.query('UPDATE health_measurements SET is_confirmed = true, updated_at = now() WHERE report_id = $1', [
-      req.params.id,
-    ]);
+    const confirmedMeasurements = await pool.query(
+      `UPDATE health_measurements SET is_confirmed = true, updated_at = now()
+       WHERE report_id = $1 RETURNING id, health_parameter_id`,
+      [req.params.id]
+    );
     await pool.query(
       `UPDATE reports SET ingestion_status = 'Completed', confirmed_at = now(), updated_at = now() WHERE id = $1`,
       [req.params.id]
     );
     await refreshSummaryForReport(req.params.id);
+
+    for (const measurement of confirmedMeasurements.rows) {
+      if (measurement.health_parameter_id) {
+        await runForMeasurement(measurement.id);
+      }
+    }
+
     const updated = await pool.query('SELECT * FROM reports WHERE id = $1', [req.params.id]);
 
     res.json({ report: updated.rows[0] });

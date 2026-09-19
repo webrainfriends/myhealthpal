@@ -6,6 +6,8 @@ import TimelineScreen from '../screens/TimelineScreen';
 import UploadScreen from '../screens/UploadScreen';
 import ReportDetailScreen from '../screens/ReportDetailScreen';
 import ParameterTrendScreen from '../screens/ParameterTrendScreen';
+import InsightsScreen from '../screens/InsightsScreen';
+import ChatScreen from '../screens/ChatScreen';
 import { colors } from '../theme/theme';
 
 const navigationTheme = {
@@ -37,6 +39,7 @@ function Tabs() {
     >
       <Tab.Screen name="DashboardTab" component={DashboardScreen} options={{ title: 'Dashboard', headerShown: false }} />
       <Tab.Screen name="TimelineTab" component={TimelineScreen} options={{ title: 'Timeline', headerShown: false }} />
+      <Tab.Screen name="ChatTab" component={ChatScreen} options={{ title: 'Ask', headerShown: false }} />
       <Tab.Screen name="UploadTab" component={UploadScreen} options={{ title: 'Upload', headerShown: false }} />
     </Tab.Navigator>
   );
@@ -55,6 +58,7 @@ export default function RootNavigator() {
         <Stack.Screen name="Tabs" component={Tabs} options={{ headerShown: false }} />
         <Stack.Screen name="ReportDetail" component={ReportDetailScreen} options={{ title: 'Report' }} />
         <Stack.Screen name="ParameterTrend" component={ParameterTrendScreen} options={{ title: 'Trend' }} />
+        <Stack.Screen name="Insights" component={InsightsScreen} options={{ title: 'AI insights' }} />
       </Stack.Navigator>
     </NavigationContainer>
   );

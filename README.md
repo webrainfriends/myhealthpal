@@ -12,6 +12,11 @@ covering:
   ([issue #3](https://github.com/webrainfriends/myhealthpal/issues/3)).
 - A personal dashboard with pinned metrics, trends, and drill-down to source
   ([issue #4](https://github.com/webrainfriends/myhealthpal/issues/4)).
+- AI-generated longitudinal health insights with evidence links and a
+  dismiss/feedback lifecycle
+  ([issue #11](https://github.com/webrainfriends/myhealthpal/issues/11)).
+- A retrieval-grounded conversational assistant over the user's own data
+  ([issue #10](https://github.com/webrainfriends/myhealthpal/issues/10)).
 
 ## Structure
 
@@ -88,6 +93,12 @@ that, so data survives redeploys.
 | `GET` | `/api/dashboard/snapshot` | Pinned metrics + latest values, needs-attention list, recent reports |
 | `GET` | `/api/dashboard/parameters/:code/trend?range=` | Time series for one canonical parameter (`7d/30d/90d/6m/1y/all`) |
 | `GET`/`POST` `/api/pinned-parameters`, `DELETE .../:parameterId` | Manage the dashboard's tracked metrics |
+| `GET` | `/api/insights?state=` | List insights (`active` default, or `dismissed`/`superseded`/`resolved`/`all`) |
+| `POST` | `/api/insights/:id/dismiss` | Dismiss an insight |
+| `POST` | `/api/insights/:id/feedback` | Record `{feedback: "useful"\|"not_useful"}` |
+| `POST` | `/api/chat/sessions`, `GET /api/chat/sessions` | Create/list chat sessions |
+| `GET` | `/api/chat/sessions/:id/messages` | Session message history |
+| `POST` | `/api/chat/sessions/:id/messages` | Send a message, get back `{answer, evidence}` |
 
 There is no authentication system yet; every request acts as a single seeded
 demo user (`DEMO_USER_ID`), overridable with an `x-user-id` header.
@@ -226,6 +237,83 @@ per-measurement rows are untouched and still reachable by re-querying
 without that threshold, so "dense" and "sparse" data are never conflated
 into one misleading line.
 
+### AI insights and change detection (issue #11)
+
+`src/insights/insightRules.js` is a small catalog of pure, deterministic
+detectors that run over a user's confirmed measurement history for one
+canonical parameter at a time — every number is calculated in code, never
+asked of an LLM:
+
+- **new_result** — first-ever confirmed value for a parameter.
+- **change_from_previous** — ≥15% change vs. the prior confirmed value (or
+  any change in a qualitative result), with the exact percentage computed
+  in code.
+- **sustained_trend** — 3 consecutive confirmed values monotonically rising
+  or falling.
+- **new_abnormal_flag** — the source report flags a value abnormal where the
+  prior confirmed result wasn't.
+- **repeated_abnormal** — 3 consecutive confirmed results all flagged
+  abnormal.
+
+`src/insights/insightExplanationService.js` turns a candidate into a title +
+plain-language explanation: a heuristic template by default, or (`INSIGHT_
+PROVIDER=claude`) a Claude-phrased rewrite — validated by
+`explanationOnlyReferencesEvidenceNumbers()`, which rejects (falls back to
+the heuristic template) any generated text containing a number not present
+in that candidate's own evidence data. This is deliberately strict rather
+than trying to sanitize: a hallucinated number must never reach the user.
+
+`src/insights/insightService.js` (`runForMeasurement`) is called after a
+report is confirmed and after a correction to an already-confirmed
+measurement (`supersedeInsightsForMeasurement` invalidates old insights
+first). It dedupes via `dedup_key` — point-in-time insight types key to the
+measurement itself (idempotent replays), window types (trend/repeated) key
+to the parameter and only replace the active one when the evidence set
+actually changed — and auto-resolves outstanding `new_abnormal_flag`/
+`repeated_abnormal` insights once a parameter's value returns to normal.
+Every insight stores structured `evidence` (`[{type, id}]` — never free-text
+citations) so the UI can render a "view source" link, plus a `rule_version`
+and `provider`/`model` when an LLM phrased it.
+
+### Conversational health assistant (issue #10)
+
+The chat feature never exposes the database to an LLM prompt. Instead,
+`src/chat/tools.js` defines a small set of deterministic, user-scoped
+retrieval functions (latest report, report by ID, compare two reports,
+parameter trend with min/max/average/direction pre-calculated, date-range
+search, highest/lowest in range, keyword search, explain/list insights).
+**Authorization is structural, not a runtime check**: no tool's input schema
+declares a user/account field, and every implementation queries by
+`context.userId`, which the orchestrator injects from the authenticated
+request — never from the model's tool-call arguments. This is verified by
+an automated test (`test/chatTools.security.test.js`) that creates two real
+users and asserts one cannot fetch the other's report by ID, even when the
+ID is passed directly or under a smuggled `userId` argument.
+
+`src/chat/chatOrchestrator.js` runs one turn: a deterministic, regex-based
+`safetyPreCheck.js` scans for emergency phrasing (chest pain, suicidal
+ideation, stroke symptoms, anaphylaxis, overdose, …) and short-circuits to a
+fixed emergency-services response with **no model call at all** if matched.
+Otherwise it drives a bounded tool-calling loop (max 5 iterations) against
+the configured provider, collecting every tool result's evidence, and ends
+in a grounded final answer. The system prompt requires the model to use
+tools for any personal-data claim, never state a value it didn't get from a
+tool result, and never diagnose or instruct medication changes.
+
+The provider contract (`src/chat/providers/`) is generic — a
+`converse({systemPrompt, messages, tools})` call taking/returning
+provider-neutral message and tool-call shapes — so `claudeChatProvider.js`
+is the only file that knows Anthropic's request/response format;
+`unavailableProvider.js` is the honest fallback when no `ANTHROPIC_API_KEY`
+is configured (chat, unlike extraction, has no meaningful heuristic
+substitute — it says so rather than faking natural-language understanding).
+Conversation memory is session-scoped: only past user/assistant *text* turns
+are replayed into a new turn, never past tool-call scratchpads, so an old
+retrieval can't linger as a stale "fact" that conflicts with current data —
+every personal-data claim comes from a fresh tool call. `chat_events` logs
+non-sensitive telemetry (latency, tokens, tool name, success) — never
+message content.
+
 ### Known scope limits
 
 - `generateSummary` (`src/services/summaryService.js`) is a heuristic,
@@ -256,7 +344,33 @@ into one misleading line.
   today.
 - No push/local alerting — "needs attention" is a pull (dashboard) view, not
   a background-triggered alert.
+- Insight thresholds (15%/30% change, 3-point trend/repeat windows) are fixed
+  constants, not per-user/per-parameter configuration; exploratory
+  correlations and wearable/glucose-pattern insight types from the issue's
+  catalog are out of scope (no connected device data exists to detect
+  patterns in — see the dashboard's scope limits above).
+- The chat assistant's tool-calling loop against a live model hasn't been
+  exercised end-to-end in this environment (no `ANTHROPIC_API_KEY`
+  configured here) — its deterministic paths (safety intercept, honest
+  failure with no provider, tool authorization, message persistence) are
+  covered by automated tests, but the actual Claude conversation loop was
+  reviewed against the Messages/tool-use API, not run live.
+- Chat has no streaming, cancellation, or multi-provider fallback yet — each
+  turn is a single request/response with a 30s timeout and a bounded
+  tool-call loop (max 5 iterations). The provider contract supports adding
+  these later without changing the orchestrator's shape.
 - No authentication/authorization — see above.
+
+### Automated tests
+
+`cd server && npm test` runs `node --test` over `server/test/`: the insight
+rule catalog and its evidence-number validator (synthetic fixtures, per
+issue #11's explicit ask), the safety pre-check's emergency/non-emergency
+phrasing, the chat orchestrator's non-LLM paths, and — the most
+safety-critical one — `chatTools.security.test.js`, which creates two real
+database users and asserts one cannot retrieve the other's report through
+any tool, including a deliberately smuggled `userId` argument. These need a
+reachable `DATABASE_URL` (same as the server itself).
 
 ## Mobile app
 
@@ -271,13 +385,21 @@ point at your server if it isn't reachable at `http://localhost:4000`
 (`http://10.0.2.2:4000` is used automatically for the Android emulator).
 
 Light theme tokens live in `src/theme/theme.js`. Bottom tabs (Dashboard /
-Timeline / Upload) sit inside a stack so Report detail and Parameter trend
-push over them full-screen:
+Timeline / Ask / Upload) sit inside a stack so Report detail, Parameter
+trend, and Insights push over them full-screen:
 
-- **Dashboard** (`src/screens/DashboardScreen.jsx`) — pinned-metric cards
-  (value, date, source, change vs. prior; tap for the trend view; ✕ to
-  unpin), a "Needs attention" list, recent reports, and a picker
-  (`ParameterPickerModal.jsx`) to pin new metrics from the registry.
+- **Dashboard** (`src/screens/DashboardScreen.jsx`) — an "AI insights"
+  preview (`InsightCard.jsx`, dismiss inline, "See all" to the full
+  Insights screen), pinned-metric cards (value, date, source, change vs.
+  prior; tap for the trend view; ✕ to unpin), a "Needs attention" list,
+  recent reports, and a picker (`ParameterPickerModal.jsx`) to pin new
+  metrics from the registry.
+- **Insights** (`src/screens/InsightsScreen.jsx`) — the full active-insight
+  list with dismiss and useful/not-useful feedback, tapping through to the
+  source report.
+- **Ask** (`src/screens/ChatScreen.jsx`) — a chat UI over `/api/chat`;
+  assistant replies that cite a report render a "View source" chip that
+  jumps straight to Report detail.
 - **Timeline** (`src/screens/TimelineScreen.jsx`) — search + category-filter
   chips over `GET /api/timeline`, each item showing its effective date (or a
   "Date needs review" flag), counts, a likely-duplicate note, and its current
@@ -321,9 +443,30 @@ verified; a real dense CGM-scale dataset wasn't available to generate here).
 One real bug was caught this way and fixed: an ambiguous SQL column
 reference in the report-level dedup query.
 
+For insights, a controlled sequence of four AST results (normal → high →
+higher → higher again) run through upload-and-confirm end to end was used
+to verify, in order: `new_result` on the first, `change_from_previous`
+(125% higher, computed) + `new_abnormal_flag` on the second, `sustained_
+trend` on the third — correctly *superseded* by a new one with different
+evidence on the fourth alongside `repeated_abnormal` firing for the first
+time; a fifth normal result then correctly auto-resolved the outstanding
+abnormal-flag insights; correcting an already-confirmed measurement's value
+correctly superseded the insight generated from its old value. Dismiss and
+feedback endpoints were exercised directly. The 17-test automated suite
+(`npm test`) covers the rule catalog, the evidence-number validator, the
+safety pre-check, the orchestrator's non-LLM paths, and cross-user tool
+authorization.
+
+For chat, the safety pre-check, the "no provider configured" failure path,
+and full message persistence/history were verified end-to-end via the API
+(a real emergency-phrased message correctly short-circuited with zero
+model/tool calls and empty evidence; an ordinary question correctly failed
+closed with a clear message rather than fabricating an answer, since no
+`ANTHROPIC_API_KEY` is configured in this environment).
+
 The mobile app was verified by starting the Expo/Metro dev server and
 pulling a full JS bundle for it (`/index.bundle`) after each round of
 changes, which resolves and transforms every screen, component, and
-third-party import with no errors (1019 modules in the final bundle). There
+third-party import with no errors (1022 modules in the final bundle). There
 was no device/simulator available in this environment, so the UI has not
 been visually exercised — that step is still needed before shipping.

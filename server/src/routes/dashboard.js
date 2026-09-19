@@ -69,10 +69,22 @@ router.get('/snapshot', async (req, res, next) => {
       [userId]
     );
 
+    const insights = await pool.query(
+      `SELECT i.id, i.insight_type, i.title, i.explanation, i.severity, i.generated_at, i.evidence,
+              hp.display_name AS parameter_display_name
+       FROM insights i
+       LEFT JOIN health_parameters hp ON hp.id = i.health_parameter_id
+       WHERE i.user_id = $1 AND i.lifecycle_state = 'active'
+       ORDER BY i.generated_at DESC
+       LIMIT 10`,
+      [userId]
+    );
+
     res.json({
       trackedMetrics: tracked.rows,
       needsAttention: needsAttention.rows,
       recentReports: recentReports.rows,
+      insights: insights.rows,
     });
   } catch (err) {
     next(err);

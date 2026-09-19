@@ -117,4 +117,42 @@ export async function unpinParameter(healthParameterId) {
   return handleResponse(response);
 }
 
+export async function fetchInsights(state = 'active') {
+  const response = await fetch(`${API_BASE_URL}/api/insights?state=${state}`);
+  return handleResponse(response);
+}
+
+export async function dismissInsight(insightId) {
+  const response = await fetch(`${API_BASE_URL}/api/insights/${insightId}/dismiss`, { method: 'POST' });
+  return handleResponse(response);
+}
+
+export async function sendInsightFeedback(insightId, feedback) {
+  const response = await fetch(`${API_BASE_URL}/api/insights/${insightId}/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ feedback }),
+  });
+  return handleResponse(response);
+}
+
+export async function createChatSession() {
+  const response = await fetch(`${API_BASE_URL}/api/chat/sessions`, { method: 'POST' });
+  return handleResponse(response);
+}
+
+export async function fetchChatMessages(sessionId) {
+  const response = await fetch(`${API_BASE_URL}/api/chat/sessions/${sessionId}/messages`);
+  return handleResponse(response);
+}
+
+export async function sendChatMessage(sessionId, message) {
+  const response = await fetch(`${API_BASE_URL}/api/chat/sessions/${sessionId}/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message }),
+  });
+  return handleResponse(response);
+}
+
 export { API_BASE_URL };

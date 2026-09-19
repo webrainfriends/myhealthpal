@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ParameterPickerModal from '../components/ParameterPickerModal';
+import InsightCard from '../components/InsightCard';
 import { colors, radii, spacing, typography } from '../theme/theme';
-import { fetchDashboardSnapshot, pinParameter, unpinParameter } from '../api/client';
+import { dismissInsight, fetchDashboardSnapshot, pinParameter, unpinParameter } from '../api/client';
 
 function formatDate(value) {
   if (!value) return 'unknown date';
@@ -85,6 +86,20 @@ export default function DashboardScreen({ navigation }) {
     }
   }
 
+  async function handleDismissInsight(id) {
+    try {
+      await dismissInsight(id);
+      await load();
+    } catch (err) {
+      Alert.alert('Could not dismiss insight', err.message);
+    }
+  }
+
+  function handleOpenInsight(insight) {
+    const reportEvidence = insight.evidence.find((e) => e.type === 'report');
+    if (reportEvidence) navigation.navigate('ReportDetail', { reportId: reportEvidence.id });
+  }
+
   if (!snapshot) {
     return (
       <SafeAreaView style={styles.container}>
@@ -97,6 +112,25 @@ export default function DashboardScreen({ navigation }) {
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={typography.title}>Health snapshot</Text>
+
+        {snapshot.insights.length > 0 && (
+          <>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={typography.heading}>AI insights</Text>
+              <TouchableOpacity onPress={() => navigation.navigate('Insights')}>
+                <Text style={styles.addLabel}>See all</Text>
+              </TouchableOpacity>
+            </View>
+            {snapshot.insights.slice(0, 3).map((insight) => (
+              <InsightCard
+                key={insight.id}
+                insight={insight}
+                onPress={() => handleOpenInsight(insight)}
+                onDismiss={() => handleDismissInsight(insight.id)}
+              />
+            ))}
+          </>
+        )}
 
         <View style={styles.sectionHeaderRow}>
           <Text style={typography.heading}>My tracked metrics</Text>
