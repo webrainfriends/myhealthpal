@@ -94,30 +94,72 @@ jobs:
             if ! command -v pm2 >/dev/null 2>&1; then
               sudo npm install -g pm2
             fi
+            if ! command -v psql >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y postgresql-client
+            fi
 
             DB_CONTAINER=myhealthpal-postgres
             DB_HOST_PORT=4276
-            if ! sudo docker inspect "$DB_CONTAINER" >/dev/null 2>&1; then
-              DB_PASS_VAL=$(openssl rand -hex 16)
-              sudo docker run -d --name "$DB_CONTAINER" --restart unless-stopped -e POSTGRES_DB=myhealthpal -e POSTGRES_USER=myhealthpal -e POSTGRES_PASSWORD="${DB_PASS_VAL}" -p 127.0.0.1:${DB_HOST_PORT}:5432 -v myhealthpal_pgdata:/var/lib/postgresql/data postgres:16-alpine
 
+            # Trust nothing from a previous attempt - check whether the
+            # *actual* running container (if any) is reachable with
+            # whatever DATABASE_URL is currently in server/.env, not just
+            # whether that file happens to exist. Earlier failed runs
+            # (including from before this workflow used Docker at all)
+            # left a server/.env on the host pointing at credentials that
+            # don't match anything real - a bare "does .env exist" check
+            # treated that as "already configured" and never healed it.
+            cd server
+            [ -f .env ] || cp .env.example .env
+            CURRENT_DB_URL=$(grep '^DATABASE_URL=' .env | cut -d= -f2-)
+            cd ..
+
+            DB_OK=0
+            if sudo docker inspect "$DB_CONTAINER" >/dev/null 2>&1 \
+              && PGCONNECT_TIMEOUT=5 psql "$CURRENT_DB_URL" -c '\q' >/dev/null 2>&1; then
+              DB_OK=1
+            fi
+
+            if [ "$DB_OK" -ne 1 ]; then
+              echo "[deploy] (re)creating $DB_CONTAINER with fresh credentials"
+              sudo docker rm -f "$DB_CONTAINER" >/dev/null 2>&1 || true
+              sudo docker volume rm myhealthpal_pgdata >/dev/null 2>&1 || true
+
+              DB_PASS_VAL=$(openssl rand -hex 16)
+              sudo docker run -d --name "$DB_CONTAINER" --restart unless-stopped \
+                -e POSTGRES_DB=myhealthpal -e POSTGRES_USER=myhealthpal -e POSTGRES_PASSWORD="${DB_PASS_VAL}" \
+                -p 127.0.0.1:${DB_HOST_PORT}:5432 \
+                -v myhealthpal_pgdata:/var/lib/postgresql/data \
+                postgres:16-alpine
+              echo "[deploy] container started, waiting for it to accept connections"
+
+              ready=0
               for i in $(seq 1 30); do
-                sudo docker exec "$DB_CONTAINER" pg_isready -U myhealthpal >/dev/null 2>&1 && break
+                if sudo docker exec "$DB_CONTAINER" pg_isready -U myhealthpal >/dev/null 2>&1; then
+                  ready=1
+                  echo "[deploy] ready after ${i}s"
+                  break
+                fi
                 sleep 1
               done
+              if [ "$ready" -ne 1 ]; then
+                echo "::error::$DB_CONTAINER never reported ready after 30s"
+                sudo docker logs --tail 50 "$DB_CONTAINER"
+                exit 1
+              fi
 
+              echo "[deploy] writing server/.env"
               cd server
               cp .env.example .env.new
               sed -i "s#^PORT=.*#PORT=${APP_PORT}#" .env.new
               sed -i "s#^DATABASE_URL=.*#DATABASE_URL=postgres://myhealthpal:${DB_PASS_VAL}@localhost:${DB_HOST_PORT}/myhealthpal#" .env.new
               mv .env.new .env
-              echo "Created $DB_CONTAINER and generated .env."
+              echo "(Re)created $DB_CONTAINER and regenerated .env."
               cd ..
-            elif [ ! -f server/.env ]; then
-              echo "::error::$DB_CONTAINER already exists but server/.env is missing, so its DB_PASS_VAL is lost. Either restore server/.env by hand, or wipe the container (docker rm -f $DB_CONTAINER && docker volume rm myhealthpal_pgdata) to let this workflow recreate it from scratch."
-              exit 1
             fi
 
+            echo "[deploy] installing app dependencies"
             cd server
             npm ci --omit=dev
             npm run migrate
