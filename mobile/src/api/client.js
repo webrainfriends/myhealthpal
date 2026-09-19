@@ -54,8 +54,8 @@ export async function retryReport(reportId) {
   return handleResponse(response);
 }
 
-export async function updateParameter(reportId, parameterId, changes) {
-  const response = await fetch(`${API_BASE_URL}/api/reports/${reportId}/parameters/${parameterId}`, {
+export async function updateMeasurement(reportId, measurementId, changes) {
+  const response = await fetch(`${API_BASE_URL}/api/reports/${reportId}/measurements/${measurementId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(changes),
@@ -65,6 +65,11 @@ export async function updateParameter(reportId, parameterId, changes) {
 
 export async function confirmReport(reportId) {
   const response = await fetch(`${API_BASE_URL}/api/reports/${reportId}/confirm`, { method: 'POST' });
+  return handleResponse(response);
+}
+
+export async function searchHealthParameters(query) {
+  const response = await fetch(`${API_BASE_URL}/api/health-parameters?search=${encodeURIComponent(query || '')}`);
   return handleResponse(response);
 }
 

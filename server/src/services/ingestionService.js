@@ -1,7 +1,7 @@
 const pool = require('../db/pool');
 const { getAdapter } = require('../adapters');
-const { extractParameters } = require('./parameterExtractor');
 const { generateSummary } = require('./summaryService');
+const { runExtraction } = require('../extraction/extractionService');
 
 // In-process async runner: kicks off processing without blocking the upload
 // response. Swappable for a real queue (BullMQ/SQS/etc.) behind the same
@@ -13,6 +13,20 @@ function enqueueProcessing(reportId) {
       console.error(`Unhandled error processing report ${reportId}:`, err);
     });
   });
+}
+
+// Retrying a report must never touch already-confirmed measurements (so a
+// retry can't duplicate a confirmed result); this clears everything else
+// from a previous attempt, plus its now-orphaned provenance rows.
+async function clearUnconfirmedMeasurements(reportId) {
+  const { rows } = await pool.query(
+    `SELECT source_id FROM health_measurements WHERE report_id = $1 AND is_confirmed = false AND source_id IS NOT NULL`,
+    [reportId]
+  );
+  await pool.query('DELETE FROM health_measurements WHERE report_id = $1 AND is_confirmed = false', [reportId]);
+  if (rows.length > 0) {
+    await pool.query('DELETE FROM measurement_sources WHERE id = ANY($1)', [rows.map((r) => r.source_id)]);
+  }
 }
 
 async function processReport(reportId) {
@@ -46,33 +60,16 @@ async function processReport(reportId) {
     }
 
     const document = await adapter.extract(report.storage_path);
-    const { parameters, warnings } = extractParameters(document);
-    const summary = generateSummary(parameters);
 
-    // Never touch already-confirmed measurements on retry.
-    await pool.query('DELETE FROM extracted_parameters WHERE report_id = $1 AND is_confirmed = false', [reportId]);
-
-    for (const param of parameters) {
-      await pool.query(
-        `INSERT INTO extracted_parameters
-           (report_id, job_id, test_name, value, numeric_value, unit, reference_range, status_flag, param_date, confidence, needs_review, raw_source_text)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-        [
-          reportId,
-          jobId,
-          param.test_name,
-          param.value,
-          param.numeric_value,
-          param.unit,
-          param.reference_range,
-          param.status_flag,
-          param.param_date,
-          param.confidence,
-          param.needs_review,
-          param.raw_source_text,
-        ]
-      );
-    }
+    await clearUnconfirmedMeasurements(reportId);
+    const { measurements, warnings } = await runExtraction({
+      reportId,
+      userId: report.user_id,
+      document,
+      filePath: report.storage_path,
+      mimeType: report.mime_type,
+    });
+    const summary = generateSummary(measurements);
 
     const extractionStatus = document.contentKind === 'image_scanned' ? 'OCR Pending' : 'Text Extracted';
 
@@ -90,7 +87,7 @@ async function processReport(reportId) {
       `UPDATE ingestion_jobs
        SET status = 'Succeeded', content_kind = $2, diagnostics = $3, finished_at = now()
        WHERE id = $1`,
-      [jobId, document.contentKind, JSON.stringify({ warnings, extractedCount: parameters.length })]
+      [jobId, document.contentKind, JSON.stringify({ warnings, extractedCount: measurements.length })]
     );
   } catch (err) {
     await pool.query(

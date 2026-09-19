@@ -2,10 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import StatusBadge from '../components/StatusBadge';
-import ParameterRow from '../components/ParameterRow';
+import MeasurementRow from '../components/MeasurementRow';
 import PrimaryButton from '../components/PrimaryButton';
 import { colors, spacing, typography } from '../theme/theme';
-import { confirmReport, fetchReport, retryReport, updateParameter } from '../api/client';
+import { confirmReport, fetchReport, retryReport, updateMeasurement } from '../api/client';
 
 const POLL_STATUSES = new Set(['Uploaded', 'Processing']);
 const POLL_INTERVAL_MS = 2000;
@@ -14,7 +14,7 @@ const EDIT_DEBOUNCE_MS = 600;
 export default function ReportDetailScreen({ route, navigation }) {
   const { reportId } = route.params;
   const [report, setReport] = useState(null);
-  const [parameters, setParameters] = useState([]);
+  const [measurements, setMeasurements] = useState([]);
   const [busy, setBusy] = useState(false);
   const pendingEdits = useRef({});
   const debounceTimers = useRef({});
@@ -22,7 +22,7 @@ export default function ReportDetailScreen({ route, navigation }) {
   const load = useCallback(async () => {
     const data = await fetchReport(reportId);
     setReport(data.report);
-    setParameters(data.parameters);
+    setMeasurements(data.measurements);
     return data.report.ingestion_status;
   }, [reportId]);
 
@@ -52,20 +52,32 @@ export default function ReportDetailScreen({ route, navigation }) {
     };
   }, [load]);
 
-  function handleParameterChange(parameterId, changes) {
-    setParameters((prev) => prev.map((p) => (p.id === parameterId ? { ...p, ...changes } : p)));
-    pendingEdits.current[parameterId] = { ...pendingEdits.current[parameterId], ...changes };
+  function handleMeasurementChange(measurementId, changes) {
+    setMeasurements((prev) => prev.map((m) => (m.id === measurementId ? { ...m, ...changes } : m)));
+    pendingEdits.current[measurementId] = { ...pendingEdits.current[measurementId], ...changes };
 
-    if (debounceTimers.current[parameterId]) clearTimeout(debounceTimers.current[parameterId]);
-    debounceTimers.current[parameterId] = setTimeout(async () => {
-      const edits = pendingEdits.current[parameterId];
-      delete pendingEdits.current[parameterId];
+    if (debounceTimers.current[measurementId]) clearTimeout(debounceTimers.current[measurementId]);
+    debounceTimers.current[measurementId] = setTimeout(async () => {
+      const edits = pendingEdits.current[measurementId];
+      delete pendingEdits.current[measurementId];
       try {
-        await updateParameter(reportId, parameterId, edits);
+        await updateMeasurement(reportId, measurementId, edits);
       } catch (err) {
         Alert.alert('Could not save edit', err.message);
       }
     }, EDIT_DEBOUNCE_MS);
+  }
+
+  async function handleMappingChange(measurementId, healthParameterId) {
+    try {
+      await updateMeasurement(reportId, measurementId, { health_parameter_id: healthParameterId });
+      // The measurement list join (parameter display name/category) only
+      // comes from the report GET, so refresh from there rather than
+      // patching local state with the bare row the PATCH response returns.
+      await load();
+    } catch (err) {
+      Alert.alert('Could not update mapping', err.message);
+    }
   }
 
   async function handleConfirm() {
@@ -129,17 +141,27 @@ export default function ReportDetailScreen({ route, navigation }) {
           </View>
         )}
 
-        {parameters.length > 0 && (
+        {measurements.some((m) => m.duplicate_status === 'suspected') && (
+          <View style={styles.duplicateBanner}>
+            <Text style={[typography.body, styles.duplicateBannerText]}>
+              Some values look like they may already be recorded from an earlier confirmed report — check the
+              highlighted rows below.
+            </Text>
+          </View>
+        )}
+
+        {measurements.length > 0 && (
           <View style={styles.section}>
             <Text style={[typography.heading, styles.sectionHeading]}>
               Extracted parameters {isEditable ? '(tap a field to correct it)' : ''}
             </Text>
-            {parameters.map((parameter) => (
-              <ParameterRow
-                key={parameter.id}
-                parameter={parameter}
+            {measurements.map((measurement) => (
+              <MeasurementRow
+                key={measurement.id}
+                measurement={measurement}
                 editable={isEditable}
-                onChange={(changes) => handleParameterChange(parameter.id, changes)}
+                onChange={(changes) => handleMeasurementChange(measurement.id, changes)}
+                onChangeMapping={(healthParameterId) => handleMappingChange(measurement.id, healthParameterId)}
               />
             ))}
           </View>
@@ -194,6 +216,14 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   summaryText: {},
+  duplicateBanner: {
+    backgroundColor: colors.warningMuted,
+    borderRadius: 12,
+    padding: spacing.md,
+  },
+  duplicateBannerText: {
+    color: colors.warning,
+  },
   section: {
     gap: spacing.sm,
   },
