@@ -136,7 +136,7 @@ jobs:
             sudo systemctl reload nginx
 
             DB_CONTAINER=myhealthpal-postgres
-            DB_HOST_PORT=4276
+            DB_HOST_PORT=6250
 
             # Trust nothing from a previous attempt - check whether the
             # *actual* running container (if any) is reachable with
@@ -146,6 +146,10 @@ jobs:
             # left a server/.env on the host pointing at credentials that
             # don't match anything real - a bare "does .env exist" check
             # treated that as "already configured" and never healed it.
+            # Also treat a DATABASE_URL pointing at a different port than
+            # DB_HOST_PORT below as stale, so changing that value here (as
+            # opposed to a broken/missing container) also self-heals on the
+            # next deploy instead of silently keeping the old port alive.
             cd server
             [ -f .env ] || cp .env.example .env
             CURRENT_DB_URL=$(grep '^DATABASE_URL=' .env | cut -d= -f2-)
@@ -153,6 +157,7 @@ jobs:
 
             DB_OK=0
             if sudo docker inspect "$DB_CONTAINER" >/dev/null 2>&1 \
+              && [[ "$CURRENT_DB_URL" == *":${DB_HOST_PORT}/"* ]] \
               && PGCONNECT_TIMEOUT=5 psql "$CURRENT_DB_URL" -c '\q' >/dev/null 2>&1; then
               DB_OK=1
             fi
