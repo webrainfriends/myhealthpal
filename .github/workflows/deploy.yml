@@ -37,6 +37,15 @@ env:
 permissions:
   contents: read
 
+# Multiple pushes to main in quick succession (e.g. several merged PRs) can
+# trigger overlapping runs, which would otherwise race on the same EC2
+# host/Postgres role - e.g. two runs each generating and setting a different
+# DB password, leaving the loser's own .env pointing at a password that no
+# longer works. Queue instead of running concurrently.
+concurrency:
+  group: deploy-ec2
+  cancel-in-progress: false
+
 jobs:
   deploy:
     name: Deploy
@@ -66,23 +75,27 @@ jobs:
 
             cd server
 
-            # Re-run (not just first-deploy) whenever .env is missing OR still
-            # has the unmodified example DB password - which is exactly the
-            # state a *partially* failed earlier attempt can leave behind
-            # (.env copied, but an error before the credentials were set).
-            # Written to a temp file and moved into place only once every
-            # step below succeeds, so a failed run never leaves a half
-            # configured .env for the next run to mistake as "already done".
-            if [ ! -f .env ] || grep -q "myhealthpal_dev" .env; then
-              cp .env.example .env.new
+            # (Re)provision whenever the DB credentials currently in .env
+            # don't actually work - not just when .env is missing. Testing
+            # the real connection (rather than pattern-matching for the
+            # unmodified example password) also self-heals a password that
+            # went stale for any other reason, e.g. a concurrent run that
+            # rotated it after this one last generated .env. Written to a
+            # temp file and moved into place only once every step below
+            # succeeds, so a failed attempt never leaves a half configured
+            # .env for the next run to mistake as "already done".
+            [ -f .env ] || cp .env.example .env
+            CURRENT_DB_URL=$(grep '^DATABASE_URL=' .env | cut -d= -f2-)
+            if ! PGCONNECT_TIMEOUT=5 psql "$CURRENT_DB_URL" -c '\q' >/dev/null 2>&1; then
               DB_PASS_VAL=$(openssl rand -hex 16)
               sudo -u postgres psql -v ON_ERROR_STOP=1 -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'myhealthpal') THEN CREATE ROLE myhealthpal WITH LOGIN; END IF; END \$\$;"
               sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='myhealthpal'" | grep -q 1 || sudo -u postgres psql -v ON_ERROR_STOP=1 -c "CREATE DATABASE myhealthpal OWNER myhealthpal;"
               sudo -u postgres psql -v ON_ERROR_STOP=1 -c "ALTER ROLE myhealthpal WITH PASSWORD '${DB_PASS_VAL}';"
+              cp .env.example .env.new
               sed -i "s#^PORT=.*#PORT=${APP_PORT}#" .env.new
               sed -i "s#^DATABASE_URL=.*#DATABASE_URL=postgres://myhealthpal:${DB_PASS_VAL}@localhost:5432/myhealthpal#" .env.new
               mv .env.new .env
-              echo "Generated a fresh .env."
+              echo "(Re)generated .env with working DB credentials."
             fi
 
             if ! command -v node >/dev/null 2>&1; then
