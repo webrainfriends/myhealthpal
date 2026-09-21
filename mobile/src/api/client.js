@@ -37,7 +37,11 @@ async function apiFetch(path, options = {}) {
   const headers = { ...(options.headers || {}) };
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+  // Belt-and-suspenders alongside the server's own Cache-Control: no-store -
+  // every call here is a signed-in user's current data (report processing
+  // status, dashboard scores), never something a browser should serve
+  // stale from its disk/memory cache on a repeat GET.
+  const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers, cache: 'no-store' });
   if (response.status === 401 && onUnauthorized) {
     onUnauthorized();
   }
