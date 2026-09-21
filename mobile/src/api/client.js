@@ -2,6 +2,10 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
 function defaultBaseUrl() {
+  // On web, the app and API are served from the same origin (nginx serves
+  // the static build at "/" and proxies "/api/" to the Node app) — a
+  // relative base URL means the build works unmodified behind any host.
+  if (Platform.OS === 'web') return '';
   // Android emulators can't reach the host machine via localhost.
   if (Platform.OS === 'android') return 'http://10.0.2.2:4000';
   return 'http://localhost:4000';

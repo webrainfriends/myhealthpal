@@ -113,6 +113,20 @@ jobs:
               sudo systemctl enable --now nginx
             fi
 
+            echo "[deploy] building mobile web app"
+            cd mobile
+            npm ci
+            rm -rf dist
+            npx expo export --platform web
+            cd ..
+            MOBILE_DIST="$PWD/mobile/dist"
+
+            # nginx runs as www-data, not ubuntu, and needs traversal/read
+            # access into the home directory tree to serve these files
+            # directly (only reverse-proxying happened here before).
+            chmod o+x "$HOME" "$PWD" "$PWD/mobile"
+            chmod -R o+rX "$MOBILE_DIST"
+
             echo "[deploy] configuring nginx on port ${NGINX_PORT}"
             printf '%s\n' \
               'server {' \
@@ -121,13 +135,20 @@ jobs:
               '' \
               '    client_max_body_size 25m;' \
               '' \
-              '    location / {' \
+              "    root ${MOBILE_DIST};" \
+              '    index index.html;' \
+              '' \
+              '    location /api/ {' \
               "        proxy_pass http://127.0.0.1:${APP_PORT};" \
               '        proxy_http_version 1.1;' \
               '        proxy_set_header Host $host;' \
               '        proxy_set_header X-Real-IP $remote_addr;' \
               '        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' \
               '        proxy_set_header X-Forwarded-Proto $scheme;' \
+              '    }' \
+              '' \
+              '    location / {' \
+              '        try_files $uri $uri/ /index.html;' \
               '    }' \
               '}' \
               | sudo tee /etc/nginx/sites-available/myhealthpal >/dev/null

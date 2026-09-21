@@ -40,10 +40,14 @@ Requires a running PostgreSQL instance matching `DATABASE_URL`.
 ### Deploying to EC2
 
 The repo includes a GitHub Actions workflow, `.github/workflows/deploy.yml`,
-that deploys the server to an EC2 instance over SSH on every push to `main`
-(or on demand via **Actions -> Deploy to EC2 -> Run workflow**). It runs the
-API directly with Node.js + pm2 - no image build needed for the app itself -
-fronted by nginx, which reverse-proxies the public port to the app's own
+that deploys both the API and the mobile app to an EC2 instance over SSH on
+every push to `main` (or on demand via **Actions -> Deploy to EC2 -> Run
+workflow**). It runs the API directly with Node.js + pm2 - no image build
+needed for the app itself - and builds the mobile app as a static website
+(`npx expo export --platform web`, using `react-native-web`) so it's usable
+straight from a browser (e.g. Safari on an iPad or phone) with no Expo Go
+install. A single nginx server on the public port serves the mobile web
+build as static files at `/` and reverse-proxies `/api/` to the API's own
 internal port. Postgres runs in a small dedicated Docker container (the
 same way exambuddy's stack on this host does) rather than the host's native
 PostgreSQL install, since sharing that repeatedly hit unexplained
@@ -54,8 +58,9 @@ authentication failures that a dedicated, isolated container sidesteps.
 | Host | `ec2-13-250-133-109.ap-southeast-1.compute.amazonaws.com` |
 | AWS region | `ap-southeast-1` |
 | SSH user | `ubuntu` |
-| App URL after deploy | `http://ec2-13-250-133-109.ap-southeast-1.compute.amazonaws.com:5250` |
-| Internal app port (nginx -> app) | `4010`, `127.0.0.1` only |
+| App URL after deploy (mobile web app) | `http://ec2-13-250-133-109.ap-southeast-1.compute.amazonaws.com:5250` |
+| API base path (same host/port) | `http://ec2-13-250-133-109.ap-southeast-1.compute.amazonaws.com:5250/api/...` |
+| Internal app port (nginx -> API) | `4010`, `127.0.0.1` only |
 
 This is the same host used by other apps in the org (each on its own port),
 so the bootstrap script below is safe to re-run and won't touch an existing
@@ -80,13 +85,15 @@ One-time setup before the first deploy:
    apps on this host works, if it's the same instance).
 
 That's it — every push to `main` after that pulls the latest code, runs
-`npm ci`, applies migrations, restarts the app under pm2, and rewrites the
-nginx site config (plain, secret-free, so it's simply kept in sync every
-deploy rather than only created once). The `myhealthpal-postgres` container
-and `server/.env` (DB password, `DATABASE_URL`) are created once, directly
-on the host, the first time the workflow runs, and are left untouched on
-every deploy after that - the container's data lives in a named Docker
-volume, so it survives redeploys.
+`npm ci`, applies migrations, restarts the app under pm2, rebuilds the
+mobile app's static web export, and rewrites the nginx site config (plain,
+secret-free, so it's simply kept in sync every deploy rather than only
+created once). Just open the app URL above in any browser - no separate
+Expo Go setup needed. The `myhealthpal-postgres` container and
+`server/.env` (DB password, `DATABASE_URL`) are created once, directly on
+the host, the first time the workflow runs, and are left untouched on every
+deploy after that - the container's data lives in a named Docker volume, so
+it survives redeploys.
 
 ### API
 
