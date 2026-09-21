@@ -83,6 +83,42 @@ test('extracts a "wide" table (one column per metric) from a health-tracker expo
   assert.equal(parameters[1].param_date, '2026-09-19');
 });
 
+test('a parenthesized method line with no "Method:"/"Specimen:" keyword does not eat the real test name', () => {
+  // A second real-world vendor's format: "(Serum,Enzymatic)" instead of
+  // "( Method : ...)" - this previously replaced the preceding real test
+  // name with the method description itself before the value arrived.
+  const text = ['Glucose Fasting', '', '(Plasma-F,Hexokinase)', '', '97 mg/dL Normal: 70-99'].join('\n');
+  const { parameters } = extractParameters({ contentKind: 'text_native', text });
+  assert.equal(parameters.length, 1);
+  assert.equal(parameters[0].test_name, 'Glucose Fasting');
+  assert.equal(parameters[0].value, '97');
+});
+
+test('a name that wraps across lines ending in a dangling hyphen is reassembled, not overwritten', () => {
+  const text = [
+    'TSH (Thyroid Stimulating Hormone) -',
+    'Ultrasensitive, Serum',
+    '',
+    '(Serum,Electrochemiluminescence immunoassay',
+    '(ECLIA))',
+    '',
+    '2.19 μIU/mL 0.54-5.3',
+  ].join('\n');
+  const { parameters } = extractParameters({ contentKind: 'text_native', text });
+  assert.equal(parameters.length, 1);
+  assert.equal(parameters[0].test_name, 'TSH (Thyroid Stimulating Hormone) - Ultrasensitive, Serum');
+  assert.equal(parameters[0].value, '2.19');
+});
+
+test('a bare number embedded in a compound name is not mistaken for the value', () => {
+  // "25" here names the 25-hydroxy metabolite, not a separate result.
+  const text = ['Vitamin D Total - 25 Hydroxy (OH)', '', '(Serum,ECLIA)', '', '20.56 ng/mL Deficiency: < 10'].join('\n');
+  const { parameters } = extractParameters({ contentKind: 'text_native', text });
+  assert.equal(parameters.length, 1);
+  assert.equal(parameters[0].test_name, 'Vitamin D Total - 25 Hydroxy (OH)');
+  assert.equal(parameters[0].value, '20.56');
+});
+
 test('a long-format table (one row per test) still works as before', () => {
   const tables = [
     [
