@@ -12,29 +12,49 @@ function unitKey(unit) {
     .replace(/^gms?\//, 'g/');
 }
 
-// A printed test name very often carries a trailing method/abbreviation
-// decoration the source itself supplies - "Haemoglobin (HB)", "Aspartate
-// aminotransferase(AST/SGOT)", "GLUCOSE FASTING (FBS)" - where either side
-// of the parenthesis, or one "/"-separated abbreviation inside it, names
-// the exact same test as clearly as the full name does. Trying those
-// alongside the untouched raw name is still exact matching against
-// registered aliases, never a guess between different plausible tests -
-// the document itself is stating each of these strings refers to the same
-// result.
+// Specimen types a lab commonly appends after a comma - "Creatinine,
+// Serum", "Albumin, Serum" - decoration, not part of the test's clinical
+// identity (unlike, say, a urine-vs-serum test that's genuinely a
+// different clinical measurement and gets its own registry entry instead).
+const SPECIMEN_SUFFIX = /,\s*(serum|plasma|urine|whole\s+blood|blood)\s*$/i;
+
+// A printed test name very often carries method/abbreviation decoration
+// the source itself supplies - "Haemoglobin (HB)", "Aspartate
+// aminotransferase(AST/SGOT)", "GLUCOSE FASTING (FBS)", "Total Leucocytes
+// (WBC) Count", "Creatinine, Serum" - where a parenthesized abbreviation
+// (wherever it falls in the string, not just at the end), one of its
+// "/"-separated parts, the string with it removed, or a trailing specimen-
+// type suffix removed, names the exact same test as clearly as the full
+// name does. Trying those alongside the untouched raw name is still exact
+// matching against registered aliases, never a guess between different
+// plausible tests - the document itself is stating each of these strings
+// refers to the same result.
 function addParenVariants(str, candidates) {
   candidates.add(str.toLowerCase());
-  const parenMatch = str.match(/^(.*?)\s*\(([^()]*)\)\s*$/);
-  if (!parenMatch) return;
-  const beforeParen = parenMatch[1].trim();
-  const insideParen = parenMatch[2].trim();
-  if (beforeParen) candidates.add(beforeParen.toLowerCase());
-  if (insideParen) {
-    candidates.add(insideParen.toLowerCase());
-    for (const part of insideParen.split('/')) {
+
+  const specimenMatch = str.match(SPECIMEN_SUFFIX);
+  if (specimenMatch) {
+    const withoutSpecimen = str.slice(0, specimenMatch.index).trim();
+    if (withoutSpecimen) candidates.add(withoutSpecimen.toLowerCase());
+  }
+
+  const parenGroups = [...str.matchAll(/\(([^()]*)\)/g)];
+  if (parenGroups.length === 0) return;
+
+  for (const match of parenGroups) {
+    const inside = match[1].trim();
+    if (!inside) continue;
+    candidates.add(inside.toLowerCase());
+    for (const part of inside.split('/')) {
       const trimmedPart = part.trim();
       if (trimmedPart) candidates.add(trimmedPart.toLowerCase());
     }
   }
+  // The name with every parenthesized group stripped out, whitespace
+  // collapsed - e.g. "Total Leucocytes (WBC) Count" -> "Total Leucocytes
+  // Count", "Haemoglobin (HB)" -> "Haemoglobin".
+  const withoutParens = str.replace(/\([^()]*\)/g, ' ').replace(/\s+/g, ' ').trim();
+  if (withoutParens) candidates.add(withoutParens.toLowerCase());
 }
 
 function candidateNamesFor(rawName) {

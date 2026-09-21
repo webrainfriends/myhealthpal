@@ -232,23 +232,44 @@ const NOISE_LINE_PATTERNS = [
   /^name\s*:/i,
   /^age\s*\/\s*sex\s*:/i,
   /^sex\s*\/\s*age\s*:/i,
+  /^age\s*:/i,
   /^referr(ed|er)\b/i,
   /^branch\s*:/i,
   /^bill\s*no\.?\s*:/i,
   /pid\b.*sid\s*no\.?\s*:/i,
   /^sid\s*no\.?\s*:/i,
+  /^pid\s*no\.?\s*:/i,
+  /^vid\s*:/i,
+  /^tel\s*no\.?\s*:/i,
+  /^pin\s*no\.?\s*:/i,
   /^reg\.?\s*(date|no)\b/i,
-  /^(coll(ection)?|report(ed)?)\s*date\s*(&|and)?\s*time\s*:/i,
+  /^(coll(ection)?|registered|report(ed)?)\s*(date)?\s*(&|and)?\s*time\s*:?$/i,
+  /^(collected|registered|reported)\s+on\s*:?$/i,
   /^page\s*:?\s*\d+\s*(of|\/)\s*\d+/i,
-  /^\(\s*method\s*:/i,
-  /^\(\s*specimen\s*:/i,
+  // A line that is (or opens) a parenthesized method/specimen annotation -
+  // e.g. "(Serum,Enzymatic)", "(EDTA Whole Blood,Capillary Photometry)", or
+  // a multi-line one split as "(Serum,Electrochemiluminescence immunoassay"
+  // / "(ECLIA))" - seen across multiple real lab report vendors, not just
+  // the "(Method: ...)"/"(Specimen: ...)" wording some use. A real test
+  // name or value never starts with "(" in any sample seen so far.
+  /^\(/,
   /^final\s+test\s+report$/i,
-  /^investigation\s*\/\s*method/i,
+  /^investigation\b/i,
   /^end\s+of\s+the\s+report$/i,
-  /^dr\.[a-z.]/i,
-  /^(microbiologist|biochemist|pathologist|consultant)$/i,
-  /^\*/,
+  /^dr\.?\s+[a-z]/i,
+  /^(microbiologist|biochemist|pathologist|consultant\s+patholog(y|ist)|sr\s+consultant\s+patholog(y|ist)|regional\s+chief\s+of\s+lab|md[,.]?\s*(patholog|dip)\b)/i,
+  /^[•*]/,
+  // A numbered list item (interpretation note, reference citation) - a
+  // real test name is never itself numbered this way.
+  /^\d+\.\s/,
+  /^note\s*:?$/i,
   /^note\s*:/i,
+  /^interpretation\b/i,
+  /^reference\s*:/i,
+  /^sample\s+collected\s+at\s*:?/i,
+  /^processing\s+location/i,
+  /^associated\s+tests\s*:/i,
+  /^tests\s+marked\s+with/i,
 ];
 
 function isNoiseLine(line) {
@@ -334,6 +355,13 @@ function parseTextLine(line) {
   // number (e.g. "VITAMIN B 12") gets misread as name="VITAMIN B",
   // value="12" whenever nothing else follows on the line.
   if (valueMatch.nextIndex >= tokens.length) return null;
+  // A dangling "-" right before the number means the number is part of a
+  // compound name (e.g. "Vitamin D Total - 25 Hydroxy (OH)", where "25"
+  // names the 25-hydroxy metabolite, not a result), not a separate value -
+  // a real name never trails off with a bare hyphen right before its own
+  // result. Let it fall through to become a pending name instead, so the
+  // *actual* value line found later pairs with the whole name intact.
+  if (tokens[valueStartIndex - 1] === '-') return null;
 
   const testName = tokens.slice(0, valueStartIndex).join(' ');
   let cursor = valueMatch.nextIndex;
@@ -436,7 +464,12 @@ function extractFromText(text) {
     // for whatever value line comes next, unless it reads as prose (or the
     // tail end of some).
     if (!looksLikeSentence(trimmed) && !isWrappedContinuation(trimmed)) {
-      pendingName = trimmed;
+      // A name ending in a dangling "-" (e.g. "TSH (Thyroid Stimulating
+      // Hormone) -") is visibly incomplete - it continues on the next
+      // name-like line ("Ultrasensitive, Serum") rather than being
+      // replaced by it, or the value line that eventually arrives pairs
+      // with only the fragment after the break.
+      pendingName = pendingName && pendingName.endsWith('-') ? `${pendingName} ${trimmed}` : trimmed;
     }
   }
 
