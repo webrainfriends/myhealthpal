@@ -34,9 +34,17 @@ const UNIT_TOKEN = /^(?=.*[A-Za-z%µ^])[A-Za-z%/µ0-9^.]+$/;
 const RANGE_TOKEN = /^\d+(?:\.\d+)?\s*-\s*\d+(?:\.\d+)?$/;
 const FLAG_TOKEN = /^(High|Low|Normal|Abnormal|H|L)$/i;
 
-// Matches a value token (numeric, possibly comparator-prefixed) or a
-// non-numeric clinical result phrase (e.g. "Not Detected") starting at
-// `tokens[startIndex]`. Returns { value, nextIndex } or null.
+// Narrative qualitative results common in microbiology (culture & sensitivity)
+// reports - unlike the short one/two-word qualitative results above, these run
+// to the end of the line as a single clause (e.g. "No Growth after 48 hrs of
+// Incubation"), so they're matched by pattern rather than a fixed word list,
+// and consume every remaining token as part of the value.
+const NARRATIVE_VALUE_PATTERN = /^(no\s+(significant\s+)?(bacterial\s+|fungal\s+)?growth\b|sterile\b)/i;
+
+// Matches a value token (numeric, possibly comparator-prefixed), a
+// non-numeric clinical result phrase (e.g. "Not Detected"), or a narrative
+// qualitative clause (e.g. "No Growth after 48 hrs of Incubation") starting
+// at `tokens[startIndex]`. Returns { value, nextIndex, narrative? } or null.
 function matchValueAt(tokens, startIndex) {
   const single = tokens[startIndex];
   if (single !== undefined && NUMERIC_VALUE_TOKEN.test(single)) {
@@ -47,6 +55,10 @@ function matchValueAt(tokens, startIndex) {
     if (slice.length === phrase.length && slice.join(' ') === phrase.join(' ')) {
       return { value: tokens.slice(startIndex, startIndex + phrase.length).join(' '), nextIndex: startIndex + phrase.length };
     }
+  }
+  const remainder = tokens.slice(startIndex).join(' ');
+  if (NARRATIVE_VALUE_PATTERN.test(remainder)) {
+    return { value: remainder, nextIndex: tokens.length, narrative: true };
   }
   return null;
 }
@@ -332,8 +344,10 @@ function parseTextLine(line) {
   // flag) - a real "Name Value ..." line always has one of these in every
   // report seen so far. Without this, a name that itself ends in a bare
   // number (e.g. "VITAMIN B 12") gets misread as name="VITAMIN B",
-  // value="12" whenever nothing else follows on the line.
-  if (valueMatch.nextIndex >= tokens.length) return null;
+  // value="12" whenever nothing else follows on the line. A narrative
+  // clause (e.g. "No Growth after 48 hrs of Incubation") legitimately runs
+  // to the end of the line with nothing after it, so it's exempt.
+  if (!valueMatch.narrative && valueMatch.nextIndex >= tokens.length) return null;
 
   const testName = tokens.slice(0, valueStartIndex).join(' ');
   let cursor = valueMatch.nextIndex;
