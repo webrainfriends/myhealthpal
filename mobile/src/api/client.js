@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import { loadToken } from '../auth/tokenStorage';
 
 function defaultBaseUrl() {
   // On web, the app and API are served from the same origin (nginx serves
@@ -18,6 +19,31 @@ function defaultBaseUrl() {
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL ?? Constants.expoConfig?.extra?.apiBaseUrl ?? defaultBaseUrl();
 
+// Set by AuthContext once, at app start - lets this module react to a
+// session becoming invalid (expired/revoked token) without importing
+// AuthContext itself (which imports this module), avoiding a cycle.
+let onUnauthorized = null;
+export function setUnauthorizedHandler(handler) {
+  onUnauthorized = handler;
+}
+
+// Every authenticated call funnels through here so the session token is
+// attached exactly once, in one place, rather than at each of the 20+ call
+// sites below - and so a 401 (expired/invalid/revoked session) is handled
+// the same way everywhere: hand the app back to the sign-in screen instead
+// of quietly failing or, worse, falling back to some default identity.
+async function apiFetch(path, options = {}) {
+  const token = loadToken();
+  const headers = { ...(options.headers || {}) };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+  if (response.status === 401 && onUnauthorized) {
+    onUnauthorized();
+  }
+  return response;
+}
+
 async function handleResponse(response) {
   const isJson = response.headers.get('content-type')?.includes('application/json');
   const body = isJson ? await response.json() : null;
@@ -28,17 +54,50 @@ async function handleResponse(response) {
 }
 
 export async function fetchSupportedFormats() {
-  const response = await fetch(`${API_BASE_URL}/api/config/supported-formats`);
+  const response = await apiFetch('/api/config/supported-formats');
+  return handleResponse(response);
+}
+
+export async function fetchAuthConfig() {
+  const response = await apiFetch('/api/auth/config');
+  return handleResponse(response);
+}
+
+export async function signInGuest() {
+  const response = await apiFetch('/api/auth/guest', { method: 'POST' });
+  return handleResponse(response);
+}
+
+export async function signInGoogle(idToken) {
+  const response = await apiFetch('/api/auth/google', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ idToken }),
+  });
+  return handleResponse(response);
+}
+
+export async function signInApple(identityToken, fullName) {
+  const response = await apiFetch('/api/auth/apple', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ identityToken, fullName }),
+  });
+  return handleResponse(response);
+}
+
+export async function fetchMe() {
+  const response = await apiFetch('/api/auth/me');
   return handleResponse(response);
 }
 
 export async function fetchReports() {
-  const response = await fetch(`${API_BASE_URL}/api/reports`);
+  const response = await apiFetch('/api/reports');
   return handleResponse(response);
 }
 
 export async function fetchReport(reportId) {
-  const response = await fetch(`${API_BASE_URL}/api/reports/${reportId}`);
+  const response = await apiFetch(`/api/reports/${reportId}`);
   return handleResponse(response);
 }
 
@@ -58,7 +117,7 @@ export async function uploadReport(file) {
     });
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/reports`, {
+  const response = await apiFetch('/api/reports', {
     method: 'POST',
     body: formData,
     // Do not set Content-Type manually: fetch computes the multipart
@@ -69,12 +128,12 @@ export async function uploadReport(file) {
 }
 
 export async function retryReport(reportId) {
-  const response = await fetch(`${API_BASE_URL}/api/reports/${reportId}/retry`, { method: 'POST' });
+  const response = await apiFetch(`/api/reports/${reportId}/retry`, { method: 'POST' });
   return handleResponse(response);
 }
 
 export async function updateMeasurement(reportId, measurementId, changes) {
-  const response = await fetch(`${API_BASE_URL}/api/reports/${reportId}/measurements/${measurementId}`, {
+  const response = await apiFetch(`/api/reports/${reportId}/measurements/${measurementId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(changes),
@@ -83,17 +142,17 @@ export async function updateMeasurement(reportId, measurementId, changes) {
 }
 
 export async function confirmReport(reportId) {
-  const response = await fetch(`${API_BASE_URL}/api/reports/${reportId}/confirm`, { method: 'POST' });
+  const response = await apiFetch(`/api/reports/${reportId}/confirm`, { method: 'POST' });
   return handleResponse(response);
 }
 
 export async function searchHealthParameters(query) {
-  const response = await fetch(`${API_BASE_URL}/api/health-parameters?search=${encodeURIComponent(query || '')}`);
+  const response = await apiFetch(`/api/health-parameters?search=${encodeURIComponent(query || '')}`);
   return handleResponse(response);
 }
 
 export async function updateReportDate(reportId, effectiveDate) {
-  const response = await fetch(`${API_BASE_URL}/api/reports/${reportId}`, {
+  const response = await apiFetch(`/api/reports/${reportId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ effective_date: effectiveDate }),
@@ -103,27 +162,27 @@ export async function updateReportDate(reportId, effectiveDate) {
 
 export async function fetchTimeline(filters = {}) {
   const params = new URLSearchParams(Object.entries(filters).filter(([, v]) => v));
-  const response = await fetch(`${API_BASE_URL}/api/timeline?${params.toString()}`);
+  const response = await apiFetch(`/api/timeline?${params.toString()}`);
   return handleResponse(response);
 }
 
 export async function fetchDashboardSnapshot() {
-  const response = await fetch(`${API_BASE_URL}/api/dashboard/snapshot`);
+  const response = await apiFetch('/api/dashboard/snapshot');
   return handleResponse(response);
 }
 
 export async function fetchParameterTrend(code, range = '90d') {
-  const response = await fetch(`${API_BASE_URL}/api/dashboard/parameters/${code}/trend?range=${range}`);
+  const response = await apiFetch(`/api/dashboard/parameters/${code}/trend?range=${range}`);
   return handleResponse(response);
 }
 
 export async function fetchPinnedParameters() {
-  const response = await fetch(`${API_BASE_URL}/api/pinned-parameters`);
+  const response = await apiFetch('/api/pinned-parameters');
   return handleResponse(response);
 }
 
 export async function pinParameter(healthParameterId) {
-  const response = await fetch(`${API_BASE_URL}/api/pinned-parameters`, {
+  const response = await apiFetch('/api/pinned-parameters', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ health_parameter_id: healthParameterId }),
@@ -132,22 +191,22 @@ export async function pinParameter(healthParameterId) {
 }
 
 export async function unpinParameter(healthParameterId) {
-  const response = await fetch(`${API_BASE_URL}/api/pinned-parameters/${healthParameterId}`, { method: 'DELETE' });
+  const response = await apiFetch(`/api/pinned-parameters/${healthParameterId}`, { method: 'DELETE' });
   return handleResponse(response);
 }
 
 export async function fetchInsights(state = 'active') {
-  const response = await fetch(`${API_BASE_URL}/api/insights?state=${state}`);
+  const response = await apiFetch(`/api/insights?state=${state}`);
   return handleResponse(response);
 }
 
 export async function dismissInsight(insightId) {
-  const response = await fetch(`${API_BASE_URL}/api/insights/${insightId}/dismiss`, { method: 'POST' });
+  const response = await apiFetch(`/api/insights/${insightId}/dismiss`, { method: 'POST' });
   return handleResponse(response);
 }
 
 export async function sendInsightFeedback(insightId, feedback) {
-  const response = await fetch(`${API_BASE_URL}/api/insights/${insightId}/feedback`, {
+  const response = await apiFetch(`/api/insights/${insightId}/feedback`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ feedback }),
@@ -156,17 +215,17 @@ export async function sendInsightFeedback(insightId, feedback) {
 }
 
 export async function createChatSession() {
-  const response = await fetch(`${API_BASE_URL}/api/chat/sessions`, { method: 'POST' });
+  const response = await apiFetch('/api/chat/sessions', { method: 'POST' });
   return handleResponse(response);
 }
 
 export async function fetchChatMessages(sessionId) {
-  const response = await fetch(`${API_BASE_URL}/api/chat/sessions/${sessionId}/messages`);
+  const response = await apiFetch(`/api/chat/sessions/${sessionId}/messages`);
   return handleResponse(response);
 }
 
 export async function sendChatMessage(sessionId, message) {
-  const response = await fetch(`${API_BASE_URL}/api/chat/sessions/${sessionId}/messages`, {
+  const response = await apiFetch(`/api/chat/sessions/${sessionId}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message }),

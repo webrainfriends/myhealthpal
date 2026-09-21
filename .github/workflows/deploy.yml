@@ -41,6 +41,20 @@
 #    (JPEG/PNG) via the model's vision input; a scanned (non-text) PDF page
 #    still isn't rasterized by this pipeline, so it remains "Needs Review"
 #    either way.
+# 5. Optional: add repository secrets GOOGLE_CLIENT_ID and/or
+#    APPLE_CLIENT_ID to offer "Sign in with Google"/"Sign in with Apple"
+#    (each is independent - set either, both, or neither). Every user
+#    always has the option to continue as a guest regardless; these just
+#    let a guest identity be replaced with one that survives switching
+#    devices or clearing browser storage. Neither is a secret value in the
+#    usual sense (both are sent to Google/Apple from the browser on every
+#    sign-in), but they're still repo secrets so they're not hardcoded and
+#    can be rotated without a code change. See README's "Deploying to EC2"
+#    section for where to obtain each one. "Sign in with Apple" also
+#    requires HTTPS (or localhost) and the exact origin registered with
+#    Apple as a Return URL - it stays hidden client-side until both are true,
+#    which the plain http:// URL this workflow deploys to does not satisfy
+#    on its own.
 #
 # server/.env (DB password, DATABASE_URL) and the myhealthpal-postgres
 # container are created once, directly on the host, the first time this
@@ -91,7 +105,7 @@ jobs:
           username: ${{ env.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: 15m
-          envs: APP_DIR,BRANCH,REPO_URL,APP_PORT,NGINX_PORT,PUBLIC_HOST,ANTHROPIC_API_KEY
+          envs: APP_DIR,BRANCH,REPO_URL,APP_PORT,NGINX_PORT,PUBLIC_HOST,ANTHROPIC_API_KEY,GOOGLE_CLIENT_ID,APPLE_CLIENT_ID
           script_stop: true
           script: |
             set -euo pipefail
@@ -248,19 +262,38 @@ jobs:
             cd server
             sed -i "s#^ANTHROPIC_API_KEY=.*#ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}#" .env
             sed -i "s#^EXTRACTION_PROVIDER=.*#EXTRACTION_PROVIDER=${EXTRACTION_PROVIDER_VAL}#" .env
+
+            # JWT_SECRET signs every session token (guest, Google, and Apple
+            # sign-in all issue one the same way) - generate it once, the
+            # first time this ever runs, and never again: regenerating it on
+            # a later deploy would invalidate every signed-in user's session
+            # for no reason. Appended if .env.example's own placeholder line
+            # isn't there yet (a .env from before this feature existed).
+            grep -q '^JWT_SECRET=' .env || echo 'JWT_SECRET=' >> .env
+            if [ -z "$(grep '^JWT_SECRET=' .env | cut -d= -f2-)" ]; then
+              echo "[deploy] generating JWT_SECRET (first deploy only)"
+              sed -i "s#^JWT_SECRET=.*#JWT_SECRET=$(openssl rand -hex 32)#" .env
+            fi
+
+            # Google/Apple sign-in client IDs are not secrets (they're
+            # embedded in every client-side sign-in request regardless), but
+            # setting them as repo secrets keeps them out of the repo and
+            # lets them be rotated without a code change. Unset -> that
+            # sign-in option is simply hidden client-side (GET /api/auth/config).
+            grep -q '^GOOGLE_CLIENT_ID=' .env || echo 'GOOGLE_CLIENT_ID=' >> .env
+            grep -q '^APPLE_CLIENT_ID=' .env || echo 'APPLE_CLIENT_ID=' >> .env
+            sed -i "s#^GOOGLE_CLIENT_ID=.*#GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}#" .env
+            sed -i "s#^APPLE_CLIENT_ID=.*#APPLE_CLIENT_ID=${APPLE_CLIENT_ID:-}#" .env
             cd ..
 
             echo "[deploy] installing app dependencies"
             cd server
             npm ci --omit=dev
             npm run migrate
-            # Idempotent (ON CONFLICT DO NOTHING/UPDATE): creates the demo
-            # user row every report/measurement is written against - without
-            # it, every upload fails at INSERT with a reports_user_id_fkey
-            # violation - and (re)seeds the Health Parameter Registry
-            # (canonical parameters/aliases/unit conversions) that
-            # normalization, dedup, dashboard pinning, and insights all key
-            # off of. Safe/cheap to run on every deploy.
+            # Idempotent (ON CONFLICT DO UPDATE): (re)seeds the Health
+            # Parameter Registry (canonical parameters/aliases/unit
+            # conversions) that normalization, dedup, dashboard pinning, and
+            # insights all key off of. Safe/cheap to run on every deploy.
             npm run seed
 
             pm2 describe myhealthpal-server > /dev/null 2>&1 && pm2 restart myhealthpal-server --update-env || pm2 start src/index.js --name myhealthpal-server
@@ -272,3 +305,5 @@ jobs:
           REPO_URL: https://github.com/${{ github.repository }}.git
           PUBLIC_HOST: ec2-13-250-133-109.ap-southeast-1.compute.amazonaws.com
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          APPLE_CLIENT_ID: ${{ secrets.APPLE_CLIENT_ID }}

@@ -5,6 +5,7 @@ import ParameterPickerModal from '../components/ParameterPickerModal';
 import InsightCard from '../components/InsightCard';
 import { colors, radii, spacing, typography } from '../theme/theme';
 import { dismissInsight, fetchDashboardSnapshot, pinParameter, unpinParameter } from '../api/client';
+import { useAuth } from '../auth/AuthContext';
 
 function formatDate(value) {
   if (!value) return 'unknown date';
@@ -50,6 +51,7 @@ function TrackedMetricCard({ metric, onPress, onUnpin }) {
 }
 
 export default function DashboardScreen({ navigation }) {
+  const { user, signOut } = useAuth();
   const [snapshot, setSnapshot] = useState(null);
   const [pickerVisible, setPickerVisible] = useState(false);
 
@@ -111,7 +113,14 @@ export default function DashboardScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={typography.title}>Health snapshot</Text>
+        <View style={styles.accountRow}>
+          <Text style={typography.title}>Health snapshot</Text>
+          <TouchableOpacity onPress={signOut} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={styles.accountLabel}>
+              {user?.authProvider === 'guest' ? 'Guest' : user?.email || 'Account'} · Sign out
+            </Text>
+          </TouchableOpacity>
+        </View>
 
         {snapshot.insights.length > 0 && (
           <>
@@ -216,6 +225,15 @@ const styles = StyleSheet.create({
   centeredText: {
     textAlign: 'center',
     marginTop: spacing.xl,
+  },
+  accountRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  accountLabel: {
+    color: colors.textSecondary,
+    fontSize: 13,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
