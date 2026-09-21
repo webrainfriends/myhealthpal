@@ -1,3 +1,4 @@
+import { Pressable } from 'react-native';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -25,6 +26,28 @@ const navigationTheme = {
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
+// Explicit path mapping rather than relying on React Navigation's implicit
+// web linking inference — on web, tab-bar links otherwise render correct
+// hrefs but don't reliably wire up click-to-navigate.
+const linking = {
+  prefixes: [],
+  config: {
+    screens: {
+      Tabs: {
+        screens: {
+          DashboardTab: '',
+          TimelineTab: 'timeline',
+          ChatTab: 'ask',
+          UploadTab: 'upload',
+        },
+      },
+      ReportDetail: 'report/:reportId',
+      ParameterTrend: 'trend/:code',
+      Insights: 'insights',
+    },
+  },
+};
+
 function Tabs() {
   return (
     <Tab.Navigator
@@ -35,6 +58,12 @@ function Tabs() {
         tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border },
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textTertiary,
+        // React Navigation's default web tab button renders an <a href>
+        // that updates the URL but doesn't reliably dispatch the actual
+        // tab-switch on this dependency combination. A plain Pressable
+        // uses the same onPress dispatch every other in-app navigation
+        // call already relies on, which does work correctly on web.
+        tabBarButton: (props) => <Pressable {...props} />,
       }}
     >
       <Tab.Screen name="DashboardTab" component={DashboardScreen} options={{ title: 'Dashboard', headerShown: false }} />
@@ -47,7 +76,7 @@ function Tabs() {
 
 export default function RootNavigator() {
   return (
-    <NavigationContainer theme={navigationTheme}>
+    <NavigationContainer theme={navigationTheme} linking={linking}>
       <Stack.Navigator
         screenOptions={{
           headerStyle: { backgroundColor: colors.surface },
