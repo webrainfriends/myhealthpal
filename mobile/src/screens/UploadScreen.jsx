@@ -53,7 +53,7 @@ export default function UploadScreen({ navigation }) {
     });
     if (result.canceled) return;
     const asset = result.assets[0];
-    handleUpload({ uri: asset.uri, name: asset.name, mimeType: asset.mimeType });
+    handleUpload({ uri: asset.uri, name: asset.name, mimeType: asset.mimeType, file: asset.file });
   }
 
   async function pickFromLibrary() {
@@ -65,7 +65,12 @@ export default function UploadScreen({ navigation }) {
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'] });
     if (result.canceled) return;
     const asset = result.assets[0];
-    handleUpload({ uri: asset.uri, name: asset.fileName || 'report.jpg', mimeType: asset.mimeType || 'image/jpeg' });
+    handleUpload({
+      uri: asset.uri,
+      name: asset.fileName || 'report.jpg',
+      mimeType: asset.mimeType || 'image/jpeg',
+      file: asset.file,
+    });
   }
 
   async function takePhoto() {
@@ -77,7 +82,12 @@ export default function UploadScreen({ navigation }) {
     const result = await ImagePicker.launchCameraAsync();
     if (result.canceled) return;
     const asset = result.assets[0];
-    handleUpload({ uri: asset.uri, name: asset.fileName || 'report.jpg', mimeType: asset.mimeType || 'image/jpeg' });
+    handleUpload({
+      uri: asset.uri,
+      name: asset.fileName || 'report.jpg',
+      mimeType: asset.mimeType || 'image/jpeg',
+      file: asset.file,
+    });
   }
 
   const maxUploadMb = maxUploadBytes ? Math.round(maxUploadBytes / (1024 * 1024)) : null;
