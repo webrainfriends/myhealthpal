@@ -11,7 +11,12 @@ function defaultBaseUrl() {
   return 'http://localhost:4000';
 }
 
-const API_BASE_URL = Constants.expoConfig?.extra?.apiBaseUrl || defaultBaseUrl();
+// EXPO_PUBLIC_* vars are inlined at build time. Used to point the production
+// web build at a same-origin "" (nginx proxies /api on that same host/port),
+// which "||" can't express since "" is falsy - "??" only falls through for
+// null/undefined, leaving an explicitly empty string intact.
+const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_BASE_URL ?? Constants.expoConfig?.extra?.apiBaseUrl ?? defaultBaseUrl();
 
 async function handleResponse(response) {
   const isJson = response.headers.get('content-type')?.includes('application/json');
