@@ -10,6 +10,10 @@ import ParameterTrendScreen from '../screens/ParameterTrendScreen';
 import OrganDetailScreen from '../screens/OrganDetailScreen';
 import InsightsScreen from '../screens/InsightsScreen';
 import ChatScreen from '../screens/ChatScreen';
+import MedicationsScreen from '../screens/MedicationsScreen';
+import MedicationDetailScreen from '../screens/MedicationDetailScreen';
+import MedicationScanReviewScreen from '../screens/MedicationScanReviewScreen';
+import MedicationCreateScreen from '../screens/MedicationCreateScreen';
 import LoginScreen from '../screens/LoginScreen';
 import { useAuth } from '../auth/AuthContext';
 import { colors } from '../theme/theme';
@@ -42,12 +46,15 @@ const linking = {
           TimelineTab: 'timeline',
           ChatTab: 'ask',
           UploadTab: 'upload',
+          MedicationsTab: 'medications',
         },
       },
       ReportDetail: 'report/:reportId',
       ParameterTrend: 'trend/:code',
       OrganDetail: 'organ/:organKey',
       Insights: 'insights',
+      MedicationDetail: 'medications/:medicationId',
+      MedicationScanReview: 'medications/scans/:scanId',
     },
   },
 };
@@ -88,6 +95,7 @@ function Tabs() {
     >
       <Tab.Screen name="DashboardTab" component={DashboardScreen} options={{ title: 'Dashboard', headerShown: false }} />
       <Tab.Screen name="TimelineTab" component={TimelineScreen} options={{ title: 'Timeline', headerShown: false }} />
+      <Tab.Screen name="MedicationsTab" component={MedicationsScreen} options={{ title: 'Medications', headerShown: false }} />
       <Tab.Screen name="ChatTab" component={ChatScreen} options={{ title: 'Ask', headerShown: false }} />
       <Tab.Screen name="UploadTab" component={UploadScreen} options={{ title: 'Upload', headerShown: false }} />
     </Tab.Navigator>
@@ -123,6 +131,13 @@ export default function RootNavigator() {
         <Stack.Screen name="ParameterTrend" component={ParameterTrendScreen} options={{ title: 'Trend' }} />
         <Stack.Screen name="OrganDetail" component={OrganDetailScreen} options={{ title: 'Organ health' }} />
         <Stack.Screen name="Insights" component={InsightsScreen} options={{ title: 'AI insights' }} />
+        <Stack.Screen name="MedicationDetail" component={MedicationDetailScreen} options={{ title: 'Medication' }} />
+        <Stack.Screen
+          name="MedicationScanReview"
+          component={MedicationScanReviewScreen}
+          options={{ title: 'Review scan' }}
+        />
+        <Stack.Screen name="MedicationCreate" component={MedicationCreateScreen} options={{ title: 'Add medication' }} />
       </Stack.Navigator>
     </NavigationContainer>
   );

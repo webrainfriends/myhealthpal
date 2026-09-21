@@ -29,6 +29,22 @@ export const statusColors = {
   Failed: { fg: colors.danger, bg: colors.dangerMuted },
 };
 
+// A medication's own lifecycle status (distinct from a scan's
+// ingestion_status above, which reuses statusColors as-is).
+export const medicationStatusColors = {
+  active: { fg: colors.success, bg: colors.successMuted },
+  completed: { fg: colors.textSecondary, bg: colors.surfaceMuted },
+  discontinued: { fg: colors.textTertiary, bg: colors.surfaceMuted },
+};
+
+// Medication alert severity -> color, shared by the alert banner and
+// medication detail screen.
+export const alertSeverityColors = {
+  info: { fg: colors.primary, bg: colors.primaryMuted },
+  attention: { fg: colors.warning, bg: colors.warningMuted },
+  important: { fg: colors.danger, bg: colors.dangerMuted },
+};
+
 // Organ Health Score status -> color, shared by the dashboard's organ cards
 // and the organ detail screen so the same percentage always reads the same
 // color everywhere.
@@ -72,6 +88,16 @@ export const typography = {
   caption: { fontSize: 12, fontWeight: '500', color: colors.textTertiary },
 };
 
-const theme = { colors, statusColors, healthStatusColors, cardShadow, spacing, radii, typography };
+const theme = {
+  colors,
+  statusColors,
+  healthStatusColors,
+  medicationStatusColors,
+  alertSeverityColors,
+  cardShadow,
+  spacing,
+  radii,
+  typography,
+};
 
 export default theme;
