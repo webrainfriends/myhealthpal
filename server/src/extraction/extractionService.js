@@ -51,7 +51,13 @@ async function runExtraction({ reportId, userId, document, filePath, mimeType })
       userId,
       reportId,
       parameterId: measurement.health_parameter_id,
-      sampleDatetime: measurement.sample_datetime,
+      // Only set here when the extractor found a date on the measurement's
+      // own line/row (rare for a plain "Name Value Unit Range" line) - the
+      // common case, where the report's own effective_date is the only
+      // signal available, is caught later by
+      // dedupService.reconcileMeasurementDuplicatesForReport once that
+      // date has been detected (extraction runs before date detection).
+      day: measurement.sample_datetime ? new Date(measurement.sample_datetime).toISOString().slice(0, 10) : null,
       numericValue: measurement.numeric_value,
       normalizedValue: measurement.normalized_value,
       qualitativeValue: measurement.qualitative_value,
