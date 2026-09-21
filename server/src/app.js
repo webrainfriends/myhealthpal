@@ -15,6 +15,14 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+// Every response here reflects a user's current data (reports still
+// processing, freshly confirmed measurements, dashboard scores) - a cached
+// copy served by a browser or intermediary would look like "my new report
+// isn't showing up" even though the server has already moved on.
+app.use('/api', (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 app.use('/api/auth', authRouter);

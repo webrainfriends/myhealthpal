@@ -29,6 +29,15 @@ export default function TimelineScreen({ navigation }) {
     return () => clearTimeout(timer);
   }, [load]);
 
+  // Search/category changes already reload via the debounce above; this
+  // covers the far more common case - a report finished processing (or a
+  // new one was uploaded) while the user was on a different tab, and they
+  // switch back here expecting to see it without changing any filter.
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', load);
+    return unsubscribe;
+  }, [navigation, load]);
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
