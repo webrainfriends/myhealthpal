@@ -17,6 +17,9 @@ covering:
   ([issue #11](https://github.com/webrainfriends/myhealthpal/issues/11)).
 - A retrieval-grounded conversational assistant over the user's own data
   ([issue #10](https://github.com/webrainfriends/myhealthpal/issues/10)).
+- Guest, Google, and Apple sign-in, with every user's reports, timeline,
+  dashboard, insights, and chat history strictly scoped to their own signed-in
+  session and never visible to anyone else.
 
 ## Structure
 
@@ -31,11 +34,14 @@ cd server
 cp .env.example .env   # adjust DATABASE_URL if needed
 npm install
 npm run migrate        # creates schema
-npm run seed           # creates the demo user
+npm run seed           # (re)seeds the Health Parameter Registry
 npm start               # listens on PORT (default 4000)
 ```
 
-Requires a running PostgreSQL instance matching `DATABASE_URL`.
+Requires a running PostgreSQL instance matching `DATABASE_URL`. There is no
+seeded demo user anymore — every account (guest, Google, or Apple) is
+created the same way real users get one, via `POST /api/auth/guest` (or the
+app's "Continue as Guest" button). See "Authentication" below.
 
 ### Deploying to EC2
 
@@ -94,6 +100,27 @@ One-time setup before the first deploy:
    still work, just with the more limited local parser (tabular "name:
    value" lines only, no lab name/notes/alerts). Setting or rotating it
    takes effect on the next push - no other step needed.
+5. **Optional: offer "Sign in with Google."** Create an OAuth 2.0 **Web
+   application** Client ID at [Google Cloud Console -> APIs & Services ->
+   Credentials](https://console.cloud.google.com/apis/credentials), with
+   this deploy's URL (`http://ec2-13-250-133-109.ap-southeast-1.compute.amazonaws.com:5250`)
+   added under **Authorized JavaScript origins**. Add it as a repo secret
+   named `GOOGLE_CLIENT_ID`. It's not a secret value in the usual sense
+   (every sign-in request sends it from the browser), but keeping it as a
+   repo secret avoids hardcoding it and lets it be rotated freely. Leave
+   unset to simply not offer this option - guest sign-in always still works.
+6. **Optional: offer "Sign in with Apple."** Create a Services ID under
+   [Apple Developer -> Certificates, Identifiers & Profiles ->
+   Identifiers](https://developer.apple.com/account/resources/identifiers/list/serviceId),
+   enable "Sign in with Apple" for it, and register this deploy's exact
+   origin as a **Return URL**. Add the Services ID as a repo secret named
+   `APPLE_CLIENT_ID`. Apple additionally requires the page to be served over
+   **HTTPS** (or `localhost`) and that same origin to be domain-verified -
+   the plain `http://` URL this workflow deploys to does not satisfy that,
+   so the button stays hidden until the site is put behind TLS (a reverse
+   proxy/cert setup, e.g. Let's Encrypt via certbot, is not something this
+   workflow sets up). Leave unset (or unmet) to simply not offer this
+   option - guest sign-in always still works.
 
 That's it — every push to `main` after that pulls the latest code, rebuilds
 the web app, runs `npm ci` for the API, applies migrations, restarts the
@@ -106,12 +133,66 @@ on the host, the first time the workflow runs, and are left untouched on
 every deploy after that - the container's data lives in a named Docker
 volume, so it survives redeploys.
 
+### Authentication
+
+Every request that touches a user's own data (reports, timeline, dashboard,
+pinned parameters, insights, chat) requires a signed-in session - there is
+no client-supplied user id anywhere anymore (an earlier version trusted an
+`x-user-id` header outright, which let any caller read/write any other
+user's data just by setting it; that no longer exists in any form).
+
+- **Sign-in options**, all in `src/routes/auth.js`:
+  - `POST /api/auth/guest` — always available, no credentials. Creates a
+    brand-new anonymous account tied to this device/browser only (its token
+    lives in `localStorage` on web - see `mobile/src/auth/tokenStorage.js`).
+    Clearing browser storage or switching devices loses access to it; there
+    is no account-recovery path for a guest, by design.
+  - `POST /api/auth/google` — verifies a Google Identity Services ID token
+    (`{idToken}`) against Google's own public keys via `google-auth-library`,
+    server-side, and upserts a user keyed on Google's `sub` claim. Only
+    active when `GOOGLE_CLIENT_ID` is configured; hidden client-side
+    otherwise (`GET /api/auth/config`).
+  - `POST /api/auth/apple` — verifies an Apple identity token
+    (`{identityToken, fullName}`) against Apple's public JWKS via
+    `jsonwebtoken`/`jwks-rsa`, and upserts a user keyed on Apple's `sub`
+    claim. `fullName` is only ever sent by Apple once, client-side, on a
+    person's very first authorization (never inside the token itself), so
+    the client captures and forwards it that one time or it's gone for
+    good. Only active when `APPLE_CLIENT_ID` is configured.
+  - Every option issues the same kind of session token (a JWT signed with
+    `JWT_SECRET`, `src/services/authService.js`) - there's no different
+    trust level between a guest and a Google/Apple account other than what
+    identity backs it.
+- **Every subsequent request** sends that token as `Authorization: Bearer
+  <token>`. `src/middleware/auth.js` verifies it, loads the user it belongs
+  to, and attaches it as `req.user` - routes read `req.user.id`, never
+  anything from the request itself, to decide whose data they're
+  reading/writing. `app.js` applies this middleware to every user-data
+  router; `/api/auth/*`, `/api/health-parameters` (global reference data,
+  not user-specific), and `/api/config/supported-formats` are the only
+  routes that don't require it.
+- **No refresh-token flow or per-session revocation yet** - sessions are
+  long-lived (180 days) since there's no way back in otherwise. Rotating
+  `JWT_SECRET` invalidates every session at once (the only revocation
+  mechanism that exists today), which the deploy workflow deliberately
+  never does automatically (see "Deploying to EC2" above) since that would
+  sign every user out on every deploy.
+- Two providers (Google/Apple) can plausibly report the same email address
+  for the same person, so accounts are never matched by email - only by
+  `(auth_provider, provider_user_id)` (migration `007_auth.sql`). Email is
+  informational/display data, not an identity key.
+
 ### API
 
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/config/supported-formats` | Supported extensions + max upload size |
-| `GET` | `/api/reports` | List the current user's reports |
+| `GET` | `/api/auth/config` | Which sign-in options are enabled (`googleClientId`/`appleClientId`, or `null`) |
+| `POST` | `/api/auth/guest` | Create a new anonymous account, get back `{token, user}` |
+| `POST` | `/api/auth/google` | Sign in with a Google ID token, `{idToken}` -> `{token, user}` |
+| `POST` | `/api/auth/apple` | Sign in with an Apple identity token, `{identityToken, fullName?}` -> `{token, user}` |
+| `GET` | `/api/auth/me` | The signed-in user (requires `Authorization: Bearer <token>`) |
+| `GET` | `/api/reports` | List the current user's reports (requires `Authorization: Bearer <token>`, as does every route below) |
 | `POST` | `/api/reports` | Upload a report (`multipart/form-data`, field `file`) |
 | `GET` | `/api/reports/:id` | Report detail + extracted, normalized measurements |
 | `POST` | `/api/reports/:id/retry` | Re-run ingestion + extraction after a failure |
@@ -130,8 +211,7 @@ volume, so it survives redeploys.
 | `GET` | `/api/chat/sessions/:id/messages` | Session message history |
 | `POST` | `/api/chat/sessions/:id/messages` | Send a message, get back `{answer, evidence}` |
 
-There is no authentication system yet; every request acts as a single seeded
-demo user (`DEMO_USER_ID`), overridable with an `x-user-id` header.
+See "Authentication" above for how sign-in and session verification work.
 
 ### Ingestion pipeline
 

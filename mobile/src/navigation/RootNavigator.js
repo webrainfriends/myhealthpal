@@ -1,4 +1,4 @@
-import { Pressable } from 'react-native';
+import { ActivityIndicator, Pressable, View } from 'react-native';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -9,6 +9,8 @@ import ReportDetailScreen from '../screens/ReportDetailScreen';
 import ParameterTrendScreen from '../screens/ParameterTrendScreen';
 import InsightsScreen from '../screens/InsightsScreen';
 import ChatScreen from '../screens/ChatScreen';
+import LoginScreen from '../screens/LoginScreen';
+import { useAuth } from '../auth/AuthContext';
 import { colors } from '../theme/theme';
 
 const navigationTheme = {
@@ -75,6 +77,20 @@ function Tabs() {
 }
 
 export default function RootNavigator() {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}>
+        <ActivityIndicator color={colors.primary} />
+      </View>
+    );
+  }
+
+  if (!user) {
+    return <LoginScreen />;
+  }
+
   return (
     <NavigationContainer theme={navigationTheme} linking={linking}>
       <Stack.Navigator

@@ -11,9 +11,10 @@ const { runForMeasurement, supersedeInsightsForMeasurement } = require('../insig
 
 const router = express.Router();
 
-// No real auth system yet; every request acts as the seeded demo user.
+// req.user is set by the requireAuth middleware (app.js) from a verified
+// session token - never trust a client-supplied id for this.
 function currentUserId(req) {
-  return req.header('x-user-id') || config.demoUserId;
+  return req.user.id;
 }
 
 const MEASUREMENT_LIST_QUERY = `

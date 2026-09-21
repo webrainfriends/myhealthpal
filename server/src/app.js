@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const config = require('./config');
+const { requireAuth } = require('./middleware/auth');
+const authRouter = require('./routes/auth');
 const reportsRouter = require('./routes/reports');
 const healthParametersRouter = require('./routes/healthParameters');
 const timelineRouter = require('./routes/timeline');
@@ -15,13 +17,18 @@ app.use(cors());
 app.use(express.json());
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
-app.use('/api/reports', reportsRouter);
+app.use('/api/auth', authRouter);
+// Everything below is a signed-in user's own data - requireAuth resolves
+// req.user from a verified session token before any of these routes run,
+// which is what actually keeps one user's data from ever being visible to
+// another (a route trusting a client-supplied user id could not).
+app.use('/api/reports', requireAuth, reportsRouter);
 app.use('/api/health-parameters', healthParametersRouter);
-app.use('/api/timeline', timelineRouter);
-app.use('/api/dashboard', dashboardRouter);
-app.use('/api/pinned-parameters', pinnedParametersRouter);
-app.use('/api/insights', insightsRouter);
-app.use('/api/chat', chatRouter);
+app.use('/api/timeline', requireAuth, timelineRouter);
+app.use('/api/dashboard', requireAuth, dashboardRouter);
+app.use('/api/pinned-parameters', requireAuth, pinnedParametersRouter);
+app.use('/api/insights', requireAuth, insightsRouter);
+app.use('/api/chat', requireAuth, chatRouter);
 app.get('/api/config/supported-formats', (req, res) => {
   res.json({
     extensions: Object.keys(config.supportedExtensions),

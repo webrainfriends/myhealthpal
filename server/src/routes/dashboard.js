@@ -1,11 +1,12 @@
 const express = require('express');
 const pool = require('../db/pool');
-const config = require('../config');
 
 const router = express.Router();
 
+// req.user is set by the requireAuth middleware (app.js) from a verified
+// session token - never trust a client-supplied id for this.
 function currentUserId(req) {
-  return req.header('x-user-id') || config.demoUserId;
+  return req.user.id;
 }
 
 const RANGE_TO_DAYS = { '7d': 7, '30d': 30, '90d': 90, '6m': 182, '1y': 365, all: null };

@@ -2,17 +2,6 @@ require('dotenv').config();
 const { Pool } = require('pg');
 const registryData = require('./registry-seed-data');
 
-const DEMO_USER_ID = '00000000-0000-0000-0000-000000000001';
-
-async function seedDemoUser(pool) {
-  await pool.query(
-    `INSERT INTO users (id, email, display_name)
-     VALUES ($1, $2, $3)
-     ON CONFLICT (id) DO NOTHING`,
-    [DEMO_USER_ID, 'demo@myhealthpal.app', 'Demo User']
-  );
-}
-
 async function seedRegistry(pool) {
   for (const entry of registryData) {
     const { rows } = await pool.query(
@@ -50,7 +39,6 @@ async function seedRegistry(pool) {
 
 async function main() {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-  await seedDemoUser(pool);
   await seedRegistry(pool);
   await pool.end();
   console.log('seed complete');
