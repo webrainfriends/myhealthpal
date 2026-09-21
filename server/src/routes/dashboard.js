@@ -1,5 +1,6 @@
 const express = require('express');
 const pool = require('../db/pool');
+const { buildOrganSummaries } = require('../services/organHealthService');
 
 const router = express.Router();
 
@@ -87,6 +88,56 @@ router.get('/snapshot', async (req, res, next) => {
       recentReports: recentReports.rows,
       insights: insights.rows,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// One card per body-organ group, each with a Health Score: the % of that
+// organ's tracked parameters whose latest result falls in its printed
+// reference range. Every group is always returned (even with no data yet)
+// so a user can see the full picture of what is and isn't being tracked.
+router.get('/organs', async (req, res, next) => {
+  try {
+    const userId = currentUserId(req);
+
+    const { rows } = await pool.query(
+      `WITH ranked AS (
+         SELECT hm.report_id, hm.raw_value, hm.raw_unit, hm.qualitative_value, hm.status_flag,
+                hm.reference_range_raw, hm.numeric_value, hm.normalized_value,
+                hp.code, hp.display_name, hp.category, r.effective_date,
+                row_number() OVER (
+                  PARTITION BY hm.health_parameter_id
+                  ORDER BY COALESCE(r.effective_date, r.created_at::date) DESC, hm.created_at DESC
+                ) AS rank
+         FROM health_measurements hm
+         JOIN reports r ON r.id = hm.report_id
+         JOIN health_parameters hp ON hp.id = hm.health_parameter_id
+         WHERE r.user_id = $1 AND r.ingestion_status IN ('Needs Review', 'Completed')
+       )
+       SELECT report_id, raw_value, raw_unit, qualitative_value, status_flag,
+              reference_range_raw, numeric_value, normalized_value, code, display_name, category, effective_date
+       FROM ranked
+       WHERE rank = 1`,
+      [userId]
+    );
+
+    const measurements = rows.map((row) => ({
+      code: row.code,
+      displayName: row.display_name,
+      category: row.category,
+      rawValue: row.raw_value,
+      rawUnit: row.raw_unit,
+      qualitativeValue: row.qualitative_value,
+      statusFlag: row.status_flag,
+      referenceRangeRaw: row.reference_range_raw,
+      numericValue: row.numeric_value,
+      normalizedValue: row.normalized_value,
+      effectiveDate: row.effective_date,
+      reportId: row.report_id,
+    }));
+
+    res.json({ organs: buildOrganSummaries(measurements) });
   } catch (err) {
     next(err);
   }
