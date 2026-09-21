@@ -32,14 +32,23 @@
 #    a repository secret named EC2_SSH_KEY containing the private key
 #    (PEM) that matches the EC2 instance's key pair (the same key used by
 #    other apps on this host works if it's the same instance).
+# 4. Optional but recommended: add a repository secret named
+#    ANTHROPIC_API_KEY to turn on real AI-based extraction (parameters,
+#    reference ranges, status flags, lab/facility name, report type/date,
+#    free-text notes, and any alert text - not just a bare table parser).
+#    Without it, extraction falls back to a local heuristic parser that
+#    only recognizes tabular "name: value" lines. Both cases handle images
+#    (JPEG/PNG) via the model's vision input; a scanned (non-text) PDF page
+#    still isn't rasterized by this pipeline, so it remains "Needs Review"
+#    either way.
 #
-# Nothing else needs configuring - server/.env (DB password, DATABASE_URL)
-# and the myhealthpal-postgres container are created once, directly on the
-# host, the first time this workflow runs, and are left untouched on every
-# deploy after that (the container's data lives in a named Docker volume,
-# so it survives redeploys and even container recreation). The nginx site
-# config is plain, secret-free config, so it's simply rewritten every
-# deploy to match NGINX_PORT/APP_PORT below.
+# server/.env (DB password, DATABASE_URL) and the myhealthpal-postgres
+# container are created once, directly on the host, the first time this
+# workflow runs, and are left untouched on every deploy after that (the
+# container's data lives in a named Docker volume, so it survives redeploys
+# and even container recreation). The nginx site config and the extraction
+# provider/API key are plain config, so they're simply rewritten every
+# deploy to match NGINX_PORT/APP_PORT/ANTHROPIC_API_KEY below.
 
 name: Deploy to EC2
 
@@ -82,7 +91,7 @@ jobs:
           username: ${{ env.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: 15m
-          envs: APP_DIR,BRANCH,REPO_URL,APP_PORT,NGINX_PORT,PUBLIC_HOST
+          envs: APP_DIR,BRANCH,REPO_URL,APP_PORT,NGINX_PORT,PUBLIC_HOST,ANTHROPIC_API_KEY
           script_stop: true
           script: |
             set -euo pipefail
@@ -223,6 +232,24 @@ jobs:
               cd ..
             fi
 
+            # Use real AI extraction (OCR/vision for scanned images, full
+            # text-understanding for everything else - parameters, ranges,
+            # lab name, report type, notes, and alerts, not just tabular
+            # values) whenever an API key is configured; otherwise fall back
+            # to the local heuristic parser so a deploy without the secret
+            # still works. Rewritten every deploy (after the block above,
+            # so it applies whether or not .env was just regenerated) so
+            # setting/rotating the secret takes effect on the next push.
+            echo "[deploy] configuring extraction provider"
+            EXTRACTION_PROVIDER_VAL=heuristic
+            if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+              EXTRACTION_PROVIDER_VAL=claude
+            fi
+            cd server
+            sed -i "s#^ANTHROPIC_API_KEY=.*#ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}#" .env
+            sed -i "s#^EXTRACTION_PROVIDER=.*#EXTRACTION_PROVIDER=${EXTRACTION_PROVIDER_VAL}#" .env
+            cd ..
+
             echo "[deploy] installing app dependencies"
             cd server
             npm ci --omit=dev
@@ -236,3 +263,4 @@ jobs:
           BRANCH: ${{ github.ref_name }}
           REPO_URL: https://github.com/${{ github.repository }}.git
           PUBLIC_HOST: ec2-13-250-133-109.ap-southeast-1.compute.amazonaws.com
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

@@ -12,16 +12,56 @@ const SYSTEM_PROMPT = [
 ].join(' ');
 
 const DOCUMENT_INSTRUCTION =
-  'Extract every lab/health test result from this health report by calling record_health_parameters with one entry per result. ' +
-  'If the document is unreadable or contains no test results, call it with an empty parameters array.';
+  'Extract every lab/health test result from this health report, plus the report-level details below, by calling ' +
+  'record_health_parameters once. Put every result in "parameters" (one entry per result) and everything about the ' +
+  'report as a whole - the issuing lab/facility name, the overall panel/report type, its date, any free-text notes ' +
+  '(e.g. fasting status, specimen condition, physician remarks), and any critical/panic-value or other alert text - in ' +
+  '"document". If the document is unreadable or contains no test results, still call it, with an empty parameters array.';
 
 const EXTRACTION_TOOL = {
   name: 'record_health_parameters',
   description:
-    'Record every clinically relevant test/result found in the document. Never invent values, units, or dates that are not present in the source.',
+    'Record every clinically relevant test/result found in the document, plus report-level details (lab name, report ' +
+    'type, date, notes, alerts). Never invent values, units, dates, or text that are not present in the source.',
   input_schema: {
     type: 'object',
     properties: {
+      document: {
+        type: 'object',
+        description: 'Details about the report as a whole, as opposed to any single test result.',
+        properties: {
+          lab_name: {
+            type: ['string', 'null'],
+            description: 'The issuing lab, hospital, or clinic name exactly as printed, or null if not present.',
+          },
+          report_type: {
+            type: ['string', 'null'],
+            description:
+              'The overall panel/report name as printed (e.g. "Complete Blood Count", "Comprehensive Metabolic Panel", ' +
+              '"Lipid Profile"), or null if not present.',
+          },
+          report_date: {
+            type: ['string', 'null'],
+            description:
+              'The single most prominent date printed on the report (collection, test, or result date) in YYYY-MM-DD ' +
+              'form, or null if none is legible.',
+          },
+          notes: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'Free-text remarks printed on the report that are not a specific test result (e.g. fasting status, ' +
+              'specimen condition, physician comments, methodology notes). Omit if none.',
+          },
+          alerts: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'Any critical/panic-value flags or other explicit alert/warning text printed on the report, exactly as ' +
+              'stated. Omit if none - do not infer an alert merely from an out-of-range value.',
+          },
+        },
+      },
       parameters: {
         type: 'array',
         items: {
@@ -122,7 +162,16 @@ async function extract(document, context = {}) {
       raw_source_text: null,
     }));
 
-  return { candidates, warnings: [], rawModelOutput: toolUse.input };
+  const doc = toolUse.input?.document || {};
+  const documentInfo = {
+    labName: doc.lab_name || null,
+    reportType: doc.report_type || null,
+    reportDate: doc.report_date || null,
+    notes: Array.isArray(doc.notes) ? doc.notes.filter((n) => typeof n === 'string' && n.trim()) : [],
+    alerts: Array.isArray(doc.alerts) ? doc.alerts.filter((a) => typeof a === 'string' && a.trim()) : [],
+  };
+
+  return { candidates, warnings: [], rawModelOutput: toolUse.input, document: documentInfo };
 }
 
 module.exports = { name: 'claude', extract };

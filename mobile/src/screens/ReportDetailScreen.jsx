@@ -175,6 +175,23 @@ export default function ReportDetailScreen({ route, navigation }) {
           <StatusBadge status={report.ingestion_status} />
         </View>
 
+        {(report.source_provider || report.report_type) && (
+          <Text style={[typography.bodySecondary, styles.labLine]}>
+            {[report.source_provider, report.report_type].filter(Boolean).join(' — ')}
+          </Text>
+        )}
+
+        {report.alerts && (
+          <View style={styles.alertBox}>
+            <Text style={[typography.heading, styles.alertHeading]}>Alerts</Text>
+            {report.alerts.split('\n').map((alert, i) => (
+              <Text key={i} style={[typography.body, styles.alertText]}>
+                {alert}
+              </Text>
+            ))}
+          </View>
+        )}
+
         {isProcessing && (
           <Text style={[typography.bodySecondary, styles.processingNote]}>
             We're processing this report. This screen updates automatically.
@@ -193,6 +210,17 @@ export default function ReportDetailScreen({ route, navigation }) {
             <Text style={[typography.bodySecondary, styles.summaryText]}>
               {narrativeSummary?.summary_text || report.generated_summary}
             </Text>
+          </View>
+        )}
+
+        {report.notes && (
+          <View style={styles.notesBox}>
+            <Text style={typography.heading}>Notes</Text>
+            {report.notes.split('\n').map((note, i) => (
+              <Text key={i} style={[typography.bodySecondary, styles.notesText]}>
+                {note}
+              </Text>
+            ))}
           </View>
         )}
 
@@ -294,6 +322,28 @@ const styles = StyleSheet.create({
   errorText: {
     color: colors.danger,
   },
+  labLine: {
+    marginTop: -spacing.xs,
+  },
+  alertBox: {
+    backgroundColor: colors.dangerMuted,
+    borderRadius: 12,
+    padding: spacing.md,
+    gap: spacing.xs,
+  },
+  alertHeading: {
+    color: colors.danger,
+  },
+  alertText: {
+    color: colors.danger,
+  },
+  notesBox: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 12,
+    padding: spacing.md,
+    gap: spacing.xs,
+  },
+  notesText: {},
   summaryBox: {
     backgroundColor: colors.surface,
     borderWidth: 1,

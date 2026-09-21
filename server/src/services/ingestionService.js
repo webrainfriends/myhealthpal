@@ -65,7 +65,7 @@ async function processReport(reportId) {
     const document = await adapter.extract(report.storage_path);
 
     await clearUnconfirmedMeasurements(reportId);
-    const { measurements, warnings } = await runExtraction({
+    const { measurements, warnings, document: docInfo } = await runExtraction({
       reportId,
       userId: report.user_id,
       document,
@@ -79,6 +79,7 @@ async function processReport(reportId) {
       document,
       measurements,
       uploadTimestamp: report.upload_timestamp,
+      aiReportDate: docInfo?.reportDate,
     });
     await reconcileReportDuplicate(reportId);
 
@@ -89,9 +90,21 @@ async function processReport(reportId) {
        SET ingestion_status = 'Needs Review',
            extraction_status = $2,
            generated_summary = $3,
+           source_provider = COALESCE($4, source_provider),
+           report_type = COALESCE($5, report_type),
+           notes = COALESCE($6, notes),
+           alerts = COALESCE($7, alerts),
            updated_at = now()
        WHERE id = $1`,
-      [reportId, extractionStatus, summary]
+      [
+        reportId,
+        extractionStatus,
+        summary,
+        docInfo?.labName || null,
+        docInfo?.reportType || null,
+        docInfo?.notes?.length ? docInfo.notes.join('\n') : null,
+        docInfo?.alerts?.length ? docInfo.alerts.join('\n') : null,
+      ]
     );
 
     await refreshSummaryForReport(reportId);
