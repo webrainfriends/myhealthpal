@@ -1,4 +1,4 @@
-import { ActivityIndicator, Pressable, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, View } from 'react-native';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -60,12 +60,28 @@ function Tabs() {
         tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border },
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textTertiary,
-        // React Navigation's default web tab button renders an <a href>
-        // that updates the URL but doesn't reliably dispatch the actual
-        // tab-switch on this dependency combination. A plain Pressable
-        // uses the same onPress dispatch every other in-app navigation
-        // call already relies on, which does work correctly on web.
-        tabBarButton: (props) => <Pressable {...props} />,
+        // react-native-web's Pressable renders the `href` React Navigation
+        // hands it as a real <a href>, so an unmodified click triggers the
+        // browser's own full-page navigation before/alongside React
+        // Navigation's onPress-driven client-side route change - reloading
+        // the whole app (remounting AuthContext, losing all state) on every
+        // tab tap. Prevent that default so onPress is the only thing that
+        // runs, while still letting cmd/ctrl/shift/middle-click open the
+        // tab in a new browser tab as a plain link would.
+        tabBarButton: (props) => (
+          <Pressable
+            {...props}
+            onPress={(event) => {
+              if (
+                Platform.OS === 'web' &&
+                !(event.metaKey || event.ctrlKey || event.shiftKey || event.button === 1)
+              ) {
+                event.preventDefault();
+              }
+              props.onPress?.(event);
+            }}
+          />
+        ),
       }}
     >
       <Tab.Screen name="DashboardTab" component={DashboardScreen} options={{ title: 'Dashboard', headerShown: false }} />
