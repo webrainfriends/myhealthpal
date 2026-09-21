@@ -114,7 +114,7 @@ export default function DashboardScreen({ navigation }) {
   }
 
   function handleOpenInsight(insight) {
-    const reportEvidence = insight.evidence.find((e) => e.type === 'report');
+    const reportEvidence = (insight.evidence || []).find((e) => e.type === 'report');
     if (reportEvidence) navigation.navigate('ReportDetail', { reportId: reportEvidence.id });
   }
 

@@ -39,8 +39,11 @@ export function AuthProvider({ children }) {
       try {
         const { user: me } = await fetchMe();
         if (!cancelled) setUser(me);
-      } catch {
-        clearToken();
+      } catch (err) {
+        // Only an actual 401 means the session itself is invalid. A 500,
+        // network blip, or timeout is transient and must not wipe a
+        // perfectly good token - that would force a needless re-sign-in.
+        if (err?.status === 401) clearToken();
       } finally {
         if (!cancelled) setLoading(false);
       }
