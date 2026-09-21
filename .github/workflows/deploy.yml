@@ -254,6 +254,14 @@ jobs:
             cd server
             npm ci --omit=dev
             npm run migrate
+            # Idempotent (ON CONFLICT DO NOTHING/UPDATE): creates the demo
+            # user row every report/measurement is written against - without
+            # it, every upload fails at INSERT with a reports_user_id_fkey
+            # violation - and (re)seeds the Health Parameter Registry
+            # (canonical parameters/aliases/unit conversions) that
+            # normalization, dedup, dashboard pinning, and insights all key
+            # off of. Safe/cheap to run on every deploy.
+            npm run seed
 
             pm2 describe myhealthpal-server > /dev/null 2>&1 && pm2 restart myhealthpal-server --update-env || pm2 start src/index.js --name myhealthpal-server
             pm2 save
