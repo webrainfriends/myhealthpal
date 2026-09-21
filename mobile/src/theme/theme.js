@@ -29,6 +29,26 @@ export const statusColors = {
   Failed: { fg: colors.danger, bg: colors.dangerMuted },
 };
 
+// Organ Health Score status -> color, shared by the dashboard's organ cards
+// and the organ detail screen so the same percentage always reads the same
+// color everywhere.
+export const healthStatusColors = {
+  good: { fg: colors.success, bg: colors.successMuted, track: '#CBF3DF' },
+  watch: { fg: colors.warning, bg: colors.warningMuted, track: '#FDE3B8' },
+  attention: { fg: colors.danger, bg: colors.dangerMuted, track: '#FBCFCB' },
+  no_data: { fg: colors.textTertiary, bg: colors.surfaceMuted, track: colors.border },
+};
+
+// A soft card elevation used across the dashboard's redesigned cards - subtle
+// on both platforms rather than a hard drop-shadow.
+export const cardShadow = {
+  shadowColor: '#0B1324',
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0.06,
+  shadowRadius: 12,
+  elevation: 2,
+};
+
 export const spacing = {
   xs: 4,
   sm: 8,
@@ -52,6 +72,6 @@ export const typography = {
   caption: { fontSize: 12, fontWeight: '500', color: colors.textTertiary },
 };
 
-const theme = { colors, statusColors, spacing, radii, typography };
+const theme = { colors, statusColors, healthStatusColors, cardShadow, spacing, radii, typography };
 
 export default theme;

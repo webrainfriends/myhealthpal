@@ -7,6 +7,7 @@ import TimelineScreen from '../screens/TimelineScreen';
 import UploadScreen from '../screens/UploadScreen';
 import ReportDetailScreen from '../screens/ReportDetailScreen';
 import ParameterTrendScreen from '../screens/ParameterTrendScreen';
+import OrganDetailScreen from '../screens/OrganDetailScreen';
 import InsightsScreen from '../screens/InsightsScreen';
 import ChatScreen from '../screens/ChatScreen';
 import LoginScreen from '../screens/LoginScreen';
@@ -45,6 +46,7 @@ const linking = {
       },
       ReportDetail: 'report/:reportId',
       ParameterTrend: 'trend/:code',
+      OrganDetail: 'organ/:organKey',
       Insights: 'insights',
     },
   },
@@ -103,6 +105,7 @@ export default function RootNavigator() {
         <Stack.Screen name="Tabs" component={Tabs} options={{ headerShown: false }} />
         <Stack.Screen name="ReportDetail" component={ReportDetailScreen} options={{ title: 'Report' }} />
         <Stack.Screen name="ParameterTrend" component={ParameterTrendScreen} options={{ title: 'Trend' }} />
+        <Stack.Screen name="OrganDetail" component={OrganDetailScreen} options={{ title: 'Organ health' }} />
         <Stack.Screen name="Insights" component={InsightsScreen} options={{ title: 'AI insights' }} />
       </Stack.Navigator>
     </NavigationContainer>

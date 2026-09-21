@@ -173,6 +173,11 @@ export async function fetchDashboardSnapshot() {
   return handleResponse(response);
 }
 
+export async function fetchOrganHealth() {
+  const response = await apiFetch('/api/dashboard/organs');
+  return handleResponse(response);
+}
+
 export async function fetchParameterTrend(code, range = '90d') {
   const response = await apiFetch(`/api/dashboard/parameters/${code}/trend?range=${range}`);
   return handleResponse(response);
