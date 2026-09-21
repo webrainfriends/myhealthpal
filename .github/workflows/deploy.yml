@@ -1,9 +1,12 @@
-# Deploys the MyHealthPal API to the EC2 host below by SSHing in, pulling
-# the latest code, and running the app directly with Node.js + pm2 - no
-# Dockerfile/image build needed for the app itself. nginx fronts it on
-# NGINX_PORT and reverse-proxies to the app's own APP_PORT (127.0.0.1 only,
-# never exposed directly), so only one port needs opening in the security
-# group. Its Postgres, however, runs in a small dedicated Docker container
+# Deploys MyHealthPal to the EC2 host below by SSHing in, pulling the
+# latest code, and running the API directly with Node.js + pm2 - no
+# Dockerfile/image build needed for it. mobile/ (the Expo app - otherwise a
+# phone/simulator-only React Native app) is exported as a static web build
+# and served as the landing page. nginx fronts both on NGINX_PORT: /api/*
+# reverse-proxies to the API's own APP_PORT (127.0.0.1 only, never exposed
+# directly), everything else serves the web build - so only one port needs
+# opening in the security group. Its Postgres, however, runs in a small
+# dedicated Docker container
 # (postgres:16-alpine), the same way exambuddy's stack on this same host
 # does - trying to share/reuse the host's native PostgreSQL install
 # repeatedly hit unexplained auth failures (pg_hba.conf and cluster-identity
@@ -113,19 +116,20 @@ jobs:
               sudo systemctl enable --now nginx
             fi
 
-            echo "[deploy] building mobile web app"
+            echo "[deploy] building mobile app for web"
             cd mobile
             npm ci
-            rm -rf dist
-            npx expo export --platform web
+            # Same-origin "" (not a full URL) - nginx below proxies /api/ on
+            # this same host/port to the API, so the web build never needs
+            # to know the actual host/IP. EXPO_PUBLIC_* vars are inlined at
+            # build time; client.js treats this differently from "unset".
+            CI=1 EXPO_PUBLIC_API_BASE_URL= npx expo export --platform web --output-dir dist
             cd ..
-            MOBILE_DIST="$PWD/mobile/dist"
-
-            # nginx runs as www-data, not ubuntu, and needs traversal/read
-            # access into the home directory tree to serve these files
-            # directly (only reverse-proxying happened here before).
-            chmod o+x "$HOME" "$PWD" "$PWD/mobile"
-            chmod -R o+rX "$MOBILE_DIST"
+            WEB_ROOT=/var/www/myhealthpal-web
+            sudo rm -rf "$WEB_ROOT"
+            sudo mkdir -p "$WEB_ROOT"
+            sudo cp -r mobile/dist/. "$WEB_ROOT"/
+            echo "[deploy] web build published to $WEB_ROOT"
 
             echo "[deploy] configuring nginx on port ${NGINX_PORT}"
             printf '%s\n' \
@@ -134,9 +138,6 @@ jobs:
               '    server_name _;' \
               '' \
               '    client_max_body_size 25m;' \
-              '' \
-              "    root ${MOBILE_DIST};" \
-              '    index index.html;' \
               '' \
               '    location /api/ {' \
               "        proxy_pass http://127.0.0.1:${APP_PORT};" \
@@ -147,6 +148,7 @@ jobs:
               '        proxy_set_header X-Forwarded-Proto $scheme;' \
               '    }' \
               '' \
+              "    root ${WEB_ROOT};" \
               '    location / {' \
               '        try_files $uri $uri/ /index.html;' \
               '    }' \
