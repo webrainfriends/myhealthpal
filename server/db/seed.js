@@ -1,6 +1,7 @@
 require('dotenv').config();
 const { Pool } = require('pg');
 const registryData = require('./registry-seed-data');
+const referenceRangeData = require('./reference-range-seed-data');
 
 async function seedRegistry(pool) {
   for (const entry of registryData) {
@@ -37,9 +38,34 @@ async function seedRegistry(pool) {
   }
 }
 
+async function seedReferenceRanges(pool) {
+  for (const entry of referenceRangeData) {
+    const { rows } = await pool.query('SELECT id FROM health_parameters WHERE code = $1', [entry.parameterCode]);
+    const parameterId = rows[0]?.id;
+    if (!parameterId) {
+      console.warn(`skip reference ranges for unknown parameter code: ${entry.parameterCode}`);
+      continue;
+    }
+
+    for (const range of entry.ranges) {
+      await pool.query(
+        `INSERT INTO reference_ranges (health_parameter_id, source, condition_label, range_low, range_high, unit, citation)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (health_parameter_id, source, condition_label) DO UPDATE SET
+           range_low = EXCLUDED.range_low,
+           range_high = EXCLUDED.range_high,
+           unit = EXCLUDED.unit,
+           citation = EXCLUDED.citation`,
+        [parameterId, range.source, range.conditionLabel, range.low, range.high, entry.unit, range.citation]
+      );
+    }
+  }
+}
+
 async function main() {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   await seedRegistry(pool);
+  await seedReferenceRanges(pool);
   await pool.end();
   console.log('seed complete');
 }

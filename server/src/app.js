@@ -10,6 +10,7 @@ const dashboardRouter = require('./routes/dashboard');
 const pinnedParametersRouter = require('./routes/pinnedParameters');
 const insightsRouter = require('./routes/insights');
 const chatRouter = require('./routes/chat');
+const medicationsRouter = require('./routes/medications');
 
 const app = express();
 
@@ -37,6 +38,7 @@ app.use('/api/dashboard', requireAuth, dashboardRouter);
 app.use('/api/pinned-parameters', requireAuth, pinnedParametersRouter);
 app.use('/api/insights', requireAuth, insightsRouter);
 app.use('/api/chat', requireAuth, chatRouter);
+app.use('/api/medications', requireAuth, medicationsRouter);
 app.get('/api/config/supported-formats', (req, res) => {
   res.json({
     extensions: Object.keys(config.supportedExtensions),

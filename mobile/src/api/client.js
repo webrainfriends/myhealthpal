@@ -244,4 +244,84 @@ export async function sendChatMessage(sessionId, message) {
   return handleResponse(response);
 }
 
+export async function fetchMedications() {
+  const response = await apiFetch('/api/medications');
+  return handleResponse(response);
+}
+
+export async function fetchMedication(medicationId) {
+  const response = await apiFetch(`/api/medications/${medicationId}`);
+  return handleResponse(response);
+}
+
+export async function createMedication(fields) {
+  const response = await apiFetch('/api/medications', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  });
+  return handleResponse(response);
+}
+
+export async function updateMedication(medicationId, changes) {
+  const response = await apiFetch(`/api/medications/${medicationId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(changes),
+  });
+  return handleResponse(response);
+}
+
+export async function confirmMedication(medicationId) {
+  const response = await apiFetch(`/api/medications/${medicationId}/confirm`, { method: 'POST' });
+  return handleResponse(response);
+}
+
+export async function deleteMedication(medicationId) {
+  const response = await apiFetch(`/api/medications/${medicationId}`, { method: 'DELETE' });
+  if (!response.ok) return handleResponse(response);
+  return null;
+}
+
+export async function uploadMedicationScan(file, scanType) {
+  const formData = new FormData();
+  if (file.file) {
+    formData.append('file', file.file, file.name);
+  } else {
+    formData.append('file', {
+      uri: file.uri,
+      name: file.name,
+      type: file.mimeType || 'application/octet-stream',
+    });
+  }
+  formData.append('scan_type', scanType);
+
+  const response = await apiFetch('/api/medications/scans', {
+    method: 'POST',
+    body: formData,
+    // Do not set Content-Type manually - see uploadReport() above.
+  });
+  return handleResponse(response);
+}
+
+export async function fetchMedicationScan(scanId) {
+  const response = await apiFetch(`/api/medications/scans/${scanId}`);
+  return handleResponse(response);
+}
+
+export async function retryMedicationScan(scanId) {
+  const response = await apiFetch(`/api/medications/scans/${scanId}/retry`, { method: 'POST' });
+  return handleResponse(response);
+}
+
+export async function fetchMedicationAlerts(state = 'active') {
+  const response = await apiFetch(`/api/medications/alerts?state=${state}`);
+  return handleResponse(response);
+}
+
+export async function dismissMedicationAlert(alertId) {
+  const response = await apiFetch(`/api/medications/alerts/${alertId}/dismiss`, { method: 'POST' });
+  return handleResponse(response);
+}
+
 export { API_BASE_URL };
