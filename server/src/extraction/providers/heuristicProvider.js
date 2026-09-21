@@ -8,7 +8,9 @@ async function extract(document) {
   // Report-level fields (lab name, panel type, notes, alerts) require
   // reading the whole document, not just tokenizing result lines - only a
   // model-backed provider can fill these in.
-  return { candidates: parameters, warnings, rawModelOutput: null, document: null };
+  // Never has vision support - an image_scanned document always stays
+  // unextracted (OCR Pending) under this provider.
+  return { candidates: parameters, warnings, rawModelOutput: null, document: null, ocrAttempted: false };
 }
 
 module.exports = { name: 'heuristic', extract };

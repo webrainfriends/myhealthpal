@@ -65,7 +65,7 @@ async function processReport(reportId) {
     const document = await adapter.extract(report.storage_path);
 
     await clearUnconfirmedMeasurements(reportId);
-    const { measurements, warnings, document: docInfo } = await runExtraction({
+    const { measurements, warnings, document: docInfo, ocrAttempted } = await runExtraction({
       reportId,
       userId: report.user_id,
       document,
@@ -83,7 +83,11 @@ async function processReport(reportId) {
     });
     await reconcileReportDuplicate(reportId);
 
-    const extractionStatus = document.contentKind === 'image_scanned' ? 'OCR Pending' : 'Text Extracted';
+    // A vision-capable provider (Claude) actually read a scanned document's
+    // page images; a non-vision provider (heuristic) never can, so it stays
+    // 'OCR Pending' regardless of whether pdfAdapter rendered page images.
+    const extractionStatus =
+      document.contentKind === 'image_scanned' ? (ocrAttempted ? 'OCR Extracted' : 'OCR Pending') : 'Text Extracted';
 
     await pool.query(
       `UPDATE reports

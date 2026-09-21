@@ -23,8 +23,9 @@ async function runExtraction({ reportId, userId, document, filePath, mimeType })
   let warnings;
   let rawModelOutput;
   let documentInfo;
+  let ocrAttempted;
   try {
-    ({ candidates, warnings, rawModelOutput, document: documentInfo } = await provider.extract(document, {
+    ({ candidates, warnings, rawModelOutput, document: documentInfo, ocrAttempted } = await provider.extract(document, {
       filePath,
       mimeType,
     }));
@@ -126,7 +127,7 @@ async function runExtraction({ reportId, userId, document, filePath, mimeType })
     ]
   );
 
-  return { measurements, warnings, document: documentInfo || null };
+  return { measurements, warnings, document: documentInfo || null, ocrAttempted: Boolean(ocrAttempted) };
 }
 
 module.exports = { runExtraction };

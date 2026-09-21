@@ -101,6 +101,16 @@ function buildContent(document, context) {
   if (document.contentKind === 'structured_table' && document.tables) {
     return [{ type: 'text', text: `${DOCUMENT_INSTRUCTION}\n\n${serializeTables(document.tables)}` }];
   }
+  // A scanned/photographed multi-page PDF, pre-rendered to one image per
+  // page by pdfAdapter - hand every page to the model in one call so it can
+  // still relate a result on one page to a name/section printed on another.
+  if (document.contentKind === 'image_scanned' && Array.isArray(document.images) && document.images.length > 0) {
+    const imageBlocks = document.images.map((img) => ({
+      type: 'image',
+      source: { type: 'base64', media_type: img.mediaType, data: img.base64 },
+    }));
+    return [...imageBlocks, { type: 'text', text: DOCUMENT_INSTRUCTION }];
+  }
   if (document.contentKind === 'image_scanned' && context.filePath && /^image\//.test(context.mimeType || '')) {
     const base64 = fs.readFileSync(context.filePath).toString('base64');
     return [
@@ -108,9 +118,8 @@ function buildContent(document, context) {
       { type: 'text', text: DOCUMENT_INSTRUCTION },
     ];
   }
-  // Scanned PDFs (image_scanned content from a .pdf) aren't rasterized by
-  // this pipeline, so there's no image to hand the model — no page-render
-  // step exists yet. Reported as a warning rather than attempted blindly.
+  // No text, no table, and no image to read (e.g. a scanned PDF that
+  // rendered zero pages) - reported as a warning rather than attempted blindly.
   return null;
 }
 
@@ -129,22 +138,38 @@ async function extract(document, context = {}) {
       candidates: [],
       warnings: ['Claude provider has no supported content to extract from this document (e.g. a scanned PDF page render).'],
       rawModelOutput: null,
+      ocrAttempted: false,
     };
   }
+  const isVisionRequest = document.contentKind === 'image_scanned';
 
   const client = new Anthropic({ apiKey: config.anthropicApiKey });
   const response = await client.messages.create({
     model: config.anthropicModel,
-    max_tokens: 4096,
+    // A long multi-page report can legitimately have 60-100+ result rows;
+    // 4096 output tokens was enough to silently truncate the tool call
+    // (and Anthropic's tool-use JSON, unlike plain text, can't be
+    // salvaged once cut off mid-argument) on reports with a lot of detail.
+    max_tokens: 16384,
     system: SYSTEM_PROMPT,
     tools: [EXTRACTION_TOOL],
     tool_choice: { type: 'tool', name: EXTRACTION_TOOL.name },
     messages: [{ role: 'user', content }],
   });
 
+  const warnings = [];
+  if (response.stop_reason === 'max_tokens') {
+    warnings.push('Claude output was truncated (hit the token limit) - some results near the end of this document may be missing.');
+  }
+
   const toolUse = response.content.find((block) => block.type === 'tool_use');
   if (!toolUse) {
-    return { candidates: [], warnings: ['Claude did not return a structured extraction result.'], rawModelOutput: response };
+    return {
+      candidates: [],
+      warnings: [...warnings, 'Claude did not return a structured extraction result.'],
+      rawModelOutput: response,
+      ocrAttempted: isVisionRequest,
+    };
   }
 
   const parameters = Array.isArray(toolUse.input?.parameters) ? toolUse.input.parameters : [];
@@ -171,7 +196,7 @@ async function extract(document, context = {}) {
     alerts: Array.isArray(doc.alerts) ? doc.alerts.filter((a) => typeof a === 'string' && a.trim()) : [],
   };
 
-  return { candidates, warnings: [], rawModelOutput: toolUse.input, document: documentInfo };
+  return { candidates, warnings, rawModelOutput: toolUse.input, document: documentInfo, ocrAttempted: isVisionRequest };
 }
 
-module.exports = { name: 'claude', extract };
+module.exports = { name: 'claude', extract, buildContent };
