@@ -62,9 +62,18 @@ function detectFromMeasurementDates(measurements) {
   return [{ dateType: 'test', dateValue: mostCommonDate, confidence }];
 }
 
-async function detectAndPersistReportDates({ reportId, document, measurements, uploadTimestamp }) {
+async function detectAndPersistReportDates({ reportId, document, measurements, uploadTimestamp, aiReportDate }) {
   const labeled = detectLabeledDatesFromText(document.text);
-  const candidates = labeled.length > 0 ? labeled : detectFromMeasurementDates(measurements);
+  let candidates = labeled.length > 0 ? labeled : detectFromMeasurementDates(measurements);
+
+  // An AI extraction provider can read a date the label/regex patterns above
+  // miss (odd phrasing, an unusual layout); only used when nothing more
+  // reliable was already found, and never treated as more certain than an
+  // explicitly labeled date.
+  if (candidates.length === 0 && aiReportDate) {
+    const dateValue = parseDate(aiReportDate);
+    if (dateValue) candidates = [{ dateType: 'report_publication', dateValue, confidence: 0.7 }];
+  }
 
   await pool.query('DELETE FROM report_dates WHERE report_id = $1 AND source = $2', [reportId, 'detected']);
 

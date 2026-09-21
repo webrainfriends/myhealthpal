@@ -22,8 +22,12 @@ async function runExtraction({ reportId, userId, document, filePath, mimeType })
   let candidates;
   let warnings;
   let rawModelOutput;
+  let documentInfo;
   try {
-    ({ candidates, warnings, rawModelOutput } = await provider.extract(document, { filePath, mimeType }));
+    ({ candidates, warnings, rawModelOutput, document: documentInfo } = await provider.extract(document, {
+      filePath,
+      mimeType,
+    }));
   } catch (err) {
     await pool.query(
       `UPDATE extraction_runs SET status = 'Failed', error_message = $2, finished_at = now() WHERE id = $1`,
@@ -117,11 +121,12 @@ async function runExtraction({ reportId, userId, document, filePath, mimeType })
         unmappedCount: measurements.filter((m) => !m.health_parameter_id && !m.ambiguous_candidate_ids).length,
         ambiguousCount: measurements.filter((m) => m.ambiguous_candidate_ids).length,
         duplicateCount: measurements.filter((m) => m.duplicate_status === 'suspected').length,
+        document: documentInfo || null,
       }),
     ]
   );
 
-  return { measurements, warnings };
+  return { measurements, warnings, document: documentInfo || null };
 }
 
 module.exports = { runExtraction };

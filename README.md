@@ -83,11 +83,23 @@ One-time setup before the first deploy:
    -> Actions, add `EC2_SSH_KEY` containing the private key (PEM) that
    matches the EC2 instance's key pair (the same key already used for other
    apps on this host works, if it's the same instance).
+4. **Optional: turn on real AI extraction.** Add a second secret,
+   `ANTHROPIC_API_KEY`. With it set, every report (PDF/DOCX/CSV/XLS/XLSX
+   text, or a JPEG/PNG scan via the model's vision input) is read by Claude
+   instead of the local heuristic parser, pulling out every test
+   parameter/value/unit/reference range/flag *and* report-level details -
+   the issuing lab/facility name, the overall panel/report type, its date,
+   free-text notes (fasting status, specimen condition, physician remarks),
+   and any critical/panic-value alert text. Without this secret, deploys
+   still work, just with the more limited local parser (tabular "name:
+   value" lines only, no lab name/notes/alerts). Setting or rotating it
+   takes effect on the next push - no other step needed.
 
 That's it — every push to `main` after that pulls the latest code, rebuilds
 the web app, runs `npm ci` for the API, applies migrations, restarts the
-app under pm2, and rewrites the nginx site config (plain, secret-free, so
-it's simply kept in sync every deploy rather than only created once). The
+app under pm2, and rewrites the nginx site config and extraction provider
+config (plain, secret-free besides the API key itself, so they're simply
+kept in sync every deploy rather than only created once). The
 `myhealthpal-postgres` container
 and `server/.env` (DB password, `DATABASE_URL`) are created once, directly
 on the host, the first time the workflow runs, and are left untouched on
@@ -145,12 +157,24 @@ to `src/extraction/extractionService.js`, which:
 
 1. Runs the configured **provider** (`src/extraction/providers/`) to get raw
    candidates `{test_name, value, unit, reference_range, status_flag, date,
-   confidence}`. Two are implemented against the same contract:
+   confidence}`, plus an optional report-level `document` object
+   (`{labName, reportType, reportDate, notes[], alerts[]}`). Two providers
+   are implemented against the same contract:
    - `heuristic` (default): the local table-header/tokenized-line parser
-     (`src/services/parameterExtractor.js`) — no external calls.
+     (`src/services/parameterExtractor.js`) — no external calls, no
+     `document` (reading report-level details needs whole-document
+     understanding, not line tokenizing).
    - `claude`: calls the Anthropic Messages API with a forced tool call
      (`record_health_parameters`) whose strict JSON schema the model output is
-     validated against; only active when `ANTHROPIC_API_KEY` is set.
+     validated against; only active when `ANTHROPIC_API_KEY` is set. Reads
+     the issuing lab/facility name, the overall panel/report type, its date,
+     free-text notes (fasting status, specimen condition, physician
+     remarks), and any critical/panic-value alert text, alongside every test
+     result. `document.reportDate` also feeds `reportDateService.js` as a
+     fallback when no "X date:"-labeled text is found. `document.labName`/
+     `reportType` persist onto `reports.source_provider`/`report_type`
+     (never overwritten by a later run that didn't detect one);
+     `notes`/`alerts` persist onto `reports.notes`/`alerts` the same way.
    Routing to a different LLM/document model means adding a module here —
    normalization, dedup, and persistence never change.
 2. **Normalizes** each candidate against the Health Parameter Registry
