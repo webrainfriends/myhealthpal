@@ -3,6 +3,7 @@ const { getAdapter } = require('../adapters');
 const { generateSummary } = require('./summaryService');
 const { runExtraction } = require('../extraction/extractionService');
 const { detectAndPersistReportDates } = require('../extraction/reportDateService');
+const { reconcileMeasurementDuplicatesForReport } = require('../extraction/dedupService');
 const { reconcileReportDuplicate } = require('../extraction/reportDedupService');
 const { refreshSummaryForReport } = require('../extraction/reportNarrativeService');
 
@@ -74,13 +75,18 @@ async function processReport(reportId) {
     });
     const summary = generateSummary(measurements);
 
-    await detectAndPersistReportDates({
+    const { effectiveDate } = await detectAndPersistReportDates({
       reportId,
       document,
       measurements,
       uploadTimestamp: report.upload_timestamp,
       aiReportDate: docInfo?.reportDate,
     });
+    // Catches the common case dedup couldn't judge during extraction (no
+    // per-measurement date was on the line/row itself) now that this
+    // report's own effective_date is known - must run before the
+    // report-level majority check below so it sees the full picture.
+    await reconcileMeasurementDuplicatesForReport({ userId: report.user_id, reportId, effectiveDate });
     await reconcileReportDuplicate(reportId);
 
     // A vision-capable provider (Claude) actually read a scanned document's
