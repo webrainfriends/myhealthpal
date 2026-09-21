@@ -44,16 +44,26 @@ export async function fetchReport(reportId) {
 
 export async function uploadReport(file) {
   const formData = new FormData();
-  formData.append('file', {
-    uri: file.uri,
-    name: file.name,
-    type: file.mimeType || 'application/octet-stream',
-  });
+  if (file.file) {
+    // On web, expo-document-picker/expo-image-picker hand back the real
+    // browser File/Blob in `file` — the {uri, name, type} object below is a
+    // React Native-only FormData convention that a browser's FormData
+    // silently ignores (no bytes get sent), so web must use the Blob itself.
+    formData.append('file', file.file, file.name);
+  } else {
+    formData.append('file', {
+      uri: file.uri,
+      name: file.name,
+      type: file.mimeType || 'application/octet-stream',
+    });
+  }
 
   const response = await fetch(`${API_BASE_URL}/api/reports`, {
     method: 'POST',
     body: formData,
-    headers: { 'Content-Type': 'multipart/form-data' },
+    // Do not set Content-Type manually: fetch computes the multipart
+    // boundary itself from the FormData body, and a hand-set header here
+    // (missing that boundary) makes the server unable to parse the body.
   });
   return handleResponse(response);
 }
