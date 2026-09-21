@@ -25,7 +25,10 @@ router.get('/snapshot', async (req, res, next) => {
     const tracked = await pool.query(
       `WITH ranked AS (
          SELECT hm.*, hp.display_name, hp.category, hp.canonical_unit, r.original_filename, r.effective_date,
-                row_number() OVER (PARTITION BY hm.health_parameter_id ORDER BY COALESCE(r.effective_date, r.created_at::date) DESC) AS rank
+                row_number() OVER (
+                  PARTITION BY hm.health_parameter_id
+                  ORDER BY COALESCE(hm.sample_datetime::date, r.effective_date, r.created_at::date) DESC
+                ) AS rank
          FROM health_measurements hm
          JOIN reports r ON r.id = hm.report_id
          JOIN health_parameters hp ON hp.id = hm.health_parameter_id
@@ -126,13 +129,13 @@ router.get('/parameters/:code/trend', async (req, res, next) => {
 
     const { rows } = await pool.query(
       `SELECT hm.id AS measurement_id, hm.report_id, r.original_filename, r.source_type,
-              COALESCE(r.effective_date, hm.sample_datetime::date, r.created_at::date) AS date,
+              COALESCE(hm.sample_datetime::date, r.effective_date, r.created_at::date) AS date,
               hm.normalized_value, hm.numeric_value, hm.normalized_unit, hm.raw_unit, hm.qualitative_value,
               hm.reference_range_raw
        FROM health_measurements hm
        JOIN reports r ON r.id = hm.report_id
        WHERE r.user_id = $1 AND hm.health_parameter_id = $2 AND hm.is_confirmed = true
-         AND ($3::int IS NULL OR COALESCE(r.effective_date, hm.sample_datetime::date, r.created_at::date) >= CURRENT_DATE - $3::int)
+         AND ($3::int IS NULL OR COALESCE(hm.sample_datetime::date, r.effective_date, r.created_at::date) >= CURRENT_DATE - $3::int)
        ORDER BY date ASC`,
       [userId, parameter.id, days]
     );

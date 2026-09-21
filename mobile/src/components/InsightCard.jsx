@@ -9,7 +9,9 @@ const SEVERITY_COLORS = {
 
 export default function InsightCard({ insight, onPress, onDismiss, onFeedback }) {
   const accentColor = SEVERITY_COLORS[insight.severity] || colors.primary;
-  const reportCount = new Set(insight.evidence.filter((e) => e.type === 'report').map((e) => e.id)).size;
+  const reportCount = new Set(
+    (insight.evidence || []).filter((e) => e.type === 'report').map((e) => e.id)
+  ).size;
 
   return (
     <TouchableOpacity style={[styles.card, { borderLeftColor: accentColor }]} onPress={onPress} activeOpacity={0.7}>

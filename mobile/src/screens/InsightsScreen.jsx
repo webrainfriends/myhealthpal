@@ -44,7 +44,7 @@ export default function InsightsScreen({ navigation }) {
   }
 
   function handleOpen(insight) {
-    const reportEvidence = insight.evidence.find((e) => e.type === 'report');
+    const reportEvidence = (insight.evidence || []).find((e) => e.type === 'report');
     if (reportEvidence) {
       navigation.navigate('ReportDetail', { reportId: reportEvidence.id });
     }
