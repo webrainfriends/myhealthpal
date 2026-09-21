@@ -67,6 +67,19 @@ async function main() {
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
   fs.writeFileSync(path.join(OUT_DIR, 'sample_scan.png'), Buffer.from(pngBase64, 'base64'));
 
+  // A PDF with no selectable text at all (image-only page) - to exercise the
+  // scanned-PDF rasterization path (pdfAdapter renders it to page images for
+  // a vision-capable provider instead of leaving it unreadable).
+  await new Promise((resolve, reject) => {
+    const scannedPdf = new PDFDocument();
+    const out = fs.createWriteStream(path.join(OUT_DIR, 'sample_scan.pdf'));
+    scannedPdf.pipe(out);
+    scannedPdf.image(Buffer.from(pngBase64, 'base64'), 0, 0, { width: scannedPdf.page.width });
+    scannedPdf.end();
+    out.on('finish', resolve);
+    out.on('error', reject);
+  });
+
   // Corrupt file, to exercise the validation/failure path.
   fs.writeFileSync(path.join(OUT_DIR, 'corrupt.pdf'), 'this is not a real pdf file');
 

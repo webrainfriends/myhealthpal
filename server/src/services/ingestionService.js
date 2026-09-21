@@ -3,6 +3,7 @@ const { getAdapter } = require('../adapters');
 const { generateSummary } = require('./summaryService');
 const { runExtraction } = require('../extraction/extractionService');
 const { detectAndPersistReportDates } = require('../extraction/reportDateService');
+const { reconcileMeasurementDuplicatesForReport } = require('../extraction/dedupService');
 const { reconcileReportDuplicate } = require('../extraction/reportDedupService');
 const { refreshSummaryForReport } = require('../extraction/reportNarrativeService');
 
@@ -65,7 +66,7 @@ async function processReport(reportId) {
     const document = await adapter.extract(report.storage_path);
 
     await clearUnconfirmedMeasurements(reportId);
-    const { measurements, warnings, document: docInfo } = await runExtraction({
+    const { measurements, warnings, document: docInfo, ocrAttempted } = await runExtraction({
       reportId,
       userId: report.user_id,
       document,
@@ -74,16 +75,25 @@ async function processReport(reportId) {
     });
     const summary = generateSummary(measurements);
 
-    await detectAndPersistReportDates({
+    const { effectiveDate } = await detectAndPersistReportDates({
       reportId,
       document,
       measurements,
       uploadTimestamp: report.upload_timestamp,
       aiReportDate: docInfo?.reportDate,
     });
+    // Catches the common case dedup couldn't judge during extraction (no
+    // per-measurement date was on the line/row itself) now that this
+    // report's own effective_date is known - must run before the
+    // report-level majority check below so it sees the full picture.
+    await reconcileMeasurementDuplicatesForReport({ userId: report.user_id, reportId, effectiveDate });
     await reconcileReportDuplicate(reportId);
 
-    const extractionStatus = document.contentKind === 'image_scanned' ? 'OCR Pending' : 'Text Extracted';
+    // A vision-capable provider (Claude) actually read a scanned document's
+    // page images; a non-vision provider (heuristic) never can, so it stays
+    // 'OCR Pending' regardless of whether pdfAdapter rendered page images.
+    const extractionStatus =
+      document.contentKind === 'image_scanned' ? (ocrAttempted ? 'OCR Extracted' : 'OCR Pending') : 'Text Extracted';
 
     await pool.query(
       `UPDATE reports

@@ -48,7 +48,9 @@ async function handleResponse(response) {
   const isJson = response.headers.get('content-type')?.includes('application/json');
   const body = isJson ? await response.json() : null;
   if (!response.ok) {
-    throw new Error(body?.error || `Request failed with status ${response.status}`);
+    const error = new Error(body?.error || `Request failed with status ${response.status}`);
+    error.status = response.status;
+    throw error;
   }
   return body;
 }
@@ -168,6 +170,11 @@ export async function fetchTimeline(filters = {}) {
 
 export async function fetchDashboardSnapshot() {
   const response = await apiFetch('/api/dashboard/snapshot');
+  return handleResponse(response);
+}
+
+export async function fetchOrganHealth() {
+  const response = await apiFetch('/api/dashboard/organs');
   return handleResponse(response);
 }
 

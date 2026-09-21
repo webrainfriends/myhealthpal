@@ -132,3 +132,21 @@ test('a long-format table (one row per test) still works as before', () => {
   assert.equal(parameters[0].test_name, 'Hemoglobin');
   assert.equal(parameters[0].needs_review, false);
 });
+
+test('reads a microbiology culture narrative result as one qualitative value, not name+number', () => {
+  // Real culture & sensitivity report layout: no unit/range/flag follows,
+  // and the "48 hrs" inside the clause must not be misread as the value
+  // with "hrs" as its unit.
+  const text = ['Isolated Organism No Growth after 48 hrs of Incubation'].join('\n');
+  const { parameters } = extractParameters({ contentKind: 'text_native', text });
+  assert.equal(parameters.length, 1);
+  assert.equal(parameters[0].test_name, 'Isolated Organism');
+  assert.equal(parameters[0].value, 'No Growth after 48 hrs of Incubation');
+  assert.equal(parameters[0].unit, null);
+
+  const sterileText = ['Culture Result Sterile'].join('\n');
+  const sterile = extractParameters({ contentKind: 'text_native', text: sterileText });
+  assert.equal(sterile.parameters.length, 1);
+  assert.equal(sterile.parameters[0].test_name, 'Culture Result');
+  assert.equal(sterile.parameters[0].value, 'Sterile');
+});

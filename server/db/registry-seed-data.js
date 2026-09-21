@@ -238,7 +238,23 @@ module.exports = [
     dataType: 'numeric',
     canonicalUnit: 'mg/dL',
     displayPrecision: 1,
-    aliases: ['urea', 'bun', 'blood urea nitrogen', 'urea nitrogen'],
+    // Deliberately separate from 'bun' below: Urea and Blood Urea Nitrogen
+    // are the same underlying measurement reported under two different
+    // regional conventions, but they are NOT numerically interchangeable
+    // (Urea mg/dL = BUN mg/dL x ~2.14, from urea's molecular weight vs. the
+    // weight of the nitrogen alone) - conflating them under one code would
+    // silently mix two different scales on the same trend line.
+    aliases: ['urea'],
+    conversions: [{ fromUnit: 'mmol/L', factor: 6.006, offset: 0 }],
+  },
+  {
+    code: 'bun',
+    displayName: 'Blood Urea Nitrogen (BUN)',
+    category: 'kidney',
+    dataType: 'numeric',
+    canonicalUnit: 'mg/dL',
+    displayPrecision: 1,
+    aliases: ['bun', 'blood urea nitrogen', 'urea nitrogen'],
     conversions: [],
   },
   {
@@ -260,7 +276,9 @@ module.exports = [
     canonicalUnit: 'mg/dL',
     displayPrecision: 1,
     aliases: ['calcium'],
-    conversions: [],
+    // Molecular-weight-based (calcium, 40.08 g/mol, divalent) - the same
+    // fixed clinical-chemistry factor used everywhere, not lab-specific.
+    conversions: [{ fromUnit: 'mmol/L', factor: 4.008, offset: 0 }],
   },
   {
     code: 'phosphorus',
@@ -270,7 +288,8 @@ module.exports = [
     canonicalUnit: 'mg/dL',
     displayPrecision: 1,
     aliases: ['phosphorus', 'phosphate'],
-    conversions: [],
+    // Molecular-weight-based (phosphorus, 30.97 g/mol).
+    conversions: [{ fromUnit: 'mmol/L', factor: 3.097, offset: 0 }],
   },
   {
     code: 'chloride',
@@ -280,7 +299,9 @@ module.exports = [
     canonicalUnit: 'mEq/L',
     displayPrecision: 0,
     aliases: ['chloride'],
-    conversions: [],
+    // Chloride (Cl-) is monovalent, same 1:1 mEq/L-mmol/L identity as
+    // sodium/potassium above - not a guess.
+    conversions: [{ fromUnit: 'mmol/L', factor: 1, offset: 0 }],
   },
   {
     code: 'bicarbonate',
@@ -290,7 +311,8 @@ module.exports = [
     canonicalUnit: 'mEq/L',
     displayPrecision: 0,
     aliases: ['bicarbonate', 'hco3', 'co2'],
-    conversions: [],
+    // Bicarbonate (HCO3-) is monovalent, same 1:1 mEq/L-mmol/L identity.
+    conversions: [{ fromUnit: 'mmol/L', factor: 1, offset: 0 }],
   },
   // Liver panel (ALT/AST above already covered).
   {

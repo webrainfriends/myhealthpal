@@ -3,13 +3,27 @@ import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ParameterPickerModal from '../components/ParameterPickerModal';
 import InsightCard from '../components/InsightCard';
-import { colors, radii, spacing, typography } from '../theme/theme';
-import { dismissInsight, fetchDashboardSnapshot, pinParameter, unpinParameter } from '../api/client';
+import OrganHealthCard from '../components/OrganHealthCard';
+import { cardShadow, colors, radii, spacing, typography } from '../theme/theme';
+import { dismissInsight, fetchDashboardSnapshot, fetchOrganHealth, pinParameter, unpinParameter } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 
 function formatDate(value) {
   if (!value) return 'unknown date';
   return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function greetingForNow() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function firstName(user) {
+  if (!user || user.authProvider === 'guest') return 'there';
+  const source = user.displayName || user.email || 'there';
+  return source.split(/[\s@]/)[0];
 }
 
 function TrackedMetricCard({ metric, onPress, onUnpin }) {
@@ -53,12 +67,14 @@ function TrackedMetricCard({ metric, onPress, onUnpin }) {
 export default function DashboardScreen({ navigation }) {
   const { user, signOut } = useAuth();
   const [snapshot, setSnapshot] = useState(null);
+  const [organs, setOrgans] = useState(null);
   const [pickerVisible, setPickerVisible] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const data = await fetchDashboardSnapshot();
+      const [data, organData] = await Promise.all([fetchDashboardSnapshot(), fetchOrganHealth()]);
       setSnapshot(data);
+      setOrgans(organData.organs);
     } catch (err) {
       console.warn('Failed to load dashboard', err.message);
     }
@@ -98,7 +114,7 @@ export default function DashboardScreen({ navigation }) {
   }
 
   function handleOpenInsight(insight) {
-    const reportEvidence = insight.evidence.find((e) => e.type === 'report');
+    const reportEvidence = (insight.evidence || []).find((e) => e.type === 'report');
     if (reportEvidence) navigation.navigate('ReportDetail', { reportId: reportEvidence.id });
   }
 
@@ -114,13 +130,34 @@ export default function DashboardScreen({ navigation }) {
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.accountRow}>
-          <Text style={typography.title}>Health snapshot</Text>
+          <View>
+            <Text style={typography.title}>
+              {greetingForNow()}, {firstName(user)}
+            </Text>
+            <Text style={typography.bodySecondary}>Here's how your body is doing today.</Text>
+          </View>
           <TouchableOpacity onPress={signOut} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Text style={styles.accountLabel}>
               {user?.authProvider === 'guest' ? 'Guest' : user?.email || 'Account'} · Sign out
             </Text>
           </TouchableOpacity>
         </View>
+
+        <Text style={[typography.heading, styles.sectionSpacing]}>Your body, at a glance</Text>
+        <Text style={[typography.caption, styles.sectionSubtitle]}>
+          Tap an organ to see the tests behind its score.
+        </Text>
+        {organs && (
+          <View style={styles.metricGrid}>
+            {organs.map((organ) => (
+              <OrganHealthCard
+                key={organ.key}
+                organ={organ}
+                onPress={() => navigation.navigate('OrganDetail', { organKey: organ.key, initialOrgan: organ })}
+              />
+            ))}
+          </View>
+        )}
 
         {snapshot.insights.length > 0 && (
           <>
@@ -229,7 +266,8 @@ const styles = StyleSheet.create({
   accountRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
   },
   accountLabel: {
     color: colors.textSecondary,
@@ -243,6 +281,10 @@ const styles = StyleSheet.create({
   },
   sectionSpacing: {
     marginTop: spacing.lg,
+  },
+  sectionSubtitle: {
+    marginTop: 2,
+    marginBottom: spacing.xs,
   },
   addLabel: {
     color: colors.primary,
@@ -261,11 +303,10 @@ const styles = StyleSheet.create({
     flexBasis: '47%',
     flexGrow: 1,
     backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
     borderRadius: radii.lg,
     padding: spacing.md,
     gap: 2,
+    ...cardShadow,
   },
   metricHeaderRow: {
     flexDirection: 'row',
@@ -288,11 +329,10 @@ const styles = StyleSheet.create({
   },
   attentionRow: {
     backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
     borderRadius: radii.md,
     padding: spacing.md,
     marginTop: spacing.sm,
     gap: 2,
+    ...cardShadow,
   },
 });
