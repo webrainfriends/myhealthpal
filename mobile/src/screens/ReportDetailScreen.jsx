@@ -10,6 +10,7 @@ import {
   deleteReport,
   fetchReport,
   fetchReportFileUrl,
+  resolveDuplicateMeasurement,
   retryReport,
   updateMeasurement,
   updateReportDate,
@@ -138,6 +139,15 @@ export default function ReportDetailScreen({ route, navigation }) {
       await load();
     } catch (err) {
       showAlert('Could not update mapping', err.message);
+    }
+  }
+
+  async function handleResolveDuplicate(measurementId, action) {
+    try {
+      const data = await resolveDuplicateMeasurement(reportId, measurementId, action);
+      setMeasurements((prev) => prev.map((m) => (m.id === measurementId ? data.measurement : m)));
+    } catch (err) {
+      showAlert('Could not update duplicate', err.message);
     }
   }
 
@@ -298,7 +308,7 @@ export default function ReportDetailScreen({ route, navigation }) {
           <View style={styles.duplicateBanner}>
             <Text style={[typography.body, styles.duplicateBannerText]}>
               Some values look like they may already be recorded from an earlier confirmed report — check the
-              highlighted rows below.
+              highlighted rows below. Unresolved ones are skipped automatically when you confirm.
             </Text>
           </View>
         )}
@@ -315,6 +325,7 @@ export default function ReportDetailScreen({ route, navigation }) {
                 editable={isEditable}
                 onChange={(changes) => handleMeasurementChange(measurement.id, changes)}
                 onChangeMapping={(healthParameterId) => handleMappingChange(measurement.id, healthParameterId)}
+                onResolveDuplicate={(action) => handleResolveDuplicate(measurement.id, action)}
               />
             ))}
           </View>

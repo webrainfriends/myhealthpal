@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ResultSummaryModal from '../components/ResultSummaryModal';
 import { cardShadow, colors, healthStatusColors, radii, spacing, typography } from '../theme/theme';
-import { fetchOrganHealth } from '../api/client';
+import { fetchCustomCards, fetchOrganHealth } from '../api/client';
 
 const RESULT_STATUS_LABEL = { normal: 'Normal', abnormal: 'Out of range', unknown: 'Not evaluated' };
 
@@ -61,19 +61,25 @@ function ParameterRow({ parameter, onPress, onAlertPress }) {
 }
 
 export default function OrganDetailScreen({ route, navigation }) {
-  const { organKey, initialOrgan } = route.params;
+  const { organKey, initialOrgan, source } = route.params;
   const [organ, setOrgan] = useState(initialOrgan || null);
   const [summaryParameter, setSummaryParameter] = useState(null);
+  // Custom (AI/heuristic-grouped) cards cover results with no registry
+  // match at all - see /api/dashboard/custom-cards - and share this same
+  // detail layout, just sourced from a different endpoint keyed the same
+  // way (organ.key / card.key).
+  const isCustom = source === 'custom';
 
   const load = useCallback(async () => {
     try {
-      const data = await fetchOrganHealth();
-      const match = data.organs.find((o) => o.key === organKey);
+      const data = isCustom ? await fetchCustomCards() : await fetchOrganHealth();
+      const list = isCustom ? data.cards : data.organs;
+      const match = list.find((o) => o.key === organKey);
       if (match) setOrgan(match);
     } catch (err) {
       console.warn('Failed to load organ detail', err.message);
     }
-  }, [organKey]);
+  }, [organKey, isCustom]);
 
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', load);
@@ -129,7 +135,7 @@ export default function OrganDetailScreen({ route, navigation }) {
         ) : (
           organ.parameters.map((parameter) => (
             <ParameterRow
-              key={parameter.code}
+              key={parameter.code || parameter.displayName}
               parameter={parameter}
               onPress={() =>
                 parameter.code

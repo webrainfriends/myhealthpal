@@ -1,7 +1,8 @@
 const express = require('express');
 const pool = require('../db/pool');
-const { buildOrganSummaries } = require('../services/organHealthService');
+const { buildOrganSummaries, buildCardSummaries } = require('../services/organHealthService');
 const { getAllReferenceRangesByCode } = require('../medications/referenceRangeService');
+const { groupTestNames, normalizeTestNameKey } = require('../services/customCardService');
 
 const router = express.Router();
 
@@ -145,6 +146,86 @@ router.get('/organs', async (req, res, next) => {
     const standardRangesByCode = await getAllReferenceRangesByCode();
 
     res.json({ organs: buildOrganSummaries(measurements, standardRangesByCode) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+function slugifyGroupLabel(label) {
+  return `custom:${String(label).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'other'}`;
+}
+
+// One card per AI/heuristic-grouped label (see customCardService.js) for
+// every confirmed result a lab report contained that the Health Parameter
+// Registry has no canonical match for at all (health_parameter_id IS NULL -
+// unlike /organs, which can only ever show a registry-mapped result). Exists
+// so a report's full set of results is always represented somewhere on the
+// Dashboard, never silently dropped just because nothing recognized the
+// test name.
+router.get('/custom-cards', async (req, res, next) => {
+  try {
+    const userId = currentUserId(req);
+
+    const { rows } = await pool.query(
+      `WITH ranked AS (
+         SELECT hm.raw_test_name, hm.raw_value, hm.raw_unit, hm.qualitative_value, hm.status_flag,
+                hm.reference_range_raw, hm.numeric_value, hm.normalized_value, r.effective_date, r.id AS report_id,
+                row_number() OVER (
+                  PARTITION BY lower(hm.raw_test_name)
+                  ORDER BY COALESCE(r.effective_date, r.created_at::date) DESC, hm.created_at DESC
+                ) AS rank
+         FROM health_measurements hm
+         JOIN reports r ON r.id = hm.report_id
+         WHERE r.user_id = $1
+           AND hm.health_parameter_id IS NULL
+           AND hm.is_confirmed = true
+           AND ${EXCLUDE_DUPLICATES_SQL}
+           AND r.ingestion_status IN ('Needs Review', 'Completed')
+       )
+       SELECT raw_test_name, raw_value, raw_unit, qualitative_value, status_flag,
+              reference_range_raw, numeric_value, normalized_value, effective_date, report_id
+       FROM ranked
+       WHERE rank = 1`,
+      [userId]
+    );
+
+    const groupByKey = await groupTestNames(rows.map((row) => row.raw_test_name));
+
+    const groupsByLabel = new Map();
+    const measurements = rows.map((row) => {
+      const classification = groupByKey.get(normalizeTestNameKey(row.raw_test_name)) || {
+        label: 'Other Results',
+        icon: '🔬',
+      };
+      if (!groupsByLabel.has(classification.label)) {
+        groupsByLabel.set(classification.label, {
+          key: slugifyGroupLabel(classification.label),
+          label: classification.label,
+          icon: classification.icon,
+          categories: [classification.label],
+        });
+      }
+      return {
+        // No registry code exists for an unmapped result - the raw test
+        // name is the only stable identity it has.
+        code: null,
+        displayName: row.raw_test_name,
+        category: classification.label,
+        rawValue: row.raw_value,
+        rawUnit: row.raw_unit,
+        qualitativeValue: row.qualitative_value,
+        statusFlag: row.status_flag,
+        referenceRangeRaw: row.reference_range_raw,
+        numericValue: row.numeric_value,
+        normalizedValue: row.normalized_value,
+        effectiveDate: row.effective_date,
+        reportId: row.report_id,
+      };
+    });
+
+    const cards = buildCardSummaries(measurements, [...groupsByLabel.values()]);
+
+    res.json({ cards });
   } catch (err) {
     next(err);
   }

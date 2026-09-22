@@ -157,15 +157,17 @@ const STATUS_LABELS = {
   no_data: 'No data yet',
 };
 
-// `rows` is one row per parameter (already reduced to each parameter's
-// latest measurement, e.g. by the caller's SQL) with at least:
-// { code, displayName, category, rawValue, rawUnit, qualitativeValue,
-//   statusFlag, referenceRangeRaw, numericValue, normalizedValue,
-//   effectiveDate, reportId }. `standardRangesByCode` (optional, default
-// none) is a Map<parameterCode, reference_ranges row> - see
-// referenceRangeService.getAllReferenceRangesByCode - used as a fallback
-// when a row's own report didn't print a usable flag/range.
-function buildOrganSummaries(rows, standardRangesByCode = new Map()) {
+// Turns `rows` (one row per parameter, already reduced to each parameter's
+// latest measurement - see buildOrganSummaries below for the exact row
+// shape) into one scored card per entry in `groups`, each shaped
+// { key, categories }: `categories` are the values of `row.category` this
+// card claims (so callers can build 1-category-per-card ad-hoc groups just
+// as well as ORGAN_GROUPS' many-categories-per-card ones). Kept generic
+// (not organ-specific) so it also backs customCardService's AI/heuristic-
+// grouped cards for parameters no organ group covers at all - a card built
+// this way is never fabricated data, only a different grouping of the
+// user's own already-extracted results.
+function buildCardSummaries(rows, groups, standardRangesByCode = new Map()) {
   const rowsByCategory = new Map();
   for (const row of rows) {
     const list = rowsByCategory.get(row.category) || [];
@@ -173,7 +175,7 @@ function buildOrganSummaries(rows, standardRangesByCode = new Map()) {
     rowsByCategory.set(row.category, list);
   }
 
-  return ORGAN_GROUPS.map((group) => {
+  return groups.map((group) => {
     const groupRows = group.categories.flatMap((category) => rowsByCategory.get(category) || []);
     const parameters = groupRows.map((row) => {
       const standardRange = standardRangesByCode.get(row.code);
@@ -217,4 +219,16 @@ function buildOrganSummaries(rows, standardRangesByCode = new Map()) {
   });
 }
 
-module.exports = { ORGAN_GROUPS, buildOrganSummaries, determineResultStatus, parseRange };
+// `rows` is one row per parameter (already reduced to each parameter's
+// latest measurement, e.g. by the caller's SQL) with at least:
+// { code, displayName, category, rawValue, rawUnit, qualitativeValue,
+//   statusFlag, referenceRangeRaw, numericValue, normalizedValue,
+//   effectiveDate, reportId }. `standardRangesByCode` (optional, default
+// none) is a Map<parameterCode, reference_ranges row> - see
+// referenceRangeService.getAllReferenceRangesByCode - used as a fallback
+// when a row's own report didn't print a usable flag/range.
+function buildOrganSummaries(rows, standardRangesByCode = new Map()) {
+  return buildCardSummaries(rows, ORGAN_GROUPS, standardRangesByCode);
+}
+
+module.exports = { ORGAN_GROUPS, buildOrganSummaries, buildCardSummaries, determineResultStatus, parseRange };

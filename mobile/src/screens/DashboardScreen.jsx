@@ -9,6 +9,7 @@ import SummaryCard from '../components/SummaryCard';
 import { cardShadow, colors, healthStatusColors, radii, spacing, typography } from '../theme/theme';
 import {
   fetchActivitySummary,
+  fetchCustomCards,
   fetchDashboardSnapshot,
   fetchDietSummary,
   fetchOrganHealth,
@@ -78,15 +79,20 @@ export default function DashboardScreen({ navigation }) {
   const { user, signOut } = useAuth();
   const [snapshot, setSnapshot] = useState(null);
   const [organs, setOrgans] = useState(null);
+  const [customCards, setCustomCards] = useState(null);
   const [activity, setActivity] = useState(null);
   const [diet, setDiet] = useState(null);
   const [pickerVisible, setPickerVisible] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [data, organData, activityData, dietData] = await Promise.all([
+      const [data, organData, customCardData, activityData, dietData] = await Promise.all([
         fetchDashboardSnapshot(),
         fetchOrganHealth(),
+        // Results a report contained that matched nothing in the Health
+        // Parameter Registry - grouped into their own ad-hoc cards (see
+        // customCardService.js) so nothing extracted ever goes unshown.
+        fetchCustomCards(),
         // A window wide enough that the card can fall back to the most
         // recently logged day (see /api/activity/summary) when nothing is
         // logged for today itself - a wearable export upload is common and
@@ -96,6 +102,7 @@ export default function DashboardScreen({ navigation }) {
       ]);
       setSnapshot(data);
       setOrgans(organData.organs);
+      setCustomCards(customCardData.cards);
       setActivity({ current: activityData.current, isCurrentToday: activityData.isCurrentToday });
       setDiet(dietData);
     } catch (err) {
@@ -194,6 +201,24 @@ export default function DashboardScreen({ navigation }) {
               />
             ))}
           </View>
+        )}
+
+        {customCards && customCards.length > 0 && (
+          <>
+            <Text style={[typography.heading, styles.sectionSpacing]}>🧠 More from your reports</Text>
+            <Text style={[typography.caption, styles.sectionSubtitle]}>
+              Results your reports included that don't fit a standard card yet, grouped automatically.
+            </Text>
+            <View style={styles.metricGrid}>
+              {customCards.map((card) => (
+                <OrganHealthCard
+                  key={card.key}
+                  organ={card}
+                  onPress={() => navigation.navigate('OrganDetail', { organKey: card.key, initialOrgan: card, source: 'custom' })}
+                />
+              ))}
+            </View>
+          </>
         )}
 
         <View style={styles.metricGrid}>
