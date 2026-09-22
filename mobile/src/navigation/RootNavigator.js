@@ -16,6 +16,7 @@ import MedicationDetailScreen from '../screens/MedicationDetailScreen';
 import MedicationScanReviewScreen from '../screens/MedicationScanReviewScreen';
 import MedicationCreateScreen from '../screens/MedicationCreateScreen';
 import ActivityScreen from '../screens/ActivityScreen';
+import DevicesScreen from '../screens/DevicesScreen';
 import DietScreen from '../screens/DietScreen';
 import DietScanReviewScreen from '../screens/DietScanReviewScreen';
 import DietEntryFormScreen from '../screens/DietEntryFormScreen';
@@ -68,6 +69,7 @@ const linking = {
       MedicationDetail: 'medications/:medicationId',
       MedicationScanReview: 'medications/scans/:scanId',
       Activity: 'activity',
+      Devices: 'settings/devices',
       Diet: 'diet',
       DietScanReview: 'diet/scans/:scanId',
       DietEntryForm: 'diet/entries/:entryId?',
@@ -161,6 +163,7 @@ export default function RootNavigator() {
         />
         <Stack.Screen name="MedicationCreate" component={MedicationCreateScreen} options={{ title: 'Add medication' }} />
         <Stack.Screen name="Activity" component={ActivityScreen} options={{ title: 'Activity' }} />
+        <Stack.Screen name="Devices" component={DevicesScreen} options={{ title: 'Bluetooth & wearable devices' }} />
         <Stack.Screen name="Diet" component={DietScreen} options={{ title: 'Diet' }} />
         <Stack.Screen name="DietScanReview" component={DietScanReviewScreen} options={{ title: 'Review scan' }} />
         <Stack.Screen

@@ -244,6 +244,54 @@ export async function logActivity(fields) {
   return handleResponse(response);
 }
 
+export async function fetchPairedDevices() {
+  const response = await apiFetch('/api/devices');
+  return handleResponse(response);
+}
+
+export async function pairDevice(fields) {
+  const response = await apiFetch('/api/devices', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  });
+  return handleResponse(response);
+}
+
+export async function renameDevice(deviceId, name) {
+  const response = await apiFetch(`/api/devices/${deviceId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  return handleResponse(response);
+}
+
+export async function unpairDevice(deviceId) {
+  const response = await apiFetch(`/api/devices/${deviceId}`, { method: 'DELETE' });
+  if (!response.ok) return handleResponse(response);
+  return null;
+}
+
+export async function syncDeviceReadings(deviceId, readings) {
+  const response = await apiFetch(`/api/devices/${deviceId}/readings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ readings }),
+  });
+  return handleResponse(response);
+}
+
+export async function fetchVitalsSummary() {
+  const response = await apiFetch('/api/devices/vitals/summary');
+  return handleResponse(response);
+}
+
+export async function fetchVitalsHistory(readingType, days = 90) {
+  const response = await apiFetch(`/api/devices/vitals/history?type=${readingType}&days=${days}`);
+  return handleResponse(response);
+}
+
 export async function fetchPinnedParameters() {
   const response = await apiFetch('/api/pinned-parameters');
   return handleResponse(response);

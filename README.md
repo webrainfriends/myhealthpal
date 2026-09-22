@@ -563,6 +563,91 @@ persisted server-side - "Log this recipe" on the mobile app is an ordinary
 `POST /api/diet/entries` using the returned nutrition, `ai_verified: true`
 since it's AI-estimated the same as any other entry.
 
+### Bluetooth & wearable device integration
+
+`server/src/routes/devices.js` + `server/src/services/deviceService.js`
+(schema: `server/db/migrations/017_device_integrations.sql`) let a user pair
+a device and sync readings from it:
+
+- **`paired_devices`** — one row per connection: a BLE peripheral (glucose
+  meter, blood pressure monitor, smart scale — identified by its
+  `bluetooth_id`, the platform BLE address/UUID) or a platform health store
+  (`apple_health`/`health_connect`, singleton per user — there's only ever
+  one HealthKit store and one Health Connect store per phone).
+- **`vital_readings`** — every synced blood-glucose/blood-pressure/
+  body-weight reading, deliberately its own table rather than a
+  `health_measurements` row: a device reading has no source report, no
+  extraction run, and no duplicate-review workflow the way a lab result
+  does, and the Health Parameter Registry (built from lab-report
+  vocabulary — see `registry-seed-data.js`) has no blood pressure or body
+  weight entries to map onto at all. `POST /:deviceId/readings` is
+  idempotent (`UNIQUE (user_id, paired_device_id, reading_type,
+  measured_at)`) because a BLE device commonly resends its whole on-device
+  history buffer on every reconnect. `classifyGlucose`/
+  `classifyBloodPressure` apply fixed, published clinical thresholds (ADA/
+  AHA) for display only — a separate, much simpler mechanism than
+  `reference_ranges`, which exists for a different kind of parameter.
+  Step counts are **not** a `vital_readings` type: they flow into the
+  existing `activity_logs` table via the ordinary `POST /api/activity`
+  endpoint instead, the same table a wearable-export file upload already
+  fills (see `activityImportService.js`) — one history, regardless of
+  whether steps arrived by file import or by a live sync.
+
+All BLE scanning, GATT connection, and payload decoding happens on-device
+in the mobile app (`mobile/src/ble/`) — the server only ever receives
+already-decoded readings; it has no Bluetooth stack of its own.
+
+- **`mobile/src/ble/gattConstants.js`** — the standard Bluetooth SIG
+  service/characteristic UUIDs for the Blood Pressure (0x1810), Glucose
+  (0x1808), and Weight Scale (0x181D) services, which is what an
+  Accu-Chek Guide, most Omron blood pressure monitors, and most modern
+  BLE smart scales implement, respectively.
+- **`mobile/src/ble/parsers.js`** — pure decoders for those services' GATT
+  payloads (IEEE-11073 SFLOAT fields, the shared date-time encoding, unit
+  conversion to mmHg/mg-per-dL/kg), plus a best-effort decoder for the Mi
+  Scale 2's own proprietary payload (marked EXPERIMENTAL in its own
+  comment — Xiaomi never published a spec for it; the byte layout used
+  here is the one documented by the open-source scale community's
+  reverse-engineering, not verified against real hardware in this change).
+  Dependency-free by design (no `react-native-ble-plx`, no RN `Buffer`
+  polyfill) so it runs, and is unit-tested, under plain Node exactly as it
+  runs on-device — see `mobile/test/ble.parsers.test.js`, which builds
+  known-good payload byte sequences by hand and checks the decoded values.
+- **`mobile/src/ble/deviceProfiles.js`** — which service/characteristic/
+  parser applies to each pairable `device_type`, and the known-name
+  examples (Accu-Chek Guide, Omron, Mi Scale 2, …) shown in the pairing UI.
+- **`mobile/src/ble/bleService.js`** — the `react-native-ble-plx` wrapper:
+  Android 12+ `BLUETOOTH_SCAN`/`BLUETOOTH_CONNECT` permission requests
+  (plus `ACCESS_FINE_LOCATION` for older Android), scanning filtered to
+  the services above, and a connect → subscribe → (for a glucose meter,
+  write "report stored records" to its Record Access Control Point,
+  since it never pushes readings unprompted) → collect → disconnect sync
+  flow.
+- **`mobile/src/health/stepSync.js`** — Apple Watch and Galaxy Watch step
+  counts are deliberately **not** read over BLE: a phone app cannot open
+  its own Bluetooth connection to a watch that's already paired to the
+  OS's own companion app. Instead this reads from the one phone-wide
+  health data store each platform exposes to apps — HealthKit
+  (`react-native-health`) on iOS, Health Connect
+  (`react-native-health-connect`) on Android — and feeds daily step
+  totals into `POST /api/activity`.
+- **`mobile/src/screens/DevicesScreen.jsx`** (Settings → "Bluetooth &
+  wearable devices", also a Dashboard summary tile) — scan/pair/rename/
+  unpair, a "Sync now" per device, and a compact card per vital type
+  (latest reading, clinical-threshold badge, sparkline via the existing
+  `MiniTrendChart.jsx`) once any readings exist.
+
+Both native modules require a **custom Expo dev client build**
+(`expo-dev-client` + `expo prebuild`/EAS build) — `react-native-ble-plx`,
+`react-native-health`, and `react-native-health-connect` are all native
+modules Expo Go cannot load. `mobile/package.json`'s `start`/`android`/`ios`
+scripts run `expo start --dev-client` accordingly. Every entry point in
+`bleService.js` and `stepSync.js` lazy-`require`s its native module and
+degrades to a clear "isn't available in this build" error/`false` return
+(`isBleAvailable()`, `isStepSyncAvailable()`) rather than crashing, so the
+rest of the app still runs fine under Expo Go with this one feature
+disabled.
+
 ### Known scope limits
 
 - `generateSummary` (`src/services/summaryService.js`) is a heuristic,
@@ -588,21 +673,40 @@ since it's AI-estimated the same as any other entry.
 - Report-level date detection is regex/label-based, not NLP — it handles
   common lab-report phrasing but won't catch every layout. It always fails
   toward `Needs Review` rather than guessing.
-- Only one data source exists: report upload (`reports.source_type =
-  'report_upload'`). Apple Health, Samsung Health, Accu-Chek, Libre, etc.
-  aren't implemented — there's no credentialed access to those APIs in this
-  environment — but `source_type` and the dedicated `measurement_sources`/
-  `health_measurements` provenance model exist specifically so a future
-  connector is a new writer into the same tables, not a schema change.
-  Dashboard/timeline source filters are wired but only ever see one value
-  today.
+- Report upload (`reports.source_type = 'report_upload'`) remains the only
+  writer into `health_measurements` — `source_type` and the dedicated
+  `measurement_sources` provenance model exist specifically so a future lab-
+  result connector is a new writer into the same tables, not a schema
+  change, but none exists yet. Dashboard/timeline source filters are wired
+  but only ever see one value today. Bluetooth/wearable devices (Accu-Chek
+  Guide, Omron, Mi Scale 2, Apple Health, Health Connect — see "Bluetooth &
+  wearable device integration" above) are a separate, now-implemented path
+  that was never going to fit this model anyway: a glucose/BP/weight
+  reading has no source report and the registry has no entries for blood
+  pressure or body weight, so those live in their own `vital_readings`
+  table instead, and step counts reuse `activity_logs`.
+- The Bluetooth/HealthKit/Health Connect integration above hasn't been
+  exercised against real hardware or a real phone in this environment (no
+  physical device, no iOS/Android simulator available here to run a custom
+  dev client build in). What *was* verified: the full pairing → sync →
+  vitals-summary → history → unpair flow end-to-end over HTTP against a
+  real Postgres database (idempotent re-sync, clinical-threshold
+  classification, readings surviving an unpair); and the GATT payload
+  decoders (`mobile/src/ble/parsers.js`) against hand-built byte sequences
+  matching the Bluetooth SIG Blood Pressure/Glucose/Weight Scale
+  Measurement spec exactly, including the IEEE-11073 SFLOAT and kPa/mol-L
+  unit-conversion math (`mobile/test/ble.parsers.test.js`). The Mi Scale 2
+  decoder is explicitly marked experimental in its own comment for the same
+  reason — reverse-engineered protocol, not an official spec.
 - No push/local alerting — "needs attention" is a pull (dashboard) view, not
   a background-triggered alert.
 - Insight thresholds (15%/30% change, 3-point trend/repeat windows) are fixed
   constants, not per-user/per-parameter configuration; exploratory
   correlations and wearable/glucose-pattern insight types from the issue's
-  catalog are out of scope (no connected device data exists to detect
-  patterns in — see the dashboard's scope limits above).
+  catalog are still out of scope — `insightRules.js` doesn't read
+  `vital_readings` yet, even though connected-device data now exists (see
+  "Bluetooth & wearable device integration" above) to eventually detect
+  patterns in.
 - The chat assistant's tool-calling loop against a live model hasn't been
   exercised end-to-end in this environment (no `ANTHROPIC_API_KEY`
   configured here) — its deterministic paths (safety intercept, honest
@@ -620,23 +724,42 @@ since it's AI-estimated the same as any other entry.
 `cd server && npm test` runs `node --test` over `server/test/`: the insight
 rule catalog and its evidence-number validator (synthetic fixtures, per
 issue #11's explicit ask), the safety pre-check's emergency/non-emergency
-phrasing, the chat orchestrator's non-LLM paths, and — the most
+phrasing, the chat orchestrator's non-LLM paths, `deviceService.test.js`
+(device pairing/re-pairing upserts, idempotent reading sync, clinical
+classification, unpair keeping reading history), and — the most
 safety-critical one — `chatTools.security.test.js`, which creates two real
 database users and asserts one cannot retrieve the other's report through
 any tool, including a deliberately smuggled `userId` argument. These need a
 reachable `DATABASE_URL` (same as the server itself).
+
+`cd mobile && npm test` runs `node --test` over `mobile/test/`:
+`ble.parsers.test.js` decodes hand-built Blood Pressure/Glucose/Weight
+Scale/Mi Scale Measurement byte payloads and checks the result against the
+Bluetooth SIG spec's own math. Pure-JS by design (no React Native runtime
+needed), unlike the rest of the mobile app.
 
 ## Mobile app
 
 ```bash
 cd mobile
 npm install
-npm start   # Expo dev server; scan the QR code with Expo Go, or press i/a
+npm start   # Expo dev server (--dev-client); see the note below on Expo Go
 ```
 
 Set `expo.extra.apiBaseUrl` in `app.json` (or `EXPO_PUBLIC_API_BASE_URL`) to
 point at your server if it isn't reachable at `http://localhost:4000`
 (`http://10.0.2.2:4000` is used automatically for the Android emulator).
+
+`react-native-ble-plx`, `react-native-health`, and `react-native-health-connect`
+(the Bluetooth/wearable device integration above) are native modules Expo
+Go cannot load, so `npm start`/`android`/`ios` now run
+`expo start --dev-client`, which needs a custom dev client build first
+(`npx expo prebuild` then `npx expo run:ios`/`run:android`, or an EAS
+development build) rather than the plain Expo Go app. Every other screen in
+the app still runs fine under either — the native-module calls in
+`mobile/src/ble/bleService.js` and `mobile/src/health/stepSync.js` degrade
+to a clear "isn't available in this build" message instead of crashing when
+they aren't linked in.
 
 Light theme tokens live in `src/theme/theme.js`. Bottom tabs (Dashboard /
 Timeline / Ask / Upload) sit inside a stack so Report detail, Parameter
@@ -648,6 +771,14 @@ trend, and Insights push over them full-screen:
   prior; tap for the trend view; ✕ to unpin), a "Needs attention" list,
   recent reports, and a picker (`ParameterPickerModal.jsx`) to pin new
   metrics from the registry.
+- **Devices** (`src/screens/DevicesScreen.jsx`, reached from Settings or a
+  Dashboard summary tile) — pair a Bluetooth glucose meter/blood pressure
+  monitor/smart scale (scan → tap a result → pairs and syncs immediately),
+  connect Apple Health/Health Connect for step counts, "Sync now"/rename/
+  unpair per paired device, and a card per vital type showing its latest
+  reading, a clinical-threshold badge, and a sparkline once history exists.
+  See "Bluetooth & wearable device integration" above for how syncing
+  actually works.
 - **Insights** (`src/screens/InsightsScreen.jsx`) — the full active-insight
   list with dismiss and useful/not-useful feedback, tapping through to the
   source report.
@@ -750,3 +881,18 @@ changes, which resolves and transforms every screen, component, and
 third-party import with no errors (1022 modules in the final bundle). There
 was no device/simulator available in this environment, so the UI has not
 been visually exercised — that step is still needed before shipping.
+
+For the Bluetooth/wearable device integration, the same bundle-pull check
+was re-run after adding `react-native-ble-plx`, `react-native-health`, and
+`react-native-health-connect` — both the `ios` and `android` bundles built
+with no errors (1204/1202 modules). The full server-side flow (pair a
+device → sync readings idempotently → vitals summary/history → unpair
+keeping history) was exercised end-to-end over real HTTP against a real
+Postgres database, and the GATT payload decoders were checked against
+hand-built byte sequences matching the Bluetooth SIG spec's own math (see
+"Bluetooth & wearable device integration" above for exactly what that
+covers and doesn't). Actually scanning for, pairing with, and reading from
+a real Bluetooth peripheral — or a real HealthKit/Health Connect store —
+was not possible in this environment (no hardware, no iOS/Android
+simulator, no way to build the custom dev client this feature requires)
+and still needs verification on a real device before shipping.

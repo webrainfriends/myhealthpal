@@ -8,7 +8,12 @@
     "userInterfaceStyle": "light",
     "backgroundColor": "#F7F9FC",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "MyHealthPal uses Bluetooth to sync readings from paired devices like glucose meters, blood pressure monitors, and smart scales.",
+        "NSBluetoothPeripheralUsageDescription": "MyHealthPal uses Bluetooth to sync readings from paired devices like glucose meters, blood pressure monitors, and smart scales.",
+        "NSHealthShareUsageDescription": "MyHealthPal reads your step count from Apple Health to show it alongside your other activity."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -16,13 +21,32 @@
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
-      }
+      },
+      "permissions": [
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.health.READ_STEPS"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "extra": {
       "apiBaseUrl": null
-    }
+    },
+    "plugins": [
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": false,
+          "modes": ["central"],
+          "bluetoothAlwaysPermission": "MyHealthPal uses Bluetooth to sync readings from paired devices like glucose meters, blood pressure monitors, and smart scales."
+        }
+      ],
+      "react-native-health",
+      "react-native-health-connect",
+      "expo-dev-client"
+    ]
   }
 }

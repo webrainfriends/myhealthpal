@@ -29,6 +29,11 @@ export default function SettingsScreen({ navigation }) {
           onPress={() => navigation.navigate('GmailIntegration')}
         />
         <SettingsRow
+          title="Bluetooth & wearable devices"
+          subtitle="Pair a glucose meter, blood pressure monitor, smart scale, or step tracker"
+          onPress={() => navigation.navigate('Devices')}
+        />
+        <SettingsRow
           title="AI explanation language"
           subtitle="Language for insight, report, and chat explanations"
           onPress={() => navigation.navigate('LanguagePreference')}

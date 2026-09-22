@@ -15,16 +15,23 @@
     "react": "19.2.3",
     "react-dom": "^19.2.3",
     "react-native": "0.86.3",
+    "react-native-ble-plx": "^3.5.0",
+    "react-native-health": "^1.19.0",
+    "react-native-health-connect": "^3.3.1",
     "react-native-safe-area-context": "^5.10.0",
     "react-native-screens": "^4.28.0",
     "react-native-svg": "^15.15.5",
     "react-native-web": "^0.21.2"
   },
+  "devDependencies": {
+    "expo-dev-client": "~6.0.13"
+  },
   "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web"
+    "start": "expo start --dev-client",
+    "android": "expo start --dev-client --android",
+    "ios": "expo start --dev-client --ios",
+    "web": "expo start --web",
+    "test": "node --test"
   },
   "private": true
 }
