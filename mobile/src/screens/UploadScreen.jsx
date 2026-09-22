@@ -8,10 +8,11 @@ import StatusBadge from '../components/StatusBadge';
 import { cardShadow, colors, radii, spacing, typography } from '../theme/theme';
 import { fetchReports, fetchSupportedFormats, uploadReport } from '../api/client';
 import { showAlert } from '../utils/alert';
+import { formatCalendarDate } from '../utils/date';
 
 function formatDate(value) {
   if (!value) return 'Date pending';
-  return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  return formatCalendarDate(value, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function ReportRow({ report, onPress }) {

@@ -1,10 +1,10 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import ActivityRings from './ActivityRings';
 import { activityRingColors, cardShadow, colors, radii, spacing, typography } from '../theme/theme';
+import { formatCalendarDate } from '../utils/date';
 
 function formatShortDate(dateStr) {
-  if (!dateStr) return '';
-  return new Date(`${dateStr}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return formatCalendarDate(dateStr, { month: 'short', day: 'numeric' }) || '';
 }
 
 // Compact dashboard preview of the most recent day's three rings -

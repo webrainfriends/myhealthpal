@@ -42,6 +42,32 @@ test('groupTestNames covers every distinct name given, never dropping one', asyn
   }
 });
 
+test('groupTestNames includes a description for every group, never just a bare label', async () => {
+  const name = 'test-fixture-Vitamin D';
+  const result = await groupTestNames([name]);
+  const entry = result.get(normalizeTestNameKey(name));
+  assert.equal(typeof entry.description, 'string');
+  assert.ok(entry.description.length > 0);
+});
+
+test('groupTestNames caches separately per language, without needing a live translation', async () => {
+  // No ANTHROPIC_API_KEY is configured in this test env, so a non-English
+  // request still resolves (via the English-only heuristic fallback - see
+  // customCardService.js's top comment) and, crucially, is cached under
+  // its own language rather than colliding with the English cache row.
+  const name = 'test-fixture-Albumin Multilingual';
+  const en = await groupTestNames([name], 'en');
+  const es = await groupTestNames([name], 'es');
+  assert.equal(en.get(normalizeTestNameKey(name)).label, 'Proteins');
+  assert.equal(es.get(normalizeTestNameKey(name)).label, 'Proteins');
+
+  const { rows } = await pool.query(
+    `SELECT language FROM custom_parameter_groups WHERE test_name_key = $1 ORDER BY language`,
+    [normalizeTestNameKey(name)]
+  );
+  assert.deepEqual(rows.map((r) => r.language), ['en', 'es']);
+});
+
 test('groupTestNames caches a classification and reuses it on the next call', async () => {
   const name = 'test-fixture-Ferritin Repeat Check';
   const first = await groupTestNames([name]);

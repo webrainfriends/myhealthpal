@@ -1,6 +1,7 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const pool = require('../db/pool');
 const config = require('../config');
+const { normalizeLanguage, languageInstruction, DEFAULT_LANGUAGE } = require('../services/languageService');
 
 const SAFETY_FOOTER =
   'This summary reflects only what is stated in the source document. It is not medical advice — please discuss any concerns with a qualified clinician.';
@@ -91,7 +92,7 @@ function buildHeuristicNarrative(report, measurements, comparisons) {
   return parts.join(' ');
 }
 
-async function buildClaudeNarrative(report, measurements, comparisons) {
+async function buildClaudeNarrative(report, measurements, comparisons, language) {
   const client = new Anthropic({ apiKey: config.anthropicApiKey });
   const payload = {
     reportFormat: report.file_extension,
@@ -109,13 +110,14 @@ async function buildClaudeNarrative(report, measurements, comparisons) {
   const response = await client.messages.create({
     model: config.anthropicModel,
     max_tokens: 1024,
-    system: [
-      'You write short, plain-language summaries of a single health report for a non-clinical reader.',
-      'State only what the data shows. Never invent a diagnosis, treatment recommendation, or clinical certainty not present in the input.',
-      'Clearly distinguish the source report\'s own statements (e.g. its flags) from any comparison you make to prior results.',
-      'If something could not be confidently read, say so plainly rather than guessing.',
-      `Always end with exactly this sentence: "${SAFETY_FOOTER}"`,
-    ].join(' '),
+    system:
+      [
+        'You write short, plain-language summaries of a single health report for a non-clinical reader.',
+        'State only what the data shows. Never invent a diagnosis, treatment recommendation, or clinical certainty not present in the input.',
+        'Clearly distinguish the source report\'s own statements (e.g. its flags) from any comparison you make to prior results.',
+        'If something could not be confidently read, say so plainly rather than guessing.',
+        `Always end with exactly this sentence, translated if you are writing in another language: "${SAFETY_FOOTER}"`,
+      ].join(' ') + languageInstruction(language),
     messages: [{ role: 'user', content: JSON.stringify(payload) }],
   });
 
@@ -124,19 +126,27 @@ async function buildClaudeNarrative(report, measurements, comparisons) {
 }
 
 // Regenerates a report's narrative summary only if `sourceDataVersion` (bumped
-// by the caller whenever measurements materially change) differs from the
-// version the current summary was generated against — "don't regenerate
-// unnecessarily if nothing changed".
-async function generateReportSummary({ report, measurements, sourceDataVersion }) {
+// by the caller whenever measurements materially change) OR `language`
+// (the report owner's preferred_language - see languageService.js) differs
+// from what the current summary was generated against — "don't regenerate
+// unnecessarily if nothing changed", now including a language switch as a
+// change. The heuristic fallback template is English-only (
+// buildHeuristicNarrative has no per-language copy).
+async function generateReportSummary({ report, measurements, sourceDataVersion, language = DEFAULT_LANGUAGE }) {
+  const lang = normalizeLanguage(language);
   const existing = await pool.query(
-    `SELECT rs.id AS summary_id, rsv.source_data_version
+    `SELECT rs.id AS summary_id, rsv.source_data_version, rsv.language
      FROM report_summaries rs
      LEFT JOIN report_summary_versions rsv ON rsv.id = rs.current_version_id
      WHERE rs.report_id = $1`,
     [report.id]
   );
 
-  if (existing.rows.length > 0 && existing.rows[0].source_data_version === sourceDataVersion) {
+  if (
+    existing.rows.length > 0 &&
+    existing.rows[0].source_data_version === sourceDataVersion &&
+    existing.rows[0].language === lang
+  ) {
     return { regenerated: false };
   }
 
@@ -144,7 +154,7 @@ async function generateReportSummary({ report, measurements, sourceDataVersion }
   const provider = config.summaryProvider === 'claude' && config.anthropicApiKey ? 'claude' : 'heuristic';
   const summaryText =
     provider === 'claude'
-      ? await buildClaudeNarrative(report, measurements, comparisons)
+      ? await buildClaudeNarrative(report, measurements, comparisons, lang)
       : buildHeuristicNarrative(report, measurements, comparisons);
 
   const summaryId =
@@ -152,9 +162,9 @@ async function generateReportSummary({ report, measurements, sourceDataVersion }
     (await pool.query('INSERT INTO report_summaries (report_id) VALUES ($1) RETURNING id', [report.id])).rows[0].id;
 
   const versionResult = await pool.query(
-    `INSERT INTO report_summary_versions (report_summary_id, summary_text, provider, model, source_data_version)
-     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-    [summaryId, summaryText, provider, provider === 'claude' ? config.anthropicModel : null, sourceDataVersion]
+    `INSERT INTO report_summary_versions (report_summary_id, summary_text, provider, model, source_data_version, language)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+    [summaryId, summaryText, provider, provider === 'claude' ? config.anthropicModel : null, sourceDataVersion, lang]
   );
 
   await pool.query('UPDATE report_summaries SET current_version_id = $2 WHERE id = $1', [
@@ -185,10 +195,13 @@ async function refreshSummaryForReport(reportId) {
     [reportId]
   );
 
+  const userResult = await pool.query('SELECT preferred_language FROM users WHERE id = $1', [report.user_id]);
+
   await generateReportSummary({
     report,
     measurements: measurementsResult.rows,
     sourceDataVersion: report.data_version,
+    language: userResult.rows[0]?.preferred_language,
   });
 }
 

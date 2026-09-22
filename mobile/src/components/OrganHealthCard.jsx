@@ -38,7 +38,9 @@ export default function OrganHealthCard({ organ, onPress }) {
 
       <Text style={typography.caption} numberOfLines={1}>
         {organ.trackedCount === 0
-          ? 'No results tracked yet'
+          ? organ.suggestedTests?.length
+            ? 'Tap to see what tests to add'
+            : 'No results tracked yet'
           : `${organ.trackedCount} test${organ.trackedCount === 1 ? '' : 's'} tracked`}
       </Text>
     </TouchableOpacity>

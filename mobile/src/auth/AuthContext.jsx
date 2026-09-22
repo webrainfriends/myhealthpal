@@ -65,9 +65,15 @@ export function AuthProvider({ children }) {
     (identityToken, fullName) => completeSignIn(apiSignInApple(identityToken, fullName)),
     []
   );
+  // For a screen that already made its own API call to update the profile
+  // (e.g. LanguagePreferenceScreen) and just needs the cached `user` object
+  // to reflect it, without a full re-fetch.
+  const updateUser = useCallback((nextUser) => setUser(nextUser), []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, signInAsGuest, signInWithGoogle, signInWithApple, signOut }}>
+    <AuthContext.Provider
+      value={{ user, loading, signInAsGuest, signInWithGoogle, signInWithApple, signOut, updateUser }}
+    >
       {children}
     </AuthContext.Provider>
   );

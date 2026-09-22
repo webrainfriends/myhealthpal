@@ -62,6 +62,21 @@ test('brain and bones have no registry category yet and always report no_data', 
   }
 });
 
+test('every organ card - even an empty one like Brain - names what tests would feed it', () => {
+  const summaries = buildOrganSummaries([]);
+  for (const organ of summaries) {
+    assert.ok(Array.isArray(organ.suggestedTests) && organ.suggestedTests.length > 0, `${organ.key} has no suggestedTests`);
+  }
+  const brain = summaries.find((s) => s.key === 'brain');
+  assert.ok(brain.suggestedTests.includes('Vitamin B12'));
+  // Brain/bones' suggested labs are never a substitute for the actual
+  // brain/bone-specific test (cognitive screening, a DEXA scan) - that
+  // must be called out explicitly, not implied by the lab list alone.
+  assert.match(brain.note, /MRI|cognitive/i);
+  const bones = summaries.find((s) => s.key === 'bones');
+  assert.match(bones.note, /DEXA/i);
+});
+
 test('determineResultStatus trusts an explicit status_flag over the range', () => {
   assert.equal(determineResultStatus({ statusFlag: 'Normal', numericValue: 999, referenceRangeRaw: '1-5' }), 'normal');
   assert.equal(determineResultStatus({ statusFlag: 'High', numericValue: 3, referenceRangeRaw: '1-5' }), 'abnormal');

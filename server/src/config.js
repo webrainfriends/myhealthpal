@@ -89,6 +89,14 @@ module.exports = {
   // test name (cached in custom_parameter_groups so it's asked once, ever);
   // the default keyword heuristic always succeeds with no API call.
   customCardProvider: process.env.CUSTOM_CARD_PROVIDER || 'heuristic',
+  // Medication details for a name outside medicationKnowledgeBase.js's
+  // curated list (see medicationKnowledgeService.js). Unlike the other
+  // *_PROVIDER flags there is no safe non-AI fallback here (getting a
+  // medical fact wrong is a real risk) - 'unavailable' (the default)
+  // means an uncurated medication simply shows nothing, same as before
+  // this service existed, rather than a guess.
+  medicationKnowledgeProvider:
+    process.env.MEDICATION_KNOWLEDGE_PROVIDER || (process.env.ANTHROPIC_API_KEY ? 'claude' : 'unavailable'),
   // Diet photo identification always requires Claude (like medication scan
   // extraction, there is no heuristic vision substitute) - dietProvider
   // only controls whether the *tip phrasing* on top of the deterministic

@@ -189,13 +189,17 @@ router.get('/custom-cards', async (req, res, next) => {
       [userId]
     );
 
-    const groupByKey = await groupTestNames(rows.map((row) => row.raw_test_name));
+    const groupByKey = await groupTestNames(
+      rows.map((row) => row.raw_test_name),
+      req.user.preferred_language
+    );
 
     const groupsByLabel = new Map();
     const measurements = rows.map((row) => {
       const classification = groupByKey.get(normalizeTestNameKey(row.raw_test_name)) || {
         label: 'Other Results',
         icon: '🔬',
+        description: null,
       };
       if (!groupsByLabel.has(classification.label)) {
         groupsByLabel.set(classification.label, {
@@ -203,6 +207,10 @@ router.get('/custom-cards', async (req, res, next) => {
           label: classification.label,
           icon: classification.icon,
           categories: [classification.label],
+          // Surfaced by buildCardSummaries as `note` - what this group of
+          // tests is generally for, so an unmapped result never just shows
+          // a bare label with no explanation (see customCardService.js).
+          note: classification.description || undefined,
         });
       }
       return {

@@ -1,6 +1,7 @@
 const pool = require('../db/pool');
 const registry = require('../extraction/registry');
 const { findKnowledgeEntry } = require('../medications/medicationLinkingService');
+const { getMedicationKnowledge } = require('../medications/medicationKnowledgeService');
 const { buildMedicationForecast } = require('../medications/medicationForecastService');
 
 // Every tool's `execute(args, context)` receives `context.userId` injected
@@ -398,7 +399,7 @@ const getMedicationDetail = {
     properties: { medicationId: { type: 'string' } },
     required: ['medicationId'],
   },
-  async execute(args, { userId }) {
+  async execute(args, { userId, language }) {
     const { rows } = await pool.query('SELECT * FROM medications WHERE id = $1 AND user_id = $2', [
       args.medicationId,
       userId,
@@ -408,20 +409,17 @@ const getMedicationDetail = {
 
     const knowledgeEntry = findKnowledgeEntry(medication);
     const forecast = await buildMedicationForecast(medication, knowledgeEntry);
+    // Falls through to an AI-generated lookup when the medication isn't in
+    // the curated knowledge base (medicationKnowledgeService.js) - the
+    // system prompt's "isn't in the reference library" line above only
+    // fires now when even that comes back null (still no AI provider
+    // configured, or an unrecognizable name).
+    const knowledge = await getMedicationKnowledge(medication, language);
 
     return {
       data: {
         medication,
-        knowledge: knowledgeEntry
-          ? {
-              category: knowledgeEntry.category,
-              usage: knowledgeEntry.usage,
-              typicalDailyDose: knowledgeEntry.typicalDailyDose,
-              activeIngredient: knowledgeEntry.activeIngredient,
-              commonSideEffects: knowledgeEntry.commonSideEffects,
-              warnings: knowledgeEntry.warnings,
-            }
-          : null,
+        knowledge,
         ingredientsAsPrinted: medication.ingredients_raw || null,
         doseAssessment: forecast.doseAssessment,
         standardsScorePercent: forecast.standardsScorePercent,

@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import MiniTrendChart from '../components/MiniTrendChart';
 import { colors, radii, spacing, typography } from '../theme/theme';
 import { fetchParameterTrend } from '../api/client';
+import { formatCalendarDate } from '../utils/date';
 
 const RANGES = [
   { key: '7d', label: '7D' },
@@ -15,7 +16,7 @@ const RANGES = [
 ];
 
 function formatDate(value) {
-  return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' });
+  return formatCalendarDate(value, { month: 'short', day: 'numeric', year: '2-digit' });
 }
 
 export default function ParameterTrendScreen({ route, navigation }) {

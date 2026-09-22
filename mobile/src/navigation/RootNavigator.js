@@ -25,6 +25,10 @@ import SettingsScreen from '../screens/SettingsScreen';
 import RecipePreferencesScreen from '../screens/RecipePreferencesScreen';
 import GmailIntegrationScreen from '../screens/GmailIntegrationScreen';
 import LoginScreen from '../screens/LoginScreen';
+import SettingsScreen from '../screens/SettingsScreen';
+import RecipePreferencesScreen from '../screens/RecipePreferencesScreen';
+import GmailIntegrationScreen from '../screens/GmailIntegrationScreen';
+import LanguagePreferenceScreen from '../screens/LanguagePreferenceScreen';
 import { useAuth } from '../auth/AuthContext';
 import { colors } from '../theme/theme';
 

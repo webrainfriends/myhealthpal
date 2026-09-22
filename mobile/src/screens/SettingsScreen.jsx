@@ -28,6 +28,11 @@ export default function SettingsScreen({ navigation }) {
           subtitle="Connect Gmail to import lab reports and medical documents"
           onPress={() => navigation.navigate('GmailIntegration')}
         />
+        <SettingsRow
+          title="AI explanation language"
+          subtitle="Language for insight, report, and chat explanations"
+          onPress={() => navigation.navigate('LanguagePreference')}
+        />
       </ScrollView>
     </SafeAreaView>
   );

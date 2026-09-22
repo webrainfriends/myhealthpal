@@ -78,7 +78,13 @@ router.post('/sessions/:id/messages', async (req, res, next) => {
       userMessage,
     ]);
 
-    const result = await runTurn({ userId, sessionId: req.params.id, userMessage, priorMessages });
+    const result = await runTurn({
+      userId,
+      sessionId: req.params.id,
+      userMessage,
+      priorMessages,
+      language: req.user.preferred_language,
+    });
 
     const saved = await pool.query(
       `INSERT INTO chat_messages (session_id, role, content, evidence, provider, model)

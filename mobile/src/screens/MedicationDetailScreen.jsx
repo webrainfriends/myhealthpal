@@ -7,6 +7,7 @@ import PrimaryButton from '../components/PrimaryButton';
 import { cardShadow, colors, healthStatusColors, radii, spacing, typography } from '../theme/theme';
 import { deleteMedication, fetchMedication, updateMedication } from '../api/client';
 import { showAlert } from '../utils/alert';
+import { formatCalendarDate } from '../utils/date';
 
 const STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
@@ -36,8 +37,7 @@ function scoreToStatus(percent) {
 }
 
 function formatDate(value) {
-  if (!value) return null;
-  return new Date(value).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  return formatCalendarDate(value, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 function BulletList({ items, textStyle }) {

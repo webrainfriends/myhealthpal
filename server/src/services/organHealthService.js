@@ -24,16 +24,83 @@
 // It's tracked in its own activity_logs table and rendered as its own
 // dashboard section (see src/routes/activity.js and the mobile Activity
 // screen), never mixed into this scoring system or into "Needs attention".
+// Every card - populated or not - names the common lab tests that feed it,
+// so a card with nothing tracked yet (trackedCount === 0, most often brain/
+// bones, which have no registry category at all) still tells the user what
+// to go get tested/upload a report for, instead of just sitting empty with
+// no explanation. This is deliberately a fixed, curated list (like
+// medicationKnowledgeBase.js), not model-generated: it's general medical
+// knowledge about what a panel commonly includes, not a judgment about this
+// user's own data, so there's no need for an LLM call or a "might be wrong"
+// disclaimer beyond the standard one already on every card.
 const ORGAN_GROUPS = [
-  { key: 'diabetes', label: 'Diabetes', icon: '💉', categories: ['diabetes'] },
-  { key: 'heart', label: 'Heart, Pressure & Cholesterol', icon: '❤️', categories: ['lipids', 'cardiac'] },
-  { key: 'blood', label: 'Blood', icon: '🩸', categories: ['hematology'] },
-  { key: 'kidney', label: 'Kidney', icon: '🫘', categories: ['kidney', 'electrolytes', 'urine'] },
-  { key: 'liver_pancreas', label: 'Liver & Pancreas', icon: '🔥', categories: ['liver', 'pancreas'] },
-  { key: 'metabolism', label: 'Metabolism & Intestines', icon: '⚡', categories: ['metabolic', 'thyroid'] },
-  { key: 'brain', label: 'Brain', icon: '🧠', categories: [] },
-  { key: 'bones', label: 'Bones', icon: '🦴', categories: [] },
-  { key: 'vitamins', label: 'Vitamins', icon: '💊', categories: ['vitamins'] },
+  {
+    key: 'diabetes',
+    label: 'Diabetes',
+    icon: '💉',
+    categories: ['diabetes'],
+    suggestedTests: ['Fasting Glucose', 'Post-Prandial Glucose', 'HbA1c', 'Fasting Insulin'],
+  },
+  {
+    key: 'heart',
+    label: 'Heart, Pressure & Cholesterol',
+    icon: '❤️',
+    categories: ['lipids', 'cardiac'],
+    suggestedTests: ['Total Cholesterol', 'LDL Cholesterol', 'HDL Cholesterol', 'Triglycerides', 'hs-CRP'],
+  },
+  {
+    key: 'blood',
+    label: 'Blood',
+    icon: '🩸',
+    categories: ['hematology'],
+    suggestedTests: ['Complete Blood Count (CBC)', 'Hemoglobin', 'ESR', 'Ferritin/Iron studies'],
+  },
+  {
+    key: 'kidney',
+    label: 'Kidney',
+    icon: '🫘',
+    categories: ['kidney', 'electrolytes', 'urine'],
+    suggestedTests: ['Creatinine', 'eGFR', 'BUN', 'Sodium & Potassium', 'Urine Routine & Microscopy'],
+  },
+  {
+    key: 'liver_pancreas',
+    label: 'Liver & Pancreas',
+    icon: '🔥',
+    categories: ['liver', 'pancreas'],
+    suggestedTests: ['ALT (SGPT)', 'AST (SGOT)', 'Bilirubin', 'Albumin', 'Lipase or Amylase'],
+  },
+  {
+    key: 'metabolism',
+    label: 'Metabolism & Intestines',
+    icon: '⚡',
+    categories: ['metabolic', 'thyroid'],
+    suggestedTests: ['TSH', 'Free T3 / Free T4', 'Fasting Glucose', 'HbA1c'],
+  },
+  {
+    key: 'brain',
+    label: 'Brain',
+    icon: '🧠',
+    categories: [],
+    suggestedTests: ['Vitamin B12', 'Vitamin D', 'TSH (thyroid)', 'Folate', 'Homocysteine', 'Fasting Glucose / HbA1c'],
+    note:
+      'These are common blood tests doctors use to rule out treatable causes of memory/concentration symptoms (a B12, thyroid, or blood-sugar problem, for example) - ask a doctor which ones fit your situation. Cognitive screening (e.g. MMSE/MoCA) and neuroimaging (MRI/CT) evaluate the brain directly but aren’t lab tests, so they will never appear on this card even once ordered - ask your doctor about those separately.',
+  },
+  {
+    key: 'bones',
+    label: 'Bones',
+    icon: '🦴',
+    categories: [],
+    suggestedTests: ['Vitamin D', 'Calcium', 'Phosphorus', 'Alkaline Phosphatase', 'Parathyroid Hormone (PTH)'],
+    note:
+      'These blood tests reflect bone-related minerals and hormones - ask a doctor which fit your situation. A DEXA bone density scan is the standard test for bone strength itself but isn’t a lab test, so it will never appear on this card even once ordered - ask your doctor about that separately.',
+  },
+  {
+    key: 'vitamins',
+    label: 'Vitamins',
+    icon: '💊',
+    categories: ['vitamins'],
+    suggestedTests: ['Vitamin D', 'Vitamin B12', 'Folate', 'Ferritin/Iron'],
+  },
 ];
 
 const NORMAL_FLAGS = new Set(['normal', 'n', 'wnl', 'within normal limits', 'unremarkable', 'within range']);
@@ -215,6 +282,15 @@ function buildCardSummaries(rows, groups, standardRangesByCode = new Map()) {
       normalCount,
       attentionCount: determinable.length - normalCount,
       parameters: parameters.sort((a, b) => a.displayName.localeCompare(b.displayName)),
+      // What lab tests commonly feed this card - always present (not just
+      // when empty) so a populated card can still answer "what else could I
+      // track here". See ORGAN_GROUPS' comment for why this is curated
+      // rather than model-generated. Absent (undefined) for an ad-hoc
+      // AI/heuristic-grouped card (see customCardService.js) - there is no
+      // fixed, general answer to "what feeds a card the app itself named
+      // on the fly".
+      suggestedTests: group.suggestedTests || undefined,
+      note: group.note || undefined,
     };
   });
 }

@@ -1,5 +1,6 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const config = require('../config');
+const { languageInstruction, DEFAULT_LANGUAGE } = require('../services/languageService');
 
 const SAFETY_TAIL =
   ' This is an automated observation based on your recorded data, not a diagnosis — consider discussing it with a healthcare professional if it is unexpected or concerning.';
@@ -81,7 +82,7 @@ function explanationOnlyReferencesEvidenceNumbers(text, templateData) {
   });
 }
 
-async function buildClaudeExplanation(candidate) {
+async function buildClaudeExplanation(candidate, language) {
   const client = new Anthropic({ apiKey: config.anthropicApiKey });
   const response = await client.messages.create({
     model: config.anthropicModel,
@@ -91,7 +92,7 @@ async function buildClaudeExplanation(candidate) {
       'Use ONLY the numbers and facts given to you. Never introduce a number, date, or fact not present in the input.',
       'Never diagnose a condition or suggest starting, stopping, or changing a medication or dose.',
       'If the observation is at all notable, end with a short suggestion to discuss it with a healthcare professional if it is unexpected or concerning.',
-    ].join(' '),
+    ].join(' ') + languageInstruction(language),
     messages: [
       { role: 'user', content: JSON.stringify({ type: candidate.type, severity: candidate.severity, data: candidate.templateData }) },
     ],
@@ -100,7 +101,12 @@ async function buildClaudeExplanation(candidate) {
   return textBlock ? textBlock.text.trim() : null;
 }
 
-async function generateExplanation(candidate) {
+// `language` is the user's preferred_language (see languageService.js).
+// The heuristic fallback template is English-only (buildHeuristicExplanation
+// has no per-language copy) - a non-English request with no AI provider
+// configured, or where Claude's response fails the evidence-number check
+// below, still gets a correct, safe explanation, just in English.
+async function generateExplanation(candidate, language = DEFAULT_LANGUAGE) {
   const title = buildTitle(candidate);
   const heuristicText = buildHeuristicExplanation(candidate);
 
@@ -109,7 +115,7 @@ async function generateExplanation(candidate) {
   }
 
   try {
-    const claudeText = await buildClaudeExplanation(candidate);
+    const claudeText = await buildClaudeExplanation(candidate, language);
     if (claudeText && explanationOnlyReferencesEvidenceNumbers(claudeText, candidate.templateData)) {
       return { title, explanation: claudeText, provider: 'claude', model: config.anthropicModel };
     }

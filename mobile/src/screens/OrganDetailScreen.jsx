@@ -4,12 +4,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import ResultSummaryModal from '../components/ResultSummaryModal';
 import { cardShadow, colors, healthStatusColors, radii, spacing, typography } from '../theme/theme';
 import { fetchCustomCards, fetchOrganHealth } from '../api/client';
+import { formatCalendarDate } from '../utils/date';
 
 const RESULT_STATUS_LABEL = { normal: 'Normal', abnormal: 'Out of range', unknown: 'Not evaluated' };
 
 function formatDate(value) {
   if (!value) return 'unknown date';
-  return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  return formatCalendarDate(value, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function ParameterRow({ parameter, onPress, onAlertPress }) {
@@ -129,6 +130,23 @@ export default function OrganDetailScreen({ route, navigation }) {
           </Text>
         </View>
 
+        {organ.suggestedTests?.length > 0 && (
+          <View style={[styles.suggestedBox, cardShadow]}>
+            <Text style={typography.heading}>Tests that feed this card</Text>
+            <Text style={typography.bodySecondary}>
+              Ask a doctor which of these fit you, or upload a report that includes them to start tracking:
+            </Text>
+            <View style={styles.suggestedChipRow}>
+              {organ.suggestedTests.map((test) => (
+                <View key={test} style={styles.suggestedChip}>
+                  <Text style={styles.suggestedChipText}>{test}</Text>
+                </View>
+              ))}
+            </View>
+            {organ.note && <Text style={styles.disclaimer}>{organ.note}</Text>}
+          </View>
+        )}
+
         <Text style={[typography.heading, styles.sectionSpacing]}>Tracked tests</Text>
         {organ.parameters.length === 0 ? (
           <Text style={[typography.bodySecondary, styles.emptySection]}>Nothing tracked here yet.</Text>
@@ -224,6 +242,30 @@ const styles = StyleSheet.create({
   sectionSpacing: {
     marginTop: spacing.lg,
     marginBottom: spacing.sm,
+  },
+  suggestedBox: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    marginTop: spacing.lg,
+    gap: spacing.xs,
+  },
+  suggestedChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: 2,
+  },
+  suggestedChip: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radii.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  suggestedChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
   },
   emptySection: {
     marginTop: spacing.xs,
