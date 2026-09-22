@@ -9,6 +9,7 @@ import ReportDetailScreen from '../screens/ReportDetailScreen';
 import ParameterTrendScreen from '../screens/ParameterTrendScreen';
 import OrganDetailScreen from '../screens/OrganDetailScreen';
 import InsightsScreen from '../screens/InsightsScreen';
+import NeedsAttentionScreen from '../screens/NeedsAttentionScreen';
 import ChatScreen from '../screens/ChatScreen';
 import MedicationsScreen from '../screens/MedicationsScreen';
 import MedicationDetailScreen from '../screens/MedicationDetailScreen';
@@ -53,6 +54,7 @@ const linking = {
       ParameterTrend: 'trend/:code',
       OrganDetail: 'organ/:organKey',
       Insights: 'insights',
+      NeedsAttention: 'needs-attention',
       MedicationDetail: 'medications/:medicationId',
       MedicationScanReview: 'medications/scans/:scanId',
     },
@@ -131,6 +133,7 @@ export default function RootNavigator() {
         <Stack.Screen name="ParameterTrend" component={ParameterTrendScreen} options={{ title: 'Trend' }} />
         <Stack.Screen name="OrganDetail" component={OrganDetailScreen} options={{ title: 'Organ health' }} />
         <Stack.Screen name="Insights" component={InsightsScreen} options={{ title: 'AI insights' }} />
+        <Stack.Screen name="NeedsAttention" component={NeedsAttentionScreen} options={{ title: 'Needs attention' }} />
         <Stack.Screen name="MedicationDetail" component={MedicationDetailScreen} options={{ title: 'Medication' }} />
         <Stack.Screen
           name="MedicationScanReview"

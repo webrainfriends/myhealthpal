@@ -2,10 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ParameterPickerModal from '../components/ParameterPickerModal';
-import InsightCard from '../components/InsightCard';
 import OrganHealthCard from '../components/OrganHealthCard';
-import { cardShadow, colors, radii, spacing, typography } from '../theme/theme';
-import { dismissInsight, fetchDashboardSnapshot, fetchOrganHealth, pinParameter, unpinParameter } from '../api/client';
+import SummaryCard from '../components/SummaryCard';
+import { cardShadow, colors, healthStatusColors, radii, spacing, typography } from '../theme/theme';
+import { fetchDashboardSnapshot, fetchOrganHealth, pinParameter, unpinParameter } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 
 function formatDate(value) {
@@ -104,20 +104,6 @@ export default function DashboardScreen({ navigation }) {
     }
   }
 
-  async function handleDismissInsight(id) {
-    try {
-      await dismissInsight(id);
-      await load();
-    } catch (err) {
-      Alert.alert('Could not dismiss insight', err.message);
-    }
-  }
-
-  function handleOpenInsight(insight) {
-    const reportEvidence = (insight.evidence || []).find((e) => e.type === 'report');
-    if (reportEvidence) navigation.navigate('ReportDetail', { reportId: reportEvidence.id });
-  }
-
   if (!snapshot) {
     return (
       <SafeAreaView style={styles.container}>
@@ -159,24 +145,24 @@ export default function DashboardScreen({ navigation }) {
           </View>
         )}
 
-        {snapshot.insights.length > 0 && (
-          <>
-            <View style={styles.sectionHeaderRow}>
-              <Text style={typography.heading}>AI insights</Text>
-              <TouchableOpacity onPress={() => navigation.navigate('Insights')}>
-                <Text style={styles.addLabel}>See all</Text>
-              </TouchableOpacity>
-            </View>
-            {snapshot.insights.slice(0, 3).map((insight) => (
-              <InsightCard
-                key={insight.id}
-                insight={insight}
-                onPress={() => handleOpenInsight(insight)}
-                onDismiss={() => handleDismissInsight(insight.id)}
-              />
-            ))}
-          </>
-        )}
+        <View style={styles.metricGrid}>
+          <SummaryCard
+            icon="🤖"
+            count={snapshot.insights.length}
+            label="AI insights"
+            subtitle={snapshot.insights.length === 0 ? 'Nothing new' : 'Tap to view'}
+            palette={snapshot.insights.length === 0 ? healthStatusColors.no_data : healthStatusColors.watch}
+            onPress={() => navigation.navigate('Insights')}
+          />
+          <SummaryCard
+            icon="⚠️"
+            count={snapshot.needsAttention.length}
+            label="Needs attention"
+            subtitle={snapshot.needsAttention.length === 0 ? 'All clear' : 'Tap to view'}
+            palette={snapshot.needsAttention.length === 0 ? healthStatusColors.good : healthStatusColors.attention}
+            onPress={() => navigation.navigate('NeedsAttention')}
+          />
+        </View>
 
         <View style={styles.sectionHeaderRow}>
           <Text style={typography.heading}>My tracked metrics</Text>
@@ -202,41 +188,6 @@ export default function DashboardScreen({ navigation }) {
             ))}
           </View>
         )}
-
-        <Text style={[typography.heading, styles.sectionSpacing]}>Needs attention</Text>
-        {snapshot.needsAttention.length === 0 ? (
-          <Text style={[typography.bodySecondary, styles.emptySection]}>Nothing flagged right now.</Text>
-        ) : (
-          snapshot.needsAttention.slice(0, 8).map((item) => (
-            <TouchableOpacity
-              key={item.id}
-              style={styles.attentionRow}
-              onPress={() => navigation.navigate('ReportDetail', { reportId: item.report_id })}
-            >
-              <Text style={typography.body}>{item.parameter_display_name || item.raw_test_name}</Text>
-              <Text style={typography.caption}>
-                {item.raw_value} {item.raw_unit || ''} {item.status_flag ? `· ${item.status_flag}` : '· needs review'} ·{' '}
-                {item.original_filename}
-              </Text>
-            </TouchableOpacity>
-          ))
-        )}
-
-        <Text style={[typography.heading, styles.sectionSpacing]}>Recent reports</Text>
-        {snapshot.recentReports.map((report) => (
-          <TouchableOpacity
-            key={report.id}
-            style={styles.attentionRow}
-            onPress={() => navigation.navigate('ReportDetail', { reportId: report.id })}
-          >
-            <Text style={typography.body} numberOfLines={1}>
-              {report.original_filename}
-            </Text>
-            <Text style={typography.caption}>
-              {formatDate(report.effective_date)} · {report.ingestion_status}
-            </Text>
-          </TouchableOpacity>
-        ))}
       </ScrollView>
 
       <ParameterPickerModal
@@ -326,13 +277,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
     color: colors.textSecondary,
-  },
-  attentionRow: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.md,
-    padding: spacing.md,
-    marginTop: spacing.sm,
-    gap: 2,
-    ...cardShadow,
   },
 });

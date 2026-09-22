@@ -1,15 +1,30 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Linking, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import StatusBadge from '../components/StatusBadge';
 import MeasurementRow from '../components/MeasurementRow';
 import PrimaryButton from '../components/PrimaryButton';
 import { colors, radii, spacing, typography } from '../theme/theme';
-import { confirmReport, fetchReport, retryReport, updateMeasurement, updateReportDate } from '../api/client';
+import {
+  confirmReport,
+  fetchReport,
+  fetchReportFileUrl,
+  retryReport,
+  updateMeasurement,
+  updateReportDate,
+} from '../api/client';
 
 function formatDate(value) {
   if (!value) return null;
   return new Date(value).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+function truncateFilename(name, maxLength = 28) {
+  if (name.length <= maxLength) return name;
+  const dot = name.lastIndexOf('.');
+  const extension = dot > -1 ? name.slice(dot) : '';
+  const base = dot > -1 ? name.slice(0, dot) : name;
+  return `${base.slice(0, Math.max(1, maxLength - extension.length - 1))}…${extension}`;
 }
 
 function EffectiveDateRow({ report, onSave }) {
@@ -58,6 +73,7 @@ export default function ReportDetailScreen({ route, navigation }) {
   const [measurements, setMeasurements] = useState([]);
   const [narrativeSummary, setNarrativeSummary] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [openingFile, setOpeningFile] = useState(false);
   const pendingEdits = useRef({});
   const debounceTimers = useRef({});
 
@@ -135,6 +151,18 @@ export default function ReportDetailScreen({ route, navigation }) {
     }
   }
 
+  async function handleViewOriginal() {
+    setOpeningFile(true);
+    try {
+      const url = await fetchReportFileUrl(reportId);
+      await Linking.openURL(url);
+    } catch (err) {
+      Alert.alert('Could not open original file', err.message);
+    } finally {
+      setOpeningFile(false);
+    }
+  }
+
   async function handleRetry() {
     setBusy(true);
     try {
@@ -174,6 +202,17 @@ export default function ReportDetailScreen({ route, navigation }) {
           <EffectiveDateRow report={report} onSave={handleDateSave} />
           <StatusBadge status={report.ingestion_status} />
         </View>
+
+        <PrimaryButton
+          title={
+            report.original_filename
+              ? `View original: ${truncateFilename(report.original_filename)}`
+              : 'View original file'
+          }
+          variant="secondary"
+          onPress={handleViewOriginal}
+          loading={openingFile}
+        />
 
         {(report.source_provider || report.report_type) && (
           <Text style={[typography.bodySecondary, styles.labLine]}>
