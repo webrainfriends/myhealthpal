@@ -94,10 +94,12 @@ export default function OrganDetailScreen({ route, navigation }) {
           <Text style={typography.bodySecondary}>
             {organ.trackedCount === 0
               ? `No ${organ.label.toLowerCase()} results yet — upload a report that includes these tests to start tracking.`
-              : `Health Score = the share of your latest ${organ.label.toLowerCase()} results that fall inside the normal range printed on your reports (${organ.normalCount} of ${organ.normalCount + organ.attentionCount} evaluable results).`}
+              : `Health Score = the share of your latest ${organ.label.toLowerCase()} results that fall in range (${organ.normalCount} of ${organ.normalCount + organ.attentionCount} evaluable results).`}
           </Text>
           <Text style={styles.disclaimer}>
-            This is a summary of your own data, not a diagnosis. Always discuss results with your doctor.
+            Uses the range printed on your report when there is one to read; otherwise a general WHO / ICMR / FDA-aligned
+            clinical reference range. This is a summary of your own data, not a diagnosis - always discuss results with
+            your doctor.
           </Text>
         </View>
 

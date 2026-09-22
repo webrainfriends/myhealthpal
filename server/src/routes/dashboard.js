@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../db/pool');
 const { buildOrganSummaries } = require('../services/organHealthService');
+const { getAllReferenceRangesByCode } = require('../medications/referenceRangeService');
 
 const router = express.Router();
 
@@ -95,8 +96,11 @@ router.get('/snapshot', async (req, res, next) => {
 });
 
 // One card per body-organ group, each with a Health Score: the % of that
-// organ's tracked parameters whose latest result falls in its printed
-// reference range. Every group is always returned (even with no data yet)
+// organ's tracked parameters whose latest result falls in range - the
+// report's own printed flag/range when it's usable, else the app's own
+// standards-based (WHO/ICMR/FDA) general reference range (same source the
+// Medications tab scores against) as a fallback. Every group is always
+// returned (even with no data yet)
 // so a user can see the full picture of what is and isn't being tracked.
 router.get('/organs', async (req, res, next) => {
   try {
@@ -138,7 +142,9 @@ router.get('/organs', async (req, res, next) => {
       reportId: row.report_id,
     }));
 
-    res.json({ organs: buildOrganSummaries(measurements) });
+    const standardRangesByCode = await getAllReferenceRangesByCode();
+
+    res.json({ organs: buildOrganSummaries(measurements, standardRangesByCode) });
   } catch (err) {
     next(err);
   }

@@ -11,6 +11,19 @@ async function getReferenceRange(healthParameterId) {
   return rows[0] || null;
 }
 
+// Bulk form of getReferenceRange, keyed by parameter code rather than id -
+// used by organHealthService, which already has each measurement's code
+// from its own query and would otherwise need N+1 lookups per organ card.
+async function getAllReferenceRangesByCode() {
+  const { rows } = await pool.query(
+    `SELECT hp.code, rr.range_low, rr.range_high, rr.unit, rr.source
+     FROM reference_ranges rr
+     JOIN health_parameters hp ON hp.id = rr.health_parameter_id
+     WHERE rr.condition_label = 'general'`
+  );
+  return new Map(rows.map((row) => [row.code, row]));
+}
+
 // 'in_range' | 'below_range' | 'above_range' | 'unknown' (no value or no
 // standards range on file - excluded from any score rather than guessed).
 function scoreAgainstRange(value, range) {
@@ -24,4 +37,4 @@ function scoreAgainstRange(value, range) {
   return { status: 'in_range', inRange: true };
 }
 
-module.exports = { getReferenceRange, scoreAgainstRange };
+module.exports = { getReferenceRange, getAllReferenceRangesByCode, scoreAgainstRange };

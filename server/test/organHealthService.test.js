@@ -67,6 +67,54 @@ test('determineResultStatus is "unknown" (never guessed) with neither a flag nor
   assert.equal(determineResultStatus({ numericValue: 13.7, referenceRangeRaw: null }), 'unknown');
 });
 
+test('determineResultStatus falls back to the standard range when the report printed no usable flag/range', () => {
+  const hba1cStandard = { range_low: 4.0, range_high: 5.6 };
+  // A multi-tier diagnostic band like HbA1c's isn't a plain "min-max", so
+  // the regex-based printed-range parse can't use it - this is exactly the
+  // shape a real report produces (e.g. "Non-Diabetic: <5.7% / Pre Diabetic:
+  // 5.7-6.4% / Diabetic: >=6.5%").
+  const printedBand = 'Non-Diabetic Level: < 5.7% Pre Diabetic 5.7-6.4% Diabetic Level: >=6.5% Goal 7.0%';
+  assert.equal(determineResultStatus({ normalizedValue: 5.4, referenceRangeRaw: printedBand }, hba1cStandard), 'normal');
+  assert.equal(determineResultStatus({ normalizedValue: 6.8, referenceRangeRaw: printedBand }, hba1cStandard), 'abnormal');
+
+  // No printed range at all (e.g. a home glucometer reading).
+  const glucoseStandard = { range_low: 70, range_high: 139 };
+  assert.equal(determineResultStatus({ normalizedValue: 129 }, glucoseStandard), 'normal');
+  assert.equal(determineResultStatus({ normalizedValue: 210 }, glucoseStandard), 'abnormal');
+});
+
+test('determineResultStatus still trusts an explicit flag or a parseable printed range over the standard fallback', () => {
+  const standard = { range_low: 70, range_high: 99 };
+  assert.equal(determineResultStatus({ statusFlag: 'High', normalizedValue: 80 }, standard), 'abnormal');
+  assert.equal(determineResultStatus({ normalizedValue: 200, referenceRangeRaw: '150-250' }, standard), 'normal');
+});
+
+test('buildOrganSummaries uses the standard-range fallback so a diabetes card with real-world data actually scores', () => {
+  const standardRangesByCode = new Map([
+    ['glucose', { range_low: 70, range_high: 139 }],
+    ['hba1c', { range_low: 4.0, range_high: 5.6 }],
+    ['insulin_fasting', { range_low: 2.6, range_high: 24.9 }],
+  ]);
+  const rows = [
+    { code: 'glucose', displayName: 'Glucose', category: 'diabetes', normalizedValue: 129 },
+    {
+      code: 'hba1c',
+      displayName: 'Hemoglobin A1c',
+      category: 'diabetes',
+      normalizedValue: 6.8,
+      referenceRangeRaw: 'Non-Diabetic: <5.7% Pre Diabetic 5.7-6.4% Diabetic: >=6.5%',
+    },
+    { code: 'insulin_fasting', displayName: 'Insulin, Fasting', category: 'diabetes', normalizedValue: 10.1 },
+  ];
+
+  const diabetes = buildOrganSummaries(rows, standardRangesByCode).find((s) => s.key === 'diabetes');
+  assert.equal(diabetes.trackedCount, 3);
+  assert.equal(diabetes.normalCount, 2); // glucose + insulin in range, HbA1c abnormal
+  assert.equal(diabetes.attentionCount, 1);
+  assert.notEqual(diabetes.scorePercent, null);
+  assert.notEqual(diabetes.status, 'no_data');
+});
+
 test('buildOrganSummaries scores an organ by % of determinable results that are normal, ignoring unknowns', () => {
   const rows = [
     { code: 'ldl', displayName: 'LDL Cholesterol', category: 'lipids', statusFlag: 'High', numericValue: 160 },
