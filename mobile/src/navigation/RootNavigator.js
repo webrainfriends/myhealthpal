@@ -20,7 +20,7 @@ import DietScreen from '../screens/DietScreen';
 import DietScanReviewScreen from '../screens/DietScanReviewScreen';
 import DietEntryFormScreen from '../screens/DietEntryFormScreen';
 import DietStatsScreen from '../screens/DietStatsScreen';
-import DietRecipeScreen from '../screens/DietRecipeScreen';
+import RecipesScreen from '../screens/RecipesScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import RecipePreferencesScreen from '../screens/RecipePreferencesScreen';
 import GmailIntegrationScreen from '../screens/GmailIntegrationScreen';
@@ -72,7 +72,7 @@ const linking = {
       DietScanReview: 'diet/scans/:scanId',
       DietEntryForm: 'diet/entries/:entryId?',
       DietStats: 'diet/stats',
-      DietRecipe: 'diet/recipe',
+      Recipes: 'recipes',
       Settings: 'settings',
       RecipePreferences: 'settings/recipe-preferences',
       GmailIntegration: 'settings/gmail',
@@ -169,7 +169,7 @@ export default function RootNavigator() {
           options={({ route }) => ({ title: route.params?.entryId ? 'Edit item' : 'Add item' })}
         />
         <Stack.Screen name="DietStats" component={DietStatsScreen} options={{ title: 'Diet stats' }} />
-        <Stack.Screen name="DietRecipe" component={DietRecipeScreen} options={{ title: 'Recipe ideas' }} />
+        <Stack.Screen name="Recipes" component={RecipesScreen} options={{ title: 'AI recipe ideas' }} />
         <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
         <Stack.Screen
           name="RecipePreferences"

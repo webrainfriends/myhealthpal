@@ -19,8 +19,13 @@ export default function SettingsScreen({ navigation }) {
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <SettingsRow
+          title="AI recipe ideas"
+          subtitle="Browse a personalized, auto-generated recipe feed"
+          onPress={() => navigation.navigate('Recipes')}
+        />
+        <SettingsRow
           title="Recipe recommendations"
-          subtitle="Diet and cuisine preferences used to suggest recipes"
+          subtitle="Diet, cuisine, and weight-goal preferences used to suggest recipes"
           onPress={() => navigation.navigate('RecipePreferences')}
         />
         <SettingsRow

@@ -501,4 +501,36 @@ router.post('/recipes/generate', async (req, res, next) => {
   }
 });
 
+// Auto-generated, paginated recipe feed for the standalone Recipes screen -
+// grounded in the same considerations as /recipes/generate plus recent
+// activity, weight goal, and saved diet/cuisine preferences (see
+// dietRecipeService.generateRecipeFeed). Not persisted; "Add to Diet" on
+// the mobile app is just a normal POST /entries using the returned
+// nutrition, same as /recipes/generate's "Log this recipe".
+router.post('/recipes/feed', async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    if (body.meal_type && !MEAL_TYPES.has(body.meal_type)) {
+      return res.status(400).json({ error: 'meal_type is not a recognized meal.' });
+    }
+    const count = Math.min(Math.max(Number.parseInt(body.limit, 10) || 10, 1), 10);
+    const excludeTitles = Array.isArray(body.exclude_titles)
+      ? body.exclude_titles.filter((t) => typeof t === 'string').slice(0, 200)
+      : [];
+
+    const { recipes, considerations, signals } = await dietRecipeService.generateRecipeFeed(currentUserId(req), {
+      mealType: body.meal_type || null,
+      count,
+      excludeTitles,
+    });
+
+    res.json({ recipes, considerations, signals, hasMore: recipes.length > 0 });
+  } catch (err) {
+    if (err.message && err.message.includes('ANTHROPIC_API_KEY')) {
+      return res.status(503).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
 module.exports = router;
