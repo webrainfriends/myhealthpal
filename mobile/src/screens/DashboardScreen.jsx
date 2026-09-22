@@ -78,7 +78,8 @@ function TrackedMetricCard({ metric, onPress, onUnpin }) {
 
 export default function DashboardScreen({ navigation }) {
   const { user, signOut } = useAuth();
-  const [snapshot, setSnapshot] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [snapshot, setSnapshot] = useState({ trackedMetrics: [], needsAttention: [], insights: [] });
   const [organs, setOrgans] = useState(null);
   const [customCards, setCustomCards] = useState(null);
   const [activity, setActivity] = useState(null);
@@ -108,6 +109,8 @@ export default function DashboardScreen({ navigation }) {
       setDiet(dietData);
     } catch (err) {
       console.warn('Failed to load dashboard', err.message);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -135,7 +138,7 @@ export default function DashboardScreen({ navigation }) {
     }
   }
 
-  if (!snapshot) {
+  if (loading) {
     return (
       <SafeAreaView style={styles.container}>
         <Text style={[typography.bodySecondary, styles.centeredText]}>Loading dashboard…</Text>
