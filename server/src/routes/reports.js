@@ -311,6 +311,46 @@ router.patch('/:id/measurements/:measurementId', async (req, res, next) => {
   }
 });
 
+// Lets the user resolve one row this report's own dedup check flagged as a
+// likely re-upload of an already-confirmed result ('suspected' - see
+// dedupService). 'skip' marks it 'confirmed_duplicate': it stays in the
+// report for provenance but is permanently excluded from dashboards/trends
+// (see EXCLUDE_DUPLICATES_SQL in routes/dashboard.js), the same as it
+// already was while merely 'suspected'. 'keep' marks it 'confirmed_distinct'
+// - the user is telling the app this is a genuinely new/different result
+// that only coincidentally matched - and from then on it counts like any
+// other confirmed measurement. Only ever moves a row off 'suspected'; never
+// touches one that's 'none' (dedup found nothing) or already resolved.
+router.post('/:id/measurements/:measurementId/duplicate-resolution', async (req, res, next) => {
+  try {
+    const { action } = req.body;
+    if (action !== 'skip' && action !== 'keep') {
+      return res.status(400).json({ error: 'action must be "skip" or "keep".' });
+    }
+
+    const owned = await pool.query('SELECT id FROM reports WHERE id = $1 AND user_id = $2', [
+      req.params.id,
+      currentUserId(req),
+    ]);
+    if (owned.rows.length === 0) return res.status(404).json({ error: 'Report not found' });
+
+    const nextStatus = action === 'skip' ? 'confirmed_duplicate' : 'confirmed_distinct';
+    const { rows } = await pool.query(
+      `UPDATE health_measurements SET duplicate_status = $3, updated_at = now()
+       WHERE id = $1 AND report_id = $2 AND duplicate_status = 'suspected'
+       RETURNING *`,
+      [req.params.measurementId, req.params.id, nextStatus]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Measurement not found, or it is not a suspected duplicate.' });
+    }
+
+    res.json({ measurement: rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post('/:id/confirm', async (req, res, next) => {
   try {
     const { rows } = await pool.query('SELECT * FROM reports WHERE id = $1 AND user_id = $2', [
@@ -323,9 +363,21 @@ router.post('/:id/confirm', async (req, res, next) => {
       return res.status(409).json({ error: `Report cannot be confirmed from status "${report.ingestion_status}".` });
     }
 
+    // Any row still 'suspected' at confirm time means the user never
+    // explicitly resolved it (see the duplicate-resolution endpoint above) -
+    // default it to skipped ('confirmed_duplicate') rather than silently
+    // leaving it 'suspected' forever. Everything else (an explicit 'keep',
+    // or a row dedup never flagged at all) is left exactly as-is, so a
+    // genuinely new/missing result is still added normally.
+    await pool.query(
+      `UPDATE health_measurements SET duplicate_status = 'confirmed_duplicate', updated_at = now()
+       WHERE report_id = $1 AND duplicate_status = 'suspected'`,
+      [req.params.id]
+    );
+
     const confirmedMeasurements = await pool.query(
       `UPDATE health_measurements SET is_confirmed = true, updated_at = now()
-       WHERE report_id = $1 RETURNING id, health_parameter_id`,
+       WHERE report_id = $1 RETURNING id, health_parameter_id, duplicate_status`,
       [req.params.id]
     );
     await pool.query(
@@ -335,7 +387,11 @@ router.post('/:id/confirm', async (req, res, next) => {
     await refreshSummaryForReport(req.params.id);
 
     for (const measurement of confirmedMeasurements.rows) {
-      if (measurement.health_parameter_id) {
+      // A skipped duplicate is never counted as live data (see
+      // EXCLUDE_DUPLICATES_SQL) - generating an insight from it would surface
+      // a "new"/"changed" observation built on a value that isn't actually
+      // being tracked.
+      if (measurement.health_parameter_id && measurement.duplicate_status !== 'confirmed_duplicate') {
         await runForMeasurement(measurement.id);
       }
     }

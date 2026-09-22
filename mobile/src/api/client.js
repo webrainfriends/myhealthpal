@@ -156,6 +156,15 @@ export async function updateMeasurement(reportId, measurementId, changes) {
   return handleResponse(response);
 }
 
+export async function resolveDuplicateMeasurement(reportId, measurementId, action) {
+  const response = await apiFetch(`/api/reports/${reportId}/measurements/${measurementId}/duplicate-resolution`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action }),
+  });
+  return handleResponse(response);
+}
+
 export async function confirmReport(reportId) {
   const response = await apiFetch(`/api/reports/${reportId}/confirm`, { method: 'POST' });
   return handleResponse(response);
@@ -194,6 +203,11 @@ export async function fetchDashboardSnapshot() {
 
 export async function fetchOrganHealth() {
   const response = await apiFetch('/api/dashboard/organs');
+  return handleResponse(response);
+}
+
+export async function fetchCustomCards() {
+  const response = await apiFetch('/api/dashboard/custom-cards');
   return handleResponse(response);
 }
 

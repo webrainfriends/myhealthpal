@@ -1,6 +1,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { ORGAN_GROUPS, buildOrganSummaries, determineResultStatus } = require('../src/services/organHealthService');
+const {
+  ORGAN_GROUPS,
+  buildOrganSummaries,
+  buildCardSummaries,
+  determineResultStatus,
+} = require('../src/services/organHealthService');
 
 test('no registry category is claimed by more than one organ group', () => {
   const mapped = ORGAN_GROUPS.flatMap((g) => g.categories);
@@ -223,6 +228,43 @@ test('score thresholds: >=90 good, 70-89 watch, <70 attention', () => {
   assert.equal(buildOrganSummaries(makeRows(9, 1)).find((s) => s.key === 'kidney').status, 'good'); // 90%
   assert.equal(buildOrganSummaries(makeRows(7, 3)).find((s) => s.key === 'kidney').status, 'watch'); // 70%
   assert.equal(buildOrganSummaries(makeRows(6, 4)).find((s) => s.key === 'kidney').status, 'attention'); // 60%
+});
+
+test('buildCardSummaries backs ad-hoc (non-organ) groups the same way, e.g. for unmapped results with no registry code', () => {
+  // Shape routes/dashboard.js's /custom-cards builds for a result that
+  // matched nothing in the Health Parameter Registry (health_parameter_id
+  // IS NULL) - no `code`, and `category` is an AI/heuristic-assigned group
+  // label rather than a registry category.
+  const rows = [
+    {
+      code: null,
+      displayName: 'A/G Ratio',
+      category: 'Proteins',
+      rawValue: '1.4',
+      numericValue: 1.4,
+      referenceRangeRaw: '1.1-2.5',
+    },
+    {
+      code: null,
+      displayName: 'Albumin',
+      category: 'Proteins',
+      rawValue: '4.02',
+      numericValue: 4.02,
+      referenceRangeRaw: '3.5-5.0',
+    },
+  ];
+  const groups = [{ key: 'custom:proteins', label: 'Proteins', icon: '🧬', categories: ['Proteins'] }];
+
+  const [proteins] = buildCardSummaries(rows, groups);
+  assert.equal(proteins.key, 'custom:proteins');
+  assert.equal(proteins.trackedCount, 2);
+  assert.equal(proteins.normalCount, 2);
+  assert.deepEqual(
+    proteins.parameters.map((p) => p.displayName).sort(),
+    ['A/G Ratio', 'Albumin']
+  );
+  // Never fabricates a registry code for a result that has none.
+  assert.ok(proteins.parameters.every((p) => p.code === null));
 });
 
 test('kidney group merges the kidney and electrolytes categories', () => {

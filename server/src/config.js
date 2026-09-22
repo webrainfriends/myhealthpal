@@ -83,6 +83,12 @@ module.exports = {
   extractionProvider: process.env.EXTRACTION_PROVIDER || 'heuristic',
   summaryProvider: process.env.SUMMARY_PROVIDER || 'heuristic',
   insightProvider: process.env.INSIGHT_PROVIDER || 'heuristic',
+  // Grouping an unmapped lab result (no Health Parameter Registry match) into
+  // a dashboard card label ("AI brain" grouping - see customCardService.js).
+  // 'claude' asks the model for a short, sensible group name/icon per unseen
+  // test name (cached in custom_parameter_groups so it's asked once, ever);
+  // the default keyword heuristic always succeeds with no API call.
+  customCardProvider: process.env.CUSTOM_CARD_PROVIDER || 'heuristic',
   // Diet photo identification always requires Claude (like medication scan
   // extraction, there is no heuristic vision substitute) - dietProvider
   // only controls whether the *tip phrasing* on top of the deterministic

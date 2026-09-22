@@ -82,7 +82,7 @@ async function normalizeCandidate(candidate) {
   const needsReview =
     Boolean(candidate.needs_review) ||
     !matchedParameter ||
-    (matchedParameter && numericValue !== null && candidate.unit && normalizedUnit === null);
+    Boolean(matchedParameter && numericValue !== null && candidate.unit && normalizedUnit === null);
 
   return {
     raw_test_name: candidate.test_name,
@@ -117,4 +117,4 @@ async function normalizeCandidates(candidates) {
   return measurements;
 }
 
-module.exports = { normalizeCandidates, classifyValue };
+module.exports = { normalizeCandidates, normalizeCandidate, classifyValue };

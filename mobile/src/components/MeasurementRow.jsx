@@ -21,13 +21,14 @@ function MappingChip({ measurement, editable, onPress }) {
   );
 }
 
-export default function MeasurementRow({ measurement, editable, onChange, onChangeMapping }) {
+export default function MeasurementRow({ measurement, editable, onChange, onChangeMapping, onResolveDuplicate }) {
   const [mappingModalVisible, setMappingModalVisible] = useState(false);
   const isAbnormal = measurement.status_flag && !/normal/i.test(measurement.status_flag);
   const showsNormalized =
     measurement.normalized_value !== null &&
     measurement.normalized_unit &&
     measurement.normalized_unit !== measurement.raw_unit;
+  const isSuspectedDuplicate = measurement.duplicate_status === 'suspected';
 
   return (
     <View style={[styles.row, measurement.needs_review && styles.needsReview]}>
@@ -46,8 +47,32 @@ export default function MeasurementRow({ measurement, editable, onChange, onChan
 
       <MappingChip measurement={measurement} editable={editable} onPress={() => setMappingModalVisible(true)} />
 
-      {measurement.duplicate_status === 'suspected' ? (
-        <Text style={styles.duplicateNote}>Possible duplicate of an earlier confirmed result</Text>
+      {measurement.duplicate_status === 'confirmed_duplicate' ? (
+        <Text style={styles.duplicateNote}>Skipped as a duplicate of an earlier confirmed result</Text>
+      ) : null}
+      {measurement.duplicate_status === 'confirmed_distinct' ? (
+        <Text style={styles.duplicateKeptNote}>Kept as a new, distinct result</Text>
+      ) : null}
+      {isSuspectedDuplicate ? (
+        <View style={styles.duplicateBlock}>
+          <Text style={styles.duplicateNote}>Possible duplicate of an earlier confirmed result</Text>
+          {editable && onResolveDuplicate ? (
+            <View style={styles.duplicateActions}>
+              <TouchableOpacity
+                style={[styles.duplicateActionButton, styles.duplicateSkipButton]}
+                onPress={() => onResolveDuplicate('skip')}
+              >
+                <Text style={styles.duplicateSkipLabel}>Skip (it's a duplicate)</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.duplicateActionButton, styles.duplicateKeepButton]}
+                onPress={() => onResolveDuplicate('keep')}
+              >
+                <Text style={styles.duplicateKeepLabel}>Keep as new result</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+        </View>
       ) : null}
 
       <View style={styles.valueRow}>
@@ -169,10 +194,46 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.textSecondary,
   },
+  duplicateBlock: {
+    gap: spacing.xs,
+  },
   duplicateNote: {
     fontSize: 12,
     fontStyle: 'italic',
     color: colors.danger,
+  },
+  duplicateKeptNote: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    color: colors.textSecondary,
+  },
+  duplicateActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  duplicateActionButton: {
+    borderRadius: radii.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+  },
+  duplicateSkipButton: {
+    backgroundColor: colors.dangerMuted,
+    borderColor: colors.danger,
+  },
+  duplicateKeepButton: {
+    backgroundColor: colors.successMuted,
+    borderColor: colors.success,
+  },
+  duplicateSkipLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.danger,
+  },
+  duplicateKeepLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.success,
   },
   valueRow: {
     flexDirection: 'row',
