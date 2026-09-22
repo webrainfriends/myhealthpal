@@ -21,6 +21,9 @@ import DietScanReviewScreen from '../screens/DietScanReviewScreen';
 import DietEntryFormScreen from '../screens/DietEntryFormScreen';
 import DietStatsScreen from '../screens/DietStatsScreen';
 import DietRecipeScreen from '../screens/DietRecipeScreen';
+import SettingsScreen from '../screens/SettingsScreen';
+import RecipePreferencesScreen from '../screens/RecipePreferencesScreen';
+import GmailIntegrationScreen from '../screens/GmailIntegrationScreen';
 import LoginScreen from '../screens/LoginScreen';
 import { useAuth } from '../auth/AuthContext';
 import { colors } from '../theme/theme';
@@ -69,6 +72,9 @@ const linking = {
       DietEntryForm: 'diet/entries/:entryId?',
       DietStats: 'diet/stats',
       DietRecipe: 'diet/recipe',
+      Settings: 'settings',
+      RecipePreferences: 'settings/recipe-preferences',
+      GmailIntegration: 'settings/gmail',
     },
   },
 };
@@ -163,6 +169,17 @@ export default function RootNavigator() {
         />
         <Stack.Screen name="DietStats" component={DietStatsScreen} options={{ title: 'Diet stats' }} />
         <Stack.Screen name="DietRecipe" component={DietRecipeScreen} options={{ title: 'Recipe ideas' }} />
+        <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
+        <Stack.Screen
+          name="RecipePreferences"
+          component={RecipePreferencesScreen}
+          options={{ title: 'Recipe recommendations' }}
+        />
+        <Stack.Screen
+          name="GmailIntegration"
+          component={GmailIntegrationScreen}
+          options={{ title: 'Connected health sources' }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );
