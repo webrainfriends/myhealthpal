@@ -599,17 +599,89 @@ module.exports = [
   },
   {
     id: 'omeprazole',
-    genericNames: ['omeprazole', 'pantoprazole', 'esomeprazole', 'rabeprazole'],
-    brandNames: ['prilosec', 'protonix', 'nexium', 'pantocid', 'omez'],
+    genericNames: ['omeprazole'],
+    brandNames: ['prilosec', 'omez', 'ocid'],
     category: 'Proton pump inhibitor (acid reflux)',
     usage: 'Reduces stomach acid production, used for acid reflux, gastritis, and ulcer healing.',
-    activeIngredient: 'Omeprazole, pantoprazole, esomeprazole, or rabeprazole depending on the specific product',
+    activeIngredient: 'Omeprazole',
     commonSideEffects: ['Headache', 'Stomach pain', 'Nausea', 'Diarrhea or constipation'],
     warnings: [
       'Long-term use is linked to lower B12, magnesium, and calcium absorption, and higher fracture risk',
       'Can reduce the effectiveness of some other drugs (e.g. clopidogrel) - check with a pharmacist',
     ],
     typicalDailyDose: { amountMin: 20, amountMax: 40, unit: 'mg' },
+    parameterLinks: [
+      {
+        code: 'vitamin_b12',
+        relationship: 'monitors_side_effect',
+        direction: 'decrease',
+        onsetWeeksMin: 24,
+        onsetWeeksMax: 52,
+        rationale: 'Long-term acid suppression can reduce B12 absorption over many months - occasional monitoring is reasonable with prolonged use.',
+      },
+    ],
+  },
+  {
+    id: 'pantoprazole',
+    genericNames: ['pantoprazole'],
+    brandNames: ['protonix', 'pantocid', 'pan-d'],
+    category: 'Proton pump inhibitor (acid reflux)',
+    usage: 'Reduces stomach acid production, used for acid reflux, gastritis, and ulcer healing.',
+    activeIngredient: 'Pantoprazole',
+    commonSideEffects: ['Headache', 'Stomach pain', 'Nausea', 'Diarrhea or constipation'],
+    warnings: [
+      'Long-term use is linked to lower B12, magnesium, and calcium absorption, and higher fracture risk',
+      'Can reduce the effectiveness of some other drugs (e.g. clopidogrel) - check with a pharmacist',
+    ],
+    typicalDailyDose: { amountMin: 20, amountMax: 40, unit: 'mg' },
+    parameterLinks: [
+      {
+        code: 'vitamin_b12',
+        relationship: 'monitors_side_effect',
+        direction: 'decrease',
+        onsetWeeksMin: 24,
+        onsetWeeksMax: 52,
+        rationale: 'Long-term acid suppression can reduce B12 absorption over many months - occasional monitoring is reasonable with prolonged use.',
+      },
+    ],
+  },
+  {
+    id: 'esomeprazole',
+    genericNames: ['esomeprazole'],
+    brandNames: ['nexium', 'esoz', 'nexpro'],
+    category: 'Proton pump inhibitor (acid reflux)',
+    usage: 'Reduces stomach acid production, used for acid reflux, gastritis, and ulcer healing.',
+    activeIngredient: 'Esomeprazole',
+    commonSideEffects: ['Headache', 'Stomach pain', 'Nausea', 'Diarrhea or constipation'],
+    warnings: [
+      'Long-term use is linked to lower B12, magnesium, and calcium absorption, and higher fracture risk',
+      'Can reduce the effectiveness of some other drugs (e.g. clopidogrel) - check with a pharmacist',
+    ],
+    typicalDailyDose: { amountMin: 20, amountMax: 40, unit: 'mg' },
+    parameterLinks: [
+      {
+        code: 'vitamin_b12',
+        relationship: 'monitors_side_effect',
+        direction: 'decrease',
+        onsetWeeksMin: 24,
+        onsetWeeksMax: 52,
+        rationale: 'Long-term acid suppression can reduce B12 absorption over many months - occasional monitoring is reasonable with prolonged use.',
+      },
+    ],
+  },
+  {
+    id: 'rabeprazole',
+    genericNames: ['rabeprazole'],
+    brandNames: ['aciphex', 'rabecid', 'razo'],
+    category: 'Proton pump inhibitor (acid reflux)',
+    usage: 'Reduces stomach acid production, used for acid reflux, gastritis, and ulcer healing.',
+    activeIngredient: 'Rabeprazole',
+    commonSideEffects: ['Headache', 'Stomach pain', 'Nausea', 'Diarrhea or constipation'],
+    warnings: [
+      'Long-term use is linked to lower B12, magnesium, and calcium absorption, and higher fracture risk',
+      'Can reduce the effectiveness of some other drugs (e.g. clopidogrel) - check with a pharmacist',
+    ],
+    typicalDailyDose: { amountMin: 10, amountMax: 20, unit: 'mg' },
     parameterLinks: [
       {
         code: 'vitamin_b12',
@@ -638,30 +710,96 @@ module.exports = [
   },
   {
     id: 'azithromycin',
-    genericNames: ['azithromycin', 'amoxicillin', 'amoxicillin clavulanate', 'ciprofloxacin', 'doxycycline'],
-    brandNames: ['zithromax', 'azithral', 'augmentin', 'ciplox'],
-    category: 'Antibiotic',
-    usage: 'A short course to treat a bacterial infection. Not typically taken long-term and has no routine lab-parameter monitoring.',
-    activeIngredient: 'Azithromycin, amoxicillin, amoxicillin/clavulanate, ciprofloxacin, or doxycycline depending on the specific product',
-    commonSideEffects: ['Nausea', 'Diarrhea', 'Stomach upset'],
+    genericNames: ['azithromycin'],
+    brandNames: ['zithromax', 'azithral', 'zady'],
+    category: 'Antibiotic (macrolide)',
+    usage:
+      'Treats bacterial infections (respiratory, skin, some STIs) by stopping bacterial protein synthesis. Often prescribed as a short 3-5 day course thanks to its long half-life. Not typically taken long-term and has no routine lab-parameter monitoring.',
+    activeIngredient: 'Azithromycin',
+    commonSideEffects: ['Nausea', 'Diarrhea', 'Stomach pain'],
     warnings: [
       'Finish the full prescribed course even if feeling better, unless a doctor says otherwise',
+      'Rare risk of heart rhythm changes (QT prolongation), especially combined with other QT-prolonging drugs',
       'Report any signs of a severe allergic reaction (rash, swelling, difficulty breathing) immediately',
     ],
-    typicalDailyDose: null,
+    typicalDailyDose: { amountMin: 250, amountMax: 500, unit: 'mg' },
+    parameterLinks: [],
+  },
+  {
+    id: 'amoxicillin',
+    genericNames: ['amoxicillin', 'amoxicillin clavulanate', 'amoxicillin/clavulanic acid', 'co-amoxiclav'],
+    brandNames: ['augmentin', 'moxikind', 'amoxil'],
+    category: 'Antibiotic (penicillin)',
+    usage:
+      'Treats bacterial infections by interfering with bacterial cell wall formation. Often combined with clavulanic acid ' +
+      '(as "Augmentin"/co-amoxiclav) to overcome resistance from bacterial beta-lactamase enzymes - check the label to see ' +
+      'whether this specific product includes it. Not typically taken long-term and has no routine lab-parameter monitoring.',
+    activeIngredient:
+      'Amoxicillin, or Amoxicillin + Clavulanic acid in combination products - clavulanic acid has no antibacterial effect ' +
+      'of its own, it protects the amoxicillin from being broken down by resistant bacteria.',
+    commonSideEffects: ['Nausea', 'Diarrhea', 'Rash'],
+    warnings: [
+      'Finish the full prescribed course even if feeling better, unless a doctor says otherwise',
+      'Never take with a known penicillin allergy',
+      'The clavulanate component (in combination products) more often causes diarrhea than amoxicillin alone',
+    ],
+    typicalDailyDose: { amountMin: 500, amountMax: 1750, unit: 'mg' },
+    parameterLinks: [],
+  },
+  {
+    id: 'ciprofloxacin',
+    genericNames: ['ciprofloxacin'],
+    brandNames: ['ciplox', 'cipro', 'ciprobid'],
+    category: 'Antibiotic (fluoroquinolone)',
+    usage:
+      'Treats bacterial infections (urinary, respiratory, gastrointestinal) by blocking bacterial DNA replication. Not ' +
+      'typically taken long-term and has no routine lab-parameter monitoring.',
+    activeIngredient: 'Ciprofloxacin',
+    commonSideEffects: ['Nausea', 'Diarrhea', 'Headache'],
+    warnings: [
+      'Finish the full prescribed course even if feeling better, unless a doctor says otherwise',
+      'Rare but serious risk of tendon rupture/tendinitis, especially over age 60 or on steroids',
+      'Dairy, antacids, and mineral supplements reduce absorption if taken too close together',
+    ],
+    typicalDailyDose: { amountMin: 500, amountMax: 1500, unit: 'mg' },
+    parameterLinks: [],
+  },
+  {
+    id: 'doxycycline',
+    genericNames: ['doxycycline'],
+    brandNames: ['doxy', 'vibramycin', 'microdox'],
+    category: 'Antibiotic (tetracycline)',
+    usage:
+      'Treats bacterial infections (respiratory, acne, tick-borne illnesses, some STIs) by stopping bacterial protein ' +
+      'synthesis. Not typically taken long-term (except for acne) and has no routine lab-parameter monitoring.',
+    activeIngredient: 'Doxycycline',
+    commonSideEffects: ['Nausea', 'Sun sensitivity', 'Stomach upset'],
+    warnings: [
+      'Finish the full prescribed course even if feeling better, unless a doctor says otherwise',
+      'Significantly increases sun sensitivity - use sun protection',
+      'Not recommended in pregnancy or for young children (can affect developing teeth/bones)',
+      'Dairy, antacids, and mineral supplements reduce absorption if taken too close together',
+    ],
+    typicalDailyDose: { amountMin: 100, amountMax: 200, unit: 'mg' },
     parameterLinks: [],
   },
   {
     id: 'paracetamol',
-    genericNames: ['paracetamol', 'acetaminophen', 'ibuprofen', 'diclofenac', 'naproxen'],
-    brandNames: ['tylenol', 'crocin', 'dolo', 'advil', 'brufen'],
-    category: 'Analgesic / pain reliever',
-    usage: 'Relieves pain and/or fever. Occasional use needs no lab monitoring; frequent, high-dose, or prolonged use can affect the liver (paracetamol/acetaminophen) or kidneys (ibuprofen/diclofenac/naproxen).',
-    activeIngredient: 'Paracetamol/acetaminophen, ibuprofen, diclofenac, or naproxen depending on the specific product',
-    commonSideEffects: ['Generally well tolerated occasionally', 'NSAIDs (ibuprofen/diclofenac/naproxen) can cause stomach upset'],
+    genericNames: ['paracetamol', 'acetaminophen'],
+    brandNames: ['tylenol', 'crocin', 'dolo', 'calpol', 'panadol'],
+    category: 'Analgesic / antipyretic (non-NSAID)',
+    usage:
+      'Relieves pain and reduces fever. Unlike NSAIDs, it does not meaningfully reduce inflammation. Frequently combined ' +
+      'with other ingredients (e.g. caffeine, or codeine in prescription-only products) in specific brands - check this ' +
+      'product\'s own label for its exact combination. Occasional use needs no lab monitoring; frequent or high-dose use ' +
+      'can affect the liver.',
+    activeIngredient: 'Paracetamol (acetaminophen)',
+    commonSideEffects: ['Generally well tolerated at recommended doses', 'Rare skin reactions'],
     warnings: [
-      'Do not exceed the labeled maximum daily dose - paracetamol overdose can cause serious liver damage',
-      'NSAIDs carry a risk of stomach bleeding and kidney strain with frequent/prolonged use, especially combined with blood thinners',
+      'Do not exceed the labeled maximum daily dose (commonly 3000mg/day for adults on current labels) - overdose is a ' +
+        'leading cause of acute liver failure',
+      'Paracetamol from every source (including combination cold/flu products) counts toward that daily limit',
+      'Avoid or limit alcohol while taking it regularly',
     ],
     typicalDailyDose: { amountMin: 500, amountMax: 3000, unit: 'mg' },
     parameterLinks: [
@@ -673,6 +811,79 @@ module.exports = [
         onsetWeeksMax: 4,
         rationale: 'Frequent or high-dose use can affect liver enzymes - worth checking if this is being taken regularly rather than occasionally.',
       },
+    ],
+  },
+  {
+    id: 'ibuprofen',
+    genericNames: ['ibuprofen'],
+    brandNames: ['advil', 'brufen', 'motrin', 'ibugesic'],
+    category: 'NSAID (nonsteroidal anti-inflammatory)',
+    usage:
+      'Relieves pain, reduces inflammation, and reduces fever by blocking prostaglandin production (COX-1/COX-2 ' +
+      'inhibition). Occasional use needs no lab monitoring; frequent or prolonged use can affect the kidneys and stomach.',
+    activeIngredient: 'Ibuprofen',
+    commonSideEffects: ['Stomach upset or heartburn', 'Nausea', 'Headache'],
+    warnings: [
+      'Frequent or prolonged use raises the risk of stomach bleeding and ulcers, especially combined with blood thinners or steroids',
+      'Can affect kidney function, especially with dehydration or existing kidney disease',
+      'Avoid in late pregnancy unless directed by a doctor',
+    ],
+    typicalDailyDose: { amountMin: 200, amountMax: 1200, unit: 'mg' },
+    parameterLinks: [
+      {
+        code: 'creatinine',
+        relationship: 'monitors_side_effect',
+        direction: 'increase',
+        onsetWeeksMin: 1,
+        onsetWeeksMax: 4,
+        rationale: 'Frequent NSAID use can affect kidney function - worth checking if this is being taken regularly rather than occasionally.',
+      },
+    ],
+  },
+  {
+    id: 'diclofenac',
+    genericNames: ['diclofenac', 'diclofenac sodium', 'diclofenac potassium'],
+    brandNames: ['voltaren', 'voveran', 'cataflam'],
+    category: 'NSAID (nonsteroidal anti-inflammatory)',
+    usage:
+      'Relieves pain and inflammation, commonly used for joint/muscle pain and arthritis; also available as a topical ' +
+      'gel. Occasional use needs no lab monitoring; frequent or prolonged oral use can affect the kidneys and stomach.',
+    activeIngredient: 'Diclofenac (sodium or potassium salt for tablets, or as a topical gel)',
+    commonSideEffects: ['Stomach upset', 'Headache', 'Dizziness'],
+    warnings: [
+      'Frequent or prolonged oral use raises the risk of stomach bleeding, ulcers, and cardiovascular events',
+      'Can affect kidney function, especially with dehydration or existing kidney disease',
+      'The topical gel form carries much lower risk of these effects than oral tablets',
+    ],
+    typicalDailyDose: { amountMin: 50, amountMax: 150, unit: 'mg' },
+    parameterLinks: [
+      {
+        code: 'creatinine',
+        relationship: 'monitors_side_effect',
+        direction: 'increase',
+        onsetWeeksMin: 1,
+        onsetWeeksMax: 4,
+        rationale: 'Frequent NSAID use can affect kidney function - worth checking if this is being taken regularly rather than occasionally.',
+      },
+    ],
+  },
+  {
+    id: 'naproxen',
+    genericNames: ['naproxen', 'naproxen sodium'],
+    brandNames: ['aleve', 'naprosyn', 'anaprox'],
+    category: 'NSAID (nonsteroidal anti-inflammatory)',
+    usage:
+      'Relieves pain and inflammation with a longer duration of action than ibuprofen, commonly used for arthritis and ' +
+      'muscle pain. Occasional use needs no lab monitoring; frequent or prolonged use can affect the kidneys and stomach.',
+    activeIngredient: 'Naproxen (or naproxen sodium)',
+    commonSideEffects: ['Stomach upset', 'Headache', 'Drowsiness'],
+    warnings: [
+      'Frequent or prolonged use raises the risk of stomach bleeding and ulcers',
+      'Can affect kidney function, especially with dehydration or existing kidney disease',
+      'Longer-acting than other NSAIDs, so both effects and side effects last longer per dose',
+    ],
+    typicalDailyDose: { amountMin: 220, amountMax: 1100, unit: 'mg' },
+    parameterLinks: [
       {
         code: 'creatinine',
         relationship: 'monitors_side_effect',
