@@ -6,6 +6,7 @@ const { detectAndPersistReportDates } = require('../extraction/reportDateService
 const { reconcileMeasurementDuplicatesForReport } = require('../extraction/dedupService');
 const { reconcileReportDuplicate } = require('../extraction/reportDedupService');
 const { refreshSummaryForReport } = require('../extraction/reportNarrativeService');
+const { importActivityTablesFrom } = require('./activityImportService');
 
 // In-process async runner: kicks off processing without blocking the upload
 // response. Swappable for a real queue (BullMQ/SQS/etc.) behind the same
@@ -65,15 +66,38 @@ async function processReport(reportId) {
 
     const document = await adapter.extract(report.storage_path);
 
+    // A wearable/health-tracker "Activity" sheet (steps/calories/distance)
+    // isn't a lab result and must never reach the extraction providers
+    // below - both would otherwise treat every numeric column as an
+    // unmapped clinical result needing review. Pulled out here, before
+    // extraction ever sees it, straight into activity_logs.
+    let activityImportedDays = 0;
+    if (document.contentKind === 'structured_table' && Array.isArray(document.tables)) {
+      const { remainingTables, importedDays } = await importActivityTablesFrom(document.tables, report.user_id);
+      document.tables = remainingTables;
+      activityImportedDays = importedDays;
+    }
+
     await clearUnconfirmedMeasurements(reportId);
-    const { measurements, warnings, document: docInfo, ocrAttempted } = await runExtraction({
-      reportId,
-      userId: report.user_id,
-      document,
-      filePath: report.storage_path,
-      mimeType: report.mime_type,
-    });
-    const summary = generateSummary(measurements);
+    // Nothing left to run through extraction if the whole upload was an
+    // activity export - skip the (provider) call entirely rather than
+    // asking heuristic/Claude to extract parameters from zero tables.
+    const skipExtraction =
+      document.contentKind === 'structured_table' && document.tables.length === 0 && activityImportedDays > 0;
+    const { measurements, warnings, document: docInfo, ocrAttempted } = skipExtraction
+      ? { measurements: [], warnings: [], document: null, ocrAttempted: false }
+      : await runExtraction({
+          reportId,
+          userId: report.user_id,
+          document,
+          filePath: report.storage_path,
+          mimeType: report.mime_type,
+        });
+    const activityNote =
+      activityImportedDays > 0
+        ? `Imported ${activityImportedDays} day${activityImportedDays === 1 ? '' : 's'} of activity data (steps, and calories/distance where present) - see the Activity screen.`
+        : null;
+    const summary = [activityNote, generateSummary(measurements)].filter(Boolean).join(' ');
 
     const { effectiveDate } = await detectAndPersistReportDates({
       reportId,

@@ -121,6 +121,17 @@ const WIDE_FORMAT_SKIP_COLUMNS = new Set([
   'comments',
   'source',
   'client',
+  // Activity/fitness export columns that activityImportService.js already
+  // routes to activity_logs when the table looks like an activity export
+  // (see detectActivityTable). Skipped here too as defense-in-depth for a
+  // similarly-shaped export that lacks a recognized steps/date column pair
+  // and so isn't caught upstream - these were never clinical results.
+  'duration',
+  'active time',
+  'climb',
+  'floors',
+  'activity stream duration by type',
+  'feeling',
   'app',
   'device',
   'feeling',
@@ -497,4 +508,4 @@ function extractParameters(document) {
   return { parameters: [], warnings: ['Document content was not in a format that could be parsed for parameters.'] };
 }
 
-module.exports = { extractParameters };
+module.exports = { extractParameters, normalizeHeader, parseNumeric, parseDate };

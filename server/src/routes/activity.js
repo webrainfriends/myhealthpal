@@ -34,11 +34,17 @@ function toSummary(row) {
   const steps = row?.steps ?? null;
   const exerciseMinutes = row?.exercise_minutes ?? null;
   const standHours = row?.stand_hours ?? null;
+  const caloriesBurned = row?.calories_burned ?? null;
+  const distanceMeters = row?.distance_meters !== null && row?.distance_meters !== undefined
+    ? Number(row.distance_meters)
+    : null;
   return {
     date: normalizeDate(row?.log_date),
     steps,
     exerciseMinutes,
     standHours,
+    caloriesBurned,
+    distanceMeters,
     rings: {
       steps: ringPercent(steps, GOALS.steps),
       exerciseMinutes: ringPercent(exerciseMinutes, GOALS.exerciseMinutes),
@@ -56,7 +62,7 @@ router.get('/summary', async (req, res, next) => {
     const days = Math.min(Math.max(Number.parseInt(req.query.days, 10) || 14, 1), 90);
 
     const { rows } = await pool.query(
-      `SELECT log_date, steps, exercise_minutes, stand_hours
+      `SELECT log_date, steps, exercise_minutes, stand_hours, calories_burned, distance_meters
        FROM activity_logs
        WHERE user_id = $1 AND log_date >= CURRENT_DATE - ($2::int - 1)
        ORDER BY log_date ASC`,
@@ -105,7 +111,7 @@ router.post('/', async (req, res, next) => {
          exercise_minutes = COALESCE(EXCLUDED.exercise_minutes, activity_logs.exercise_minutes),
          stand_hours = COALESCE(EXCLUDED.stand_hours, activity_logs.stand_hours),
          updated_at = now()
-       RETURNING log_date, steps, exercise_minutes, stand_hours`,
+       RETURNING log_date, steps, exercise_minutes, stand_hours, calories_burned, distance_meters`,
       [
         userId,
         logDate,
