@@ -53,9 +53,9 @@ async function processMedicationScan(scanId) {
            user_id, scan_id, name, generic_name, dosage_amount, dosage_unit, form,
            frequency_per_day, times_of_day, route, instructions, prescribed_for,
            prescribing_doctor, start_date, duration_days, end_date,
-           quantity_dispensed, quantity_unit, expiry_date,
+           quantity_dispensed, quantity_unit, expiry_date, ingredients_raw,
            source_type, status, extraction_confidence, needs_review, is_confirmed
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,'active',$21,$22,false)
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,'active',$22,$23,false)
          RETURNING id`,
         [
           scan.user_id,
@@ -77,6 +77,7 @@ async function processMedicationScan(scanId) {
           med.quantity_dispensed,
           med.quantity_unit,
           med.expiry_date,
+          med.ingredients_raw,
           scan.scan_type === 'tablet_photo' ? 'tablet_photo' : 'prescription_scan',
           med.confidence,
           med.needs_review,

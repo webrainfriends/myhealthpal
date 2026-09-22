@@ -2,10 +2,18 @@ import { StyleSheet, Text, TextInput, View } from 'react-native';
 import ChipSelect from './ChipSelect';
 import { colors, radii, spacing, typography } from '../theme/theme';
 
-const FORM_OPTIONS = ['tablet', 'capsule', 'syrup', 'injection', 'drops', 'inhaler', 'cream', 'other'].map((v) => ({
-  value: v,
-  label: v[0].toUpperCase() + v.slice(1),
-}));
+const FORM_OPTIONS = [
+  'tablet',
+  'capsule',
+  'syrup',
+  'tonic',
+  'injection',
+  'drops',
+  'lotion',
+  'inhaler',
+  'cream',
+  'other',
+].map((v) => ({ value: v, label: v[0].toUpperCase() + v.slice(1) }));
 const DOSAGE_UNIT_OPTIONS = ['mg', 'mcg', 'g', 'ml', 'iu', 'percent', 'other'].map((v) => ({ value: v, label: v }));
 
 function Field({ label, value, onChangeText, placeholder, keyboardType }) {
@@ -58,6 +66,12 @@ export default function MedicationForm({ value, onChange }) {
         onChange={(v) => set('dosage_unit', v)}
       />
       <ChipSelect label="Form" options={FORM_OPTIONS} value={value.form} onChange={(v) => set('form', v)} />
+      <Field
+        label="Ingredients / composition (as printed on the label)"
+        value={value.ingredients_raw}
+        onChangeText={(t) => set('ingredients_raw', t)}
+        placeholder="e.g. Paracetamol 500mg, Caffeine 65mg"
+      />
       <Field
         label="Times per day"
         value={value.frequency_per_day != null ? String(value.frequency_per_day) : ''}

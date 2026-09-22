@@ -23,6 +23,13 @@ module.exports = [
     category: 'Antidiabetic (biguanide)',
     usage:
       'Lowers blood glucose in type 2 diabetes by reducing glucose production in the liver and improving the body\'s response to insulin. Often the first medication tried for type 2 diabetes.',
+    activeIngredient: 'Metformin hydrochloride',
+    commonSideEffects: ['Nausea or upset stomach', 'Diarrhea', 'Metallic taste', 'Loss of appetite'],
+    warnings: [
+      'Rare but serious risk of lactic acidosis, especially with reduced kidney function',
+      'Often paused before procedures using contrast dye - follow your provider\'s instructions',
+      'Taking it with food reduces stomach upset',
+    ],
     typicalDailyDose: { amountMin: 500, amountMax: 2550, unit: 'mg' },
     parameterLinks: [
       {
@@ -57,6 +64,12 @@ module.exports = [
     brandNames: ['amaryl', 'glimy', 'glimestar'],
     category: 'Antidiabetic (sulfonylurea)',
     usage: 'Stimulates the pancreas to release more insulin, lowering blood glucose in type 2 diabetes.',
+    activeIngredient: 'Glimepiride',
+    commonSideEffects: ['Low blood sugar (hypoglycemia)', 'Weight gain', 'Dizziness', 'Nausea'],
+    warnings: [
+      'Risk of hypoglycemia rises if a meal is skipped after dosing',
+      'Alcohol can increase the risk of low blood sugar',
+    ],
     typicalDailyDose: { amountMin: 1, amountMax: 8, unit: 'mg' },
     parameterLinks: [
       {
@@ -83,6 +96,12 @@ module.exports = [
     brandNames: ['januvia', 'istavel', 'zita'],
     category: 'Antidiabetic (DPP-4 inhibitor)',
     usage: 'Helps the body release more of its own insulin after meals and lowers glucose production, used for type 2 diabetes.',
+    activeIngredient: 'Sitagliptin',
+    commonSideEffects: ['Upper respiratory infection symptoms', 'Headache', 'Stomach upset'],
+    warnings: [
+      'Rare reports of pancreatitis - seek care for severe abdominal pain',
+      'Dose may need adjustment with reduced kidney function',
+    ],
     typicalDailyDose: { amountMin: 25, amountMax: 100, unit: 'mg' },
     parameterLinks: [
       {
@@ -109,6 +128,13 @@ module.exports = [
     brandNames: ['lantus', 'humalog', 'novorapid', 'novolin', 'toujeo', 'basalog', 'huminsulin'],
     category: 'Antidiabetic (insulin)',
     usage: 'Replaces or supplements the body\'s own insulin to directly lower blood glucose, used in type 1 and advanced type 2 diabetes.',
+    activeIngredient: 'Insulin (formulation varies by product - glargine, aspart, lispro, NPH, etc.)',
+    commonSideEffects: ['Low blood sugar (hypoglycemia)', 'Injection site reactions', 'Weight gain'],
+    warnings: [
+      'Never share injection pens or needles',
+      'Missed or doubled doses can cause dangerous blood sugar swings',
+      'Storage temperature matters - follow the product label',
+    ],
     typicalDailyDose: { amountMin: 10, amountMax: 100, unit: 'iu' },
     parameterLinks: [
       {
@@ -143,6 +169,13 @@ module.exports = [
     brandNames: ['lipitor', 'atorva', 'storvas'],
     category: 'Statin (cholesterol-lowering)',
     usage: 'Reduces LDL ("bad") cholesterol and triglycerides, and modestly raises HDL, to lower cardiovascular risk.',
+    activeIngredient: 'Atorvastatin calcium',
+    commonSideEffects: ['Muscle aches', 'Joint pain', 'Digestive upset', 'Headache'],
+    warnings: [
+      'Rare but serious risk of muscle breakdown (rhabdomyolysis) - report unexplained muscle pain or weakness',
+      'Avoid grapefruit juice, which can raise drug levels',
+      'Periodic liver enzyme monitoring is typical',
+    ],
     typicalDailyDose: { amountMin: 10, amountMax: 80, unit: 'mg' },
     parameterLinks: [
       {
@@ -193,6 +226,12 @@ module.exports = [
     brandNames: ['crestor', 'rosuvas', 'rosufit'],
     category: 'Statin (cholesterol-lowering)',
     usage: 'Reduces LDL ("bad") cholesterol and triglycerides, and modestly raises HDL, to lower cardiovascular risk.',
+    activeIngredient: 'Rosuvastatin calcium',
+    commonSideEffects: ['Muscle aches', 'Headache', 'Digestive upset'],
+    warnings: [
+      'Rare but serious risk of muscle breakdown (rhabdomyolysis) - report unexplained muscle pain or weakness',
+      'Periodic liver enzyme monitoring is typical',
+    ],
     typicalDailyDose: { amountMin: 5, amountMax: 40, unit: 'mg' },
     parameterLinks: [
       {
@@ -235,6 +274,12 @@ module.exports = [
     brandNames: ['tricor', 'lipicard', 'fenolip'],
     category: 'Fibrate (cholesterol-lowering)',
     usage: 'Primarily lowers triglycerides and raises HDL cholesterol, used for high triglyceride levels.',
+    activeIngredient: 'Fenofibrate',
+    commonSideEffects: ['Digestive upset', 'Headache', 'Muscle pain'],
+    warnings: [
+      'Can increase statin-related muscle risk when combined with a statin',
+      'Periodic liver and kidney function monitoring is typical',
+    ],
     typicalDailyDose: { amountMin: 48, amountMax: 145, unit: 'mg' },
     parameterLinks: [
       {
@@ -261,6 +306,16 @@ module.exports = [
     brandNames: ['synthroid', 'eltroxin', 'thyronorm', 'euthyrox'],
     category: 'Thyroid hormone replacement',
     usage: 'Replaces thyroid hormone in hypothyroidism, used to bring TSH and T4/FT4 back into a normal range.',
+    activeIngredient: 'Levothyroxine sodium',
+    commonSideEffects: [
+      'Usually minimal at a correctly matched dose',
+      'Too-high a dose can cause palpitations, anxiety, insomnia, or weight loss',
+    ],
+    warnings: [
+      'Take on an empty stomach, typically 30-60 minutes before breakfast, at a consistent time',
+      'Calcium, iron supplements, and antacids can block absorption if taken too close together',
+      'Never stop abruptly without medical guidance',
+    ],
     typicalDailyDose: { amountMin: 25, amountMax: 200, unit: 'mcg' },
     parameterLinks: [
       {
@@ -295,6 +350,12 @@ module.exports = [
     brandNames: ['zyloprim', 'zyloric'],
     category: 'Xanthine oxidase inhibitor (gout/high uric acid)',
     usage: 'Reduces the body\'s production of uric acid, used to prevent gout attacks and treat high uric acid levels.',
+    activeIngredient: 'Allopurinol',
+    commonSideEffects: ['Skin rash', 'Nausea', 'Diarrhea'],
+    warnings: [
+      'Rare but serious severe skin reactions (e.g. Stevens-Johnson syndrome) - stop and seek care for any rash',
+      'Can trigger a gout flare when first started',
+    ],
     typicalDailyDose: { amountMin: 100, amountMax: 800, unit: 'mg' },
     parameterLinks: [
       {
@@ -313,6 +374,13 @@ module.exports = [
     brandNames: ['cozaar', 'losar', 'repace'],
     category: 'Antihypertensive (ARB)',
     usage: 'Relaxes blood vessels to lower blood pressure; also protects kidney function in diabetes. Blood pressure itself isn\'t tracked as a lab parameter here - keep monitoring it separately (cuff/monitor).',
+    activeIngredient: 'Losartan potassium',
+    commonSideEffects: ['Dizziness', 'Fatigue', 'Elevated potassium'],
+    warnings: [
+      'Not safe during pregnancy',
+      'Avoid potassium supplements or salt substitutes unless advised',
+      'Periodic kidney function and potassium monitoring is typical',
+    ],
     typicalDailyDose: { amountMin: 25, amountMax: 100, unit: 'mg' },
     parameterLinks: [
       {
@@ -347,6 +415,13 @@ module.exports = [
     brandNames: ['vasotec', 'envas', 'enam'],
     category: 'Antihypertensive (ACE inhibitor)',
     usage: 'Relaxes blood vessels to lower blood pressure; also protects kidney function in diabetes. Blood pressure itself isn\'t tracked as a lab parameter here - keep monitoring it separately (cuff/monitor).',
+    activeIngredient: 'Enalapril maleate',
+    commonSideEffects: ['Dry cough', 'Dizziness', 'Elevated potassium'],
+    warnings: [
+      'Not safe during pregnancy',
+      'Rare but serious risk of angioedema (facial/throat swelling) - seek care immediately if it occurs',
+      'Periodic kidney function and potassium monitoring is typical',
+    ],
     typicalDailyDose: { amountMin: 5, amountMax: 40, unit: 'mg' },
     parameterLinks: [
       {
@@ -373,6 +448,9 @@ module.exports = [
     brandNames: ['microzide', 'aquazide'],
     category: 'Antihypertensive (thiazide diuretic)',
     usage: 'Helps the body eliminate excess salt and water to lower blood pressure. Blood pressure itself isn\'t tracked as a lab parameter here - keep monitoring it separately (cuff/monitor).',
+    activeIngredient: 'Hydrochlorothiazide',
+    commonSideEffects: ['Increased urination', 'Dizziness', 'Low potassium or sodium'],
+    warnings: ['Can increase sun sensitivity', 'Periodic electrolyte monitoring is typical'],
     typicalDailyDose: { amountMin: 12.5, amountMax: 50, unit: 'mg' },
     parameterLinks: [
       {
@@ -399,6 +477,12 @@ module.exports = [
     brandNames: ['lasix', 'frusenex'],
     category: 'Diuretic (loop)',
     usage: 'A stronger "water pill" used for fluid overload (e.g. heart failure) that also lowers blood pressure somewhat.',
+    activeIngredient: 'Furosemide',
+    commonSideEffects: ['Increased urination', 'Dizziness', 'Low potassium, sodium, or magnesium'],
+    warnings: [
+      'Can cause dehydration or dangerously low blood pressure if overused',
+      'Periodic electrolyte and kidney function monitoring is typical',
+    ],
     typicalDailyDose: { amountMin: 20, amountMax: 80, unit: 'mg' },
     parameterLinks: [
       {
@@ -433,6 +517,13 @@ module.exports = [
     brandNames: ['feosol', 'fefol', 'autrin'],
     category: 'Iron supplement',
     usage: 'Replenishes iron stores to treat or prevent iron-deficiency anemia.',
+    activeIngredient: 'Elemental iron (as ferrous sulfate, fumarate, or ascorbate depending on the product)',
+    commonSideEffects: ['Constipation', 'Dark or black stools (expected, not harmful)', 'Stomach upset'],
+    warnings: [
+      'Keep away from children - iron overdose is dangerous',
+      'Vitamin C or citrus juice can improve absorption',
+      'Can reduce absorption of some antibiotics or thyroid medication if taken together',
+    ],
     typicalDailyDose: { amountMin: 65, amountMax: 325, unit: 'mg' },
     parameterLinks: [
       {
@@ -467,6 +558,12 @@ module.exports = [
     brandNames: ['calcirol', 'd-rise', 'uprise-d3'],
     category: 'Vitamin D supplement',
     usage: 'Replenishes vitamin D stores, used for vitamin D deficiency and bone health support.',
+    activeIngredient: 'Cholecalciferol (Vitamin D3)',
+    commonSideEffects: ['Uncommon at typical doses', 'Very high doses can cause nausea or elevated calcium'],
+    warnings: [
+      'Very high, prolonged doses can raise blood calcium to unsafe levels',
+      'Take with a meal containing some fat for best absorption',
+    ],
     typicalDailyDose: { amountMin: 600, amountMax: 2000, unit: 'iu' },
     parameterLinks: [
       {
@@ -485,6 +582,9 @@ module.exports = [
     brandNames: ['methycobal', 'nurokind'],
     category: 'Vitamin B12 supplement',
     usage: 'Replenishes vitamin B12 stores, used for B12 deficiency, often alongside nerve-health support.',
+    activeIngredient: 'Methylcobalamin or cyanocobalamin (Vitamin B12)',
+    commonSideEffects: ['Generally well tolerated', 'Mild headache or nausea'],
+    warnings: ['Injection forms may cause local site reactions', 'Very rare allergic reactions with injected cobalamin'],
     typicalDailyDose: { amountMin: 500, amountMax: 1500, unit: 'mcg' },
     parameterLinks: [
       {
@@ -503,6 +603,12 @@ module.exports = [
     brandNames: ['prilosec', 'protonix', 'nexium', 'pantocid', 'omez'],
     category: 'Proton pump inhibitor (acid reflux)',
     usage: 'Reduces stomach acid production, used for acid reflux, gastritis, and ulcer healing.',
+    activeIngredient: 'Omeprazole, pantoprazole, esomeprazole, or rabeprazole depending on the specific product',
+    commonSideEffects: ['Headache', 'Stomach pain', 'Nausea', 'Diarrhea or constipation'],
+    warnings: [
+      'Long-term use is linked to lower B12, magnesium, and calcium absorption, and higher fracture risk',
+      'Can reduce the effectiveness of some other drugs (e.g. clopidogrel) - check with a pharmacist',
+    ],
     typicalDailyDose: { amountMin: 20, amountMax: 40, unit: 'mg' },
     parameterLinks: [
       {
@@ -521,6 +627,12 @@ module.exports = [
     brandNames: ['norvasc', 'amlopres', 'amlogard'],
     category: 'Antihypertensive (calcium channel blocker)',
     usage: 'Relaxes blood vessels to lower blood pressure. Blood pressure itself isn\'t tracked as a lab parameter here - keep monitoring it separately (cuff/monitor).',
+    activeIngredient: 'Amlodipine besylate',
+    commonSideEffects: ['Swelling in the ankles or feet', 'Flushing', 'Dizziness', 'Headache'],
+    warnings: [
+      'Ankle/foot swelling is dose-related and common - mention it rather than stopping on your own',
+      'Grapefruit juice can raise drug levels',
+    ],
     typicalDailyDose: { amountMin: 2.5, amountMax: 10, unit: 'mg' },
     parameterLinks: [],
   },
@@ -530,6 +642,12 @@ module.exports = [
     brandNames: ['zithromax', 'azithral', 'augmentin', 'ciplox'],
     category: 'Antibiotic',
     usage: 'A short course to treat a bacterial infection. Not typically taken long-term and has no routine lab-parameter monitoring.',
+    activeIngredient: 'Azithromycin, amoxicillin, amoxicillin/clavulanate, ciprofloxacin, or doxycycline depending on the specific product',
+    commonSideEffects: ['Nausea', 'Diarrhea', 'Stomach upset'],
+    warnings: [
+      'Finish the full prescribed course even if feeling better, unless a doctor says otherwise',
+      'Report any signs of a severe allergic reaction (rash, swelling, difficulty breathing) immediately',
+    ],
     typicalDailyDose: null,
     parameterLinks: [],
   },
@@ -539,6 +657,12 @@ module.exports = [
     brandNames: ['tylenol', 'crocin', 'dolo', 'advil', 'brufen'],
     category: 'Analgesic / pain reliever',
     usage: 'Relieves pain and/or fever. Occasional use needs no lab monitoring; frequent, high-dose, or prolonged use can affect the liver (paracetamol/acetaminophen) or kidneys (ibuprofen/diclofenac/naproxen).',
+    activeIngredient: 'Paracetamol/acetaminophen, ibuprofen, diclofenac, or naproxen depending on the specific product',
+    commonSideEffects: ['Generally well tolerated occasionally', 'NSAIDs (ibuprofen/diclofenac/naproxen) can cause stomach upset'],
+    warnings: [
+      'Do not exceed the labeled maximum daily dose - paracetamol overdose can cause serious liver damage',
+      'NSAIDs carry a risk of stomach bleeding and kidney strain with frequent/prolonged use, especially combined with blood thinners',
+    ],
     typicalDailyDose: { amountMin: 500, amountMax: 3000, unit: 'mg' },
     parameterLinks: [
       {
