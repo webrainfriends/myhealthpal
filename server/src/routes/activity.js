@@ -53,6 +53,16 @@ function toSummary(row) {
   };
 }
 
+// A rings/legend display is only useful once it has a real day behind it -
+// a manual same-day logger has one, but a wearable export (see
+// activityImportService.js) is a historical dump that rarely includes
+// "today" (the export was generated some time before upload), so a strict
+// "today" would show an empty ring for every one of those uploads even
+// though real recent data exists just one or two days back.
+function hasLoggedActivity(entry) {
+  return Boolean(entry) && (entry.steps !== null || entry.exerciseMinutes !== null || entry.standHours !== null);
+}
+
 // Today's log (for the rings) plus a recent-day history (for a bar graph) -
 // one call covers both, since the dashboard's compact card and the full
 // Activity screen both need "today" and the full screen also wants history.
@@ -70,7 +80,8 @@ router.get('/summary', async (req, res, next) => {
     );
 
     const byDate = new Map(rows.map((row) => [row.log_date.toISOString().slice(0, 10), row]));
-    const today = byDate.get(new Date().toISOString().slice(0, 10)) || null;
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const todaySummary = toSummary(byDate.get(todayKey) || null);
 
     // Always return one entry per day in the window, even with no log, so
     // the client can draw a fixed-width bar graph without gap-filling itself.
@@ -82,7 +93,21 @@ router.get('/summary', async (req, res, next) => {
       history.push(toSummary(byDate.get(key) || { log_date: key }));
     }
 
-    res.json({ goals: GOALS, today: toSummary(today), history });
+    // The rings' actual "current" day: today's own log when there is one,
+    // else the most recent day in the fetched window that has anything
+    // logged at all - never a blank ring just because the window's newest
+    // data lags behind the calendar. isCurrentToday tells the client
+    // whether to label it "Today" or with its real date.
+    const mostRecentLogged = [...history].reverse().find(hasLoggedActivity) || null;
+    const current = hasLoggedActivity(todaySummary) ? todaySummary : mostRecentLogged || todaySummary;
+
+    res.json({
+      goals: GOALS,
+      today: todaySummary,
+      current,
+      isCurrentToday: current.date === todayKey,
+      history,
+    });
   } catch (err) {
     next(err);
   }

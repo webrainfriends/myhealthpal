@@ -45,6 +45,11 @@ function formatDayLabel(dateStr) {
   return d.toLocaleDateString(undefined, { weekday: 'short' });
 }
 
+function formatFullDayLabel(dateStr) {
+  const d = new Date(`${dateStr}T00:00:00`);
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 // A plain-View bar graph (no chart library, consistent with the rest of the
 // app - see OrganHealthCard's own note on avoiding react-native-svg for
 // simple bars) of daily step counts over the fetched window.
@@ -112,44 +117,47 @@ export default function ActivityScreen() {
     );
   }
 
-  const { goals, today, history } = summary;
+  const { goals, today, current, isCurrentToday, history } = summary;
   const rings = [
-    { percent: today.rings.steps, ...activityRingColors.steps },
-    { percent: today.rings.exerciseMinutes, ...activityRingColors.exerciseMinutes },
-    { percent: today.rings.standHours, ...activityRingColors.standHours },
+    { percent: current.rings.steps, ...activityRingColors.steps },
+    { percent: current.rings.exerciseMinutes, ...activityRingColors.exerciseMinutes },
+    { percent: current.rings.standHours, ...activityRingColors.standHours },
   ];
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={[styles.heroCard, cardShadow]}>
+          {!isCurrentToday && current.date && (
+            <Text style={typography.bodySecondary}>Last synced {formatFullDayLabel(current.date)}</Text>
+          )}
           <View style={styles.ringsWrap}>
             <ActivityRings rings={rings} size={180} strokeWidth={18} gap={6} />
           </View>
           <View style={styles.legend}>
             <RingLegendRow
               label="Move"
-              value={today.steps}
+              value={current.steps}
               unit=" steps"
               goal={goals.steps}
               color={activityRingColors.steps.fg}
             />
             <RingLegendRow
               label="Exercise"
-              value={today.exerciseMinutes}
+              value={current.exerciseMinutes}
               unit=" min"
               goal={goals.exerciseMinutes}
               color={activityRingColors.exerciseMinutes.fg}
             />
             <RingLegendRow
               label="Stand"
-              value={today.standHours}
+              value={current.standHours}
               unit=" hr"
               goal={goals.standHours}
               color={activityRingColors.standHours.fg}
             />
           </View>
-          <ImportedStatsRow caloriesBurned={today.caloriesBurned} distanceMeters={today.distanceMeters} />
+          <ImportedStatsRow caloriesBurned={current.caloriesBurned} distanceMeters={current.distanceMeters} />
         </View>
 
         <View style={styles.section}>

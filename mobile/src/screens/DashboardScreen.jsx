@@ -78,11 +78,15 @@ export default function DashboardScreen({ navigation }) {
       const [data, organData, activityData] = await Promise.all([
         fetchDashboardSnapshot(),
         fetchOrganHealth(),
-        fetchActivitySummary(1),
+        // A window wide enough that the card can fall back to the most
+        // recently logged day (see /api/activity/summary) when nothing is
+        // logged for today itself - a wearable export upload is common and
+        // rarely includes literally today.
+        fetchActivitySummary(7),
       ]);
       setSnapshot(data);
       setOrgans(organData.organs);
-      setActivity(activityData.today);
+      setActivity({ current: activityData.current, isCurrentToday: activityData.isCurrentToday });
     } catch (err) {
       console.warn('Failed to load dashboard', err.message);
     }
@@ -139,7 +143,11 @@ export default function DashboardScreen({ navigation }) {
 
         {activity && (
           <View style={styles.sectionSpacing}>
-            <ActivityCard today={activity} onPress={() => navigation.navigate('Activity')} />
+            <ActivityCard
+              current={activity.current}
+              isCurrentToday={activity.isCurrentToday}
+              onPress={() => navigation.navigate('Activity')}
+            />
           </View>
         )}
 
