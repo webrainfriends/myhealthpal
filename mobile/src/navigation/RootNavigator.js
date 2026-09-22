@@ -16,8 +16,9 @@ import MedicationDetailScreen from '../screens/MedicationDetailScreen';
 import MedicationScanReviewScreen from '../screens/MedicationScanReviewScreen';
 import MedicationCreateScreen from '../screens/MedicationCreateScreen';
 import ActivityScreen from '../screens/ActivityScreen';
-import SettingsScreen from '../screens/SettingsScreen';
-import RecipePreferencesScreen from '../screens/RecipePreferencesScreen';
+import DietScreen from '../screens/DietScreen';
+import DietScanReviewScreen from '../screens/DietScanReviewScreen';
+import DietEntryFormScreen from '../screens/DietEntryFormScreen';
 import LoginScreen from '../screens/LoginScreen';
 import { useAuth } from '../auth/AuthContext';
 import { colors } from '../theme/theme';
@@ -61,8 +62,9 @@ const linking = {
       MedicationDetail: 'medications/:medicationId',
       MedicationScanReview: 'medications/scans/:scanId',
       Activity: 'activity',
-      Settings: 'settings',
-      RecipePreferences: 'settings/recipe-preferences',
+      Diet: 'diet',
+      DietScanReview: 'diet/scans/:scanId',
+      DietEntryForm: 'diet/entries/:entryId?',
     },
   },
 };
@@ -148,11 +150,12 @@ export default function RootNavigator() {
         />
         <Stack.Screen name="MedicationCreate" component={MedicationCreateScreen} options={{ title: 'Add medication' }} />
         <Stack.Screen name="Activity" component={ActivityScreen} options={{ title: 'Activity' }} />
-        <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
+        <Stack.Screen name="Diet" component={DietScreen} options={{ title: 'Diet' }} />
+        <Stack.Screen name="DietScanReview" component={DietScanReviewScreen} options={{ title: 'Review scan' }} />
         <Stack.Screen
-          name="RecipePreferences"
-          component={RecipePreferencesScreen}
-          options={{ title: 'Recipe recommendations' }}
+          name="DietEntryForm"
+          component={DietEntryFormScreen}
+          options={({ route }) => ({ title: route.params?.entryId ? 'Edit item' : 'Add item' })}
         />
       </Stack.Navigator>
     </NavigationContainer>

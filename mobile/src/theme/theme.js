@@ -55,6 +55,17 @@ export const healthStatusColors = {
   no_data: { fg: colors.textTertiary, bg: colors.surfaceMuted, track: colors.border },
 };
 
+// One fixed color per meal type - a label, not a good/bad status, so
+// (unlike statusColors/healthStatusColors) every entry uses a neutral tone
+// from the existing palette rather than success/warning/danger.
+export const mealTypeColors = {
+  breakfast: { fg: colors.warning, bg: colors.warningMuted },
+  lunch: { fg: colors.success, bg: colors.successMuted },
+  snack: { fg: colors.textSecondary, bg: colors.surfaceMuted },
+  dinner: { fg: colors.primary, bg: colors.primaryMuted },
+  supper: { fg: '#7A5AF8', bg: '#EFE9FE' },
+};
+
 // Apple Health-style activity rings - one fixed color per ring (not a
 // good/bad status like healthStatusColors above), reusing this theme's own
 // palette rather than Apple's neon red/green/cyan so it still reads as part
@@ -103,6 +114,7 @@ const theme = {
   statusColors,
   healthStatusColors,
   medicationStatusColors,
+  mealTypeColors,
   alertSeverityColors,
   activityRingColors,
   cardShadow,
