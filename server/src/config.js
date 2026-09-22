@@ -18,6 +18,26 @@ if (!jwtSecret) {
   );
 }
 
+// Encrypts Gmail OAuth refresh tokens at rest (see lib/tokenCipher.js) - must
+// be a stable 32-byte key (64 hex chars) across restarts, same reasoning as
+// JWT_SECRET above. Generate with `openssl rand -hex 32`. Falling back to an
+// ephemeral key is safe for local dev (a restart just forces reconnecting
+// Gmail, the same way it forces re-signing-in) but must never happen in a
+// real deployment, where it would silently make every stored refresh token
+// undecryptable on the next restart.
+let gmailTokenEncryptionKey = process.env.GMAIL_TOKEN_ENCRYPTION_KEY;
+if (gmailTokenEncryptionKey && !/^[0-9a-f]{64}$/i.test(gmailTokenEncryptionKey)) {
+  throw new Error('GMAIL_TOKEN_ENCRYPTION_KEY must be exactly 64 hex characters (32 bytes). Generate with `openssl rand -hex 32`.');
+}
+if (!gmailTokenEncryptionKey) {
+  gmailTokenEncryptionKey = crypto.randomBytes(32).toString('hex');
+  // eslint-disable-next-line no-console
+  console.warn(
+    'GMAIL_TOKEN_ENCRYPTION_KEY not set - generated an ephemeral one for this process only. ' +
+      'Every restart will require reconnecting Gmail; set GMAIL_TOKEN_ENCRYPTION_KEY in .env for a stable one.'
+  );
+}
+
 const SUPPORTED_EXTENSIONS = {
   pdf: { mimeTypes: ['application/pdf'] },
   jpg: { mimeTypes: ['image/jpeg'] },
@@ -38,6 +58,23 @@ module.exports = {
   supportedExtensions: SUPPORTED_EXTENSIONS,
   jwtSecret,
   googleClientId: process.env.GOOGLE_CLIENT_ID || null,
+  // Gmail integration (issue #54) - a *separate* OAuth client from
+  // GOOGLE_CLIENT_ID above: that one only verifies a client-issued identity
+  // token for sign-in, while this one needs client secret + redirect URI to
+  // run the server-side Authorization Code flow required to obtain and
+  // refresh a Gmail-scoped offline refresh token. Leave unset to hide the
+  // Gmail connection feature entirely.
+  gmailClientId: process.env.GMAIL_CLIENT_ID || null,
+  gmailClientSecret: process.env.GMAIL_CLIENT_SECRET || null,
+  gmailRedirectUri: process.env.GMAIL_REDIRECT_URI || null,
+  gmailTokenEncryptionKey: Buffer.from(gmailTokenEncryptionKey, 'hex'),
+  // Least-privilege scopes only: gmail.readonly to search/read messages and
+  // attachments (never send/modify/delete/trash), plus openid+email solely
+  // to know which Gmail address is connected for display in Settings - no
+  // separate Google profile scope is requested.
+  gmailScopes: ['https://www.googleapis.com/auth/gmail.readonly', 'openid', 'email'],
+  // How far back an initial (no-checkpoint) search/sync looks.
+  gmailInitialSearchWindowDays: Number(process.env.GMAIL_INITIAL_SEARCH_WINDOW_DAYS) || 180,
   // Apple's "Sign in with Apple" Services ID - acts as the OAuth client_id/
   // audience for the web flow. No Apple private key is needed here: only
   // verifying Apple-issued identity tokens against Apple's public JWKS,

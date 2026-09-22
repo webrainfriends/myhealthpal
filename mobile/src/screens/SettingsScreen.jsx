@@ -23,6 +23,11 @@ export default function SettingsScreen({ navigation }) {
           subtitle="Diet and cuisine preferences used to suggest recipes"
           onPress={() => navigation.navigate('RecipePreferences')}
         />
+        <SettingsRow
+          title="Connected health sources"
+          subtitle="Connect Gmail to import lab reports and medical documents"
+          onPress={() => navigation.navigate('GmailIntegration')}
+        />
       </ScrollView>
     </SafeAreaView>
   );

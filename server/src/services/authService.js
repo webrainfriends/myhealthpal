@@ -81,11 +81,34 @@ async function upsertOAuthUser({ provider, providerUserId, email, displayName })
   return rows[0];
 }
 
+// Google's OAuth redirect (routes/integrations/gmail.js's /callback) carries
+// no Authorization header of its own - the browser, not our app, follows it
+// - so the signed-in user it belongs to has to travel round-trip inside the
+// OAuth `state` parameter instead. Short-lived and its own `type` for the
+// same reason signReportDownloadToken has one: a leaked/replayed session or
+// download token must never be accepted here as a connect request for
+// someone else's account.
+const GMAIL_OAUTH_STATE_TTL = '10m';
+
+function signGmailOAuthState(userId) {
+  return jwt.sign({ sub: userId, type: 'gmail_oauth_state' }, config.jwtSecret, { expiresIn: GMAIL_OAUTH_STATE_TTL });
+}
+
+function verifyGmailOAuthState(token) {
+  const payload = jwt.verify(token, config.jwtSecret);
+  if (payload.type !== 'gmail_oauth_state') {
+    throw new Error('Not a Gmail OAuth state token');
+  }
+  return payload.sub;
+}
+
 module.exports = {
   signSession,
   verifySessionUserId,
   signReportDownloadToken,
   verifyReportDownloadToken,
+  signGmailOAuthState,
+  verifyGmailOAuthState,
   findUserById,
   createGuestUser,
   upsertOAuthUser,

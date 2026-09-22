@@ -15,6 +15,7 @@ const activityRouter = require('./routes/activity');
 const dietRouter = require('./routes/diet');
 const recipePreferencesRouter = require('./routes/recipePreferences');
 const filesRouter = require('./routes/files');
+const integrationsGmailRouter = require('./routes/integrationsGmail');
 
 const app = express();
 
@@ -50,6 +51,10 @@ app.use('/api/recipe-preferences', requireAuth, recipePreferencesRouter);
 // open can't carry an Authorization header, so a short-lived scoped token
 // is the credential here instead).
 app.use('/api/files', filesRouter);
+// Not wrapped in requireAuth either - its own /callback route is Google
+// redirecting the user's browser and carries no Authorization header;
+// every other route on this router applies requireAuth itself.
+app.use('/api/integrations/gmail', integrationsGmailRouter);
 app.get('/api/config/supported-formats', (req, res) => {
   res.json({
     extensions: Object.keys(config.supportedExtensions),
