@@ -485,4 +485,9 @@ module.exports = {
   buildConsiderationTips,
   generateRecommendations,
   getOrGenerateRecommendations,
+  // Reused by dietRecipeService.js so a generated recipe is grounded in
+  // the exact same active-medication/abnormal-lab considerations the
+  // pattern-analysis tips are - one query, one source of truth.
+  fetchActiveMedications,
+  fetchAbnormalDietRelevantLabs,
 };

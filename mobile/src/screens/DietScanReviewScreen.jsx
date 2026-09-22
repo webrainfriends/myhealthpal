@@ -60,7 +60,7 @@ function CandidateCard({ entry, onChange, onConfirm, onDiscard, busy }) {
         return;
       }
       const { recognized, matched_food_description, confidence, ...patch } = result;
-      handleChange({ ...local, ...patch, needs_quantity: false });
+      handleChange({ ...local, ...patch, needs_quantity: false, ai_verified: true });
     } catch (err) {
       showAlert('Could not estimate nutrition', err.message);
     } finally {
@@ -72,6 +72,7 @@ function CandidateCard({ entry, onChange, onConfirm, onDiscard, busy }) {
     <View style={styles.card}>
       <View style={styles.cardHeader}>
         <Text style={typography.heading}>{local.name || 'Unnamed item'}</Text>
+        {local.ai_verified && !local.needs_quantity && !local.needs_review && <StatusBadge status="AI estimate" />}
         {(local.needs_quantity || local.needs_review) && <StatusBadge status="Needs Review" />}
       </View>
       <FoodEntryForm value={local} onChange={handleChange} onEstimate={handleEstimate} estimating={estimating} />

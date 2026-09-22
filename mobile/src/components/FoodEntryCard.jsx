@@ -33,13 +33,20 @@ export default function FoodEntryCard({ entry, onPress }) {
       <Text style={typography.bodySecondary}>{quantityLine(entry)}</Text>
       <Text style={typography.caption}>{formatTime(entry.consumed_at)}</Text>
 
-      {(entry.needs_quantity || entry.needs_review) && (
-        <View style={[styles.miniPill, { backgroundColor: colors.warningMuted }]}>
-          <Text style={[styles.miniPillText, { color: colors.warning }]}>
-            {entry.needs_quantity ? 'Needs quantity' : 'Needs review'}
-          </Text>
-        </View>
-      )}
+      <View style={styles.badgeRow}>
+        {entry.ai_verified && (
+          <View style={[styles.miniPill, { backgroundColor: colors.primaryMuted }]}>
+            <Text style={[styles.miniPillText, { color: colors.primary }]}>✨ AI estimate</Text>
+          </View>
+        )}
+        {(entry.needs_quantity || entry.needs_review) && (
+          <View style={[styles.miniPill, { backgroundColor: colors.warningMuted }]}>
+            <Text style={[styles.miniPillText, { color: colors.warning }]}>
+              {entry.needs_quantity ? 'Needs quantity' : 'Needs review'}
+            </Text>
+          </View>
+        )}
+      </View>
     </TouchableOpacity>
   );
 }
@@ -70,12 +77,17 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
   },
+  badgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 2,
+  },
   miniPill: {
     alignSelf: 'flex-start',
     borderRadius: radii.pill,
     paddingHorizontal: 8,
     paddingVertical: 2,
-    marginTop: 2,
   },
   miniPillText: {
     fontSize: 10,

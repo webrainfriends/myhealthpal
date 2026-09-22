@@ -7,6 +7,8 @@ const { enqueueDietScanProcessing, classifyMealType } = require('../diet/dietSca
 const { getOrGenerateRecommendations, generateRecommendations } = require('../diet/dietInsightService');
 const dietTextProvider = require('../extraction/providers/dietTextProvider');
 const { NUTRIENT_FIELDS } = require('../extraction/providers/nutrientFields');
+const { nutritionValuesChanged, computeAiVerified } = require('../diet/aiVerificationService');
+const dietRecipeService = require('../diet/dietRecipeService');
 
 const router = express.Router();
 
@@ -278,19 +280,25 @@ router.post('/entries', async (req, res, next) => {
     const consumedAt = parseConsumedAt(body.consumed_at);
     const mealType = body.meal_type || classifyMealType(consumedAt);
 
+    // Verified when the server's own auto-estimate above succeeded, or
+    // when the client explicitly says so (e.g. it applied a fresh
+    // "Estimate with AI" result and the person hasn't touched a number
+    // since) - see computeAiVerified's doc comment for the general rule.
+    const aiVerified = computeAiVerified({ explicitValue: body.ai_verified, nutritionChanged: false, fallback: Boolean(aiEstimate) });
+
     // Columns/values built from NUTRIENT_FIELDS (a fixed, hardcoded
     // whitelist - never from req.body's own keys) rather than spelled out
     // 13 times over, so this can't silently drift from what
     // dietPhotoProvider.js/the migration actually store.
     const columns = [
       'user_id', 'name', 'brand', 'quantity_amount', 'quantity_unit', 'serving_size_grams',
-      ...NUTRIENT_FIELDS, 'meal_type', 'consumed_at', 'source_type', 'notes', 'is_confirmed',
+      ...NUTRIENT_FIELDS, 'meal_type', 'consumed_at', 'source_type', 'notes', 'ai_verified', 'is_confirmed',
     ];
     const values = [
       currentUserId(req), body.name, body.brand || null, body.quantity_amount ?? null,
       body.quantity_unit || null, body.serving_size_grams ?? null,
       ...NUTRIENT_FIELDS.map((f) => body[f] ?? null),
-      mealType, consumedAt, 'manual', body.notes || null, true,
+      mealType, consumedAt, 'manual', body.notes || null, aiVerified, true,
     ];
     const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
 
@@ -341,16 +349,27 @@ router.patch('/entries/:id', async (req, res, next) => {
     const providedQuantity = body.quantity_amount !== undefined || body.calories !== undefined;
     const needsQuantity = providedQuantity ? false : existing.needs_quantity;
 
+    // An explicit ai_verified in the body wins (the mobile form sends
+    // true right after merging a fresh "Estimate with AI" result, false as
+    // soon as a person types over any nutrition value by hand); otherwise a
+    // real change to a nutrition-affecting field resets it, and anything
+    // else (editing just the name/notes/meal) leaves it as it was.
+    const aiVerified = computeAiVerified({
+      explicitValue: body.ai_verified,
+      nutritionChanged: nutritionValuesChanged(body, next_, existing),
+      fallback: existing.ai_verified,
+    });
+
     // Same whitelist-driven approach as POST /entries above: UPDATE_COLUMNS
     // only ever comes from EDITABLE_FIELDS (a fixed list), never from
     // req.body's own keys.
     const UPDATE_COLUMNS = ['name', 'brand', 'quantity_amount', 'quantity_unit', 'serving_size_grams', ...NUTRIENT_FIELDS, 'meal_type', 'consumed_at', 'notes'];
     const setClauses = UPDATE_COLUMNS.map((col, i) => `${col} = $${i + 2}`);
-    setClauses.push(`needs_quantity = $${UPDATE_COLUMNS.length + 2}`, 'updated_at = now()');
+    setClauses.push(`needs_quantity = $${UPDATE_COLUMNS.length + 2}`, `ai_verified = $${UPDATE_COLUMNS.length + 3}`, 'updated_at = now()');
 
     const { rows } = await pool.query(
       `UPDATE food_entries SET ${setClauses.join(', ')} WHERE id = $1 RETURNING *`,
-      [req.params.id, ...UPDATE_COLUMNS.map((col) => next_[col]), needsQuantity]
+      [req.params.id, ...UPDATE_COLUMNS.map((col) => next_[col]), needsQuantity, aiVerified]
     );
     res.json({ entry: rows[0] });
   } catch (err) {
@@ -449,6 +468,35 @@ router.get('/recommendations', async (req, res, next) => {
 
     res.json({ recommendation });
   } catch (err) {
+    next(err);
+  }
+});
+
+// AI-generated recipe idea, grounded in the same active-medication/
+// abnormal-lab considerations the recommendation tips use (see
+// dietRecipeService.js) - not persisted anywhere; "Log this recipe" on the
+// mobile app is just a normal POST /entries using the returned nutrition.
+router.post('/recipes/generate', async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    if (body.meal_type && !MEAL_TYPES.has(body.meal_type)) {
+      return res.status(400).json({ error: 'meal_type is not a recognized meal.' });
+    }
+
+    const { recipe, considerations } = await dietRecipeService.generateRecipe(currentUserId(req), {
+      mealType: body.meal_type || null,
+      preferences: body.preferences || null,
+    });
+
+    if (!recipe) {
+      return res.status(502).json({ error: 'The AI did not return a usable recipe. Try again.' });
+    }
+
+    res.json({ recipe, considerations });
+  } catch (err) {
+    if (err.message && err.message.includes('ANTHROPIC_API_KEY')) {
+      return res.status(503).json({ error: err.message });
+    }
     next(err);
   }
 });

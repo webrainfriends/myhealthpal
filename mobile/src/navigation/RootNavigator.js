@@ -19,6 +19,8 @@ import ActivityScreen from '../screens/ActivityScreen';
 import DietScreen from '../screens/DietScreen';
 import DietScanReviewScreen from '../screens/DietScanReviewScreen';
 import DietEntryFormScreen from '../screens/DietEntryFormScreen';
+import DietStatsScreen from '../screens/DietStatsScreen';
+import DietRecipeScreen from '../screens/DietRecipeScreen';
 import LoginScreen from '../screens/LoginScreen';
 import { useAuth } from '../auth/AuthContext';
 import { colors } from '../theme/theme';
@@ -65,6 +67,8 @@ const linking = {
       Diet: 'diet',
       DietScanReview: 'diet/scans/:scanId',
       DietEntryForm: 'diet/entries/:entryId?',
+      DietStats: 'diet/stats',
+      DietRecipe: 'diet/recipe',
     },
   },
 };
@@ -157,6 +161,8 @@ export default function RootNavigator() {
           component={DietEntryFormScreen}
           options={({ route }) => ({ title: route.params?.entryId ? 'Edit item' : 'Add item' })}
         />
+        <Stack.Screen name="DietStats" component={DietStatsScreen} options={{ title: 'Diet stats' }} />
+        <Stack.Screen name="DietRecipe" component={DietRecipeScreen} options={{ title: 'Recipe ideas' }} />
       </Stack.Navigator>
     </NavigationContainer>
   );
