@@ -19,8 +19,17 @@ if (typeof Promise.withResolvers !== 'function') {
 
 const app = require('./app');
 const config = require('./config');
+const { backfillMisclassifiedActivityReports } = require('./services/activityBackfillService');
 
 app.listen(config.port, () => {
   // eslint-disable-next-line no-console
   console.log(`MyHealthPal API listening on port ${config.port}`);
+});
+
+// Fire-and-forget, after the server is already accepting requests - a
+// backfill over however many legacy reports exist must never delay startup.
+// See activityBackfillService.js for why this needs to run at all.
+backfillMisclassifiedActivityReports().catch((err) => {
+  // eslint-disable-next-line no-console
+  console.error('Activity backfill failed to run:', err);
 });

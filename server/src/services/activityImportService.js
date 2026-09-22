@@ -18,6 +18,23 @@ const CALORIES_HEADERS = new Set(['calories burned', 'calories burnt', 'calories
 const DISTANCE_HEADERS = new Set(['distance', 'distance (m)', 'distance meters']);
 const DATE_HEADERS_EXCLUDE = new Set(['date of birth', 'dob']);
 
+// Every column name this module (or parameterExtractor's
+// WIDE_FORMAT_SKIP_COLUMNS) treats as fitness-only, never a clinical test -
+// used by activityBackfillService.js to find reports that were mis-imported
+// as health_measurements before this module existed, so they can be
+// reprocessed without a person having to find and tap a "re-process" button.
+const ACTIVITY_ONLY_RAW_NAMES = new Set([
+  ...STEPS_HEADERS,
+  ...CALORIES_HEADERS,
+  ...DISTANCE_HEADERS,
+  'duration',
+  'active time',
+  'climb',
+  'floors',
+  'activity stream duration by type',
+  'feeling',
+]);
+
 // `rows` is one sheet/table as produced by an adapter (array of arrays, row
 // 0 is the header). Returns the column indexes to import if this table
 // looks like an activity export (requires at least a date and a steps
@@ -98,4 +115,9 @@ async function importActivityTablesFrom(tables, userId) {
   return { remainingTables, importedDays };
 }
 
-module.exports = { detectActivityTable, importActivityTable, importActivityTablesFrom };
+module.exports = {
+  detectActivityTable,
+  importActivityTable,
+  importActivityTablesFrom,
+  ACTIVITY_ONLY_RAW_NAMES,
+};
