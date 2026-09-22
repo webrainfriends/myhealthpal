@@ -465,6 +465,28 @@ left null rather than a fabricated precise-looking number. Requires
 scanning); `DIET_PROVIDER` only controls whether the *recommendation text*
 below is Claude-rephrased.
 
+A manually-typed entry gets the same AI nutrition estimate a photo scan
+gets, just from a name instead of an image
+(`src/extraction/providers/dietTextProvider.js`, forced tool call
+`estimate_food_nutrition`, sharing its nutrient JSON-schema fragment with
+the photo provider via `nutrientFields.js` so the two can't drift apart).
+It recognizes a single ingredient ("banana") as well as a dish/recipe by
+its common name ("chicken biryani", "vegetable lasagna") and estimates from
+that dish's typical standard composition, not just its most prominent
+ingredient — the model is only allowed to report `recognized: false` (no
+estimate at all) for input that isn't identifiable as food/drink, never
+for a real but informally-named dish. `POST /api/diet/entries` calls this
+automatically whenever a manual entry is saved with no `calories` given, so
+typing just a name is enough to get full nutrition without an extra step;
+saving still succeeds with blank nutrition if estimation fails (no
+`ANTHROPIC_API_KEY`, a transient error, or the food not being recognized)
+rather than blocking the save. `POST /api/diet/entries/estimate` exposes
+the same estimator standalone — what the mobile app's "Estimate nutrition
+with AI" button calls to preview/refresh numbers (e.g. after changing the
+name or quantity) before saving, and what a scan-review candidate flagged
+`needs_quantity` can call once the person fills in a quantity, reusing the
+name the photo already identified.
+
 Every item — scanned or entered manually via `POST /api/diet/entries` — is
 auto-tagged into `breakfast`/`lunch`/`snack`/`dinner`/`supper` from the time
 it was consumed (`classifyMealType`'s fixed time-of-day bands), always
@@ -622,7 +644,10 @@ trend, and Insights push over them full-screen:
   `needs_quantity`, and confirms or discards each identified item.
   **Diet entry form** (`DietEntryFormScreen.jsx`) — the same shared form
   for adding an item by hand or editing/deleting an existing one, including
-  the consumed-at time that drives its auto-assigned meal.
+  the consumed-at time that drives its auto-assigned meal, and an "Estimate
+  nutrition with AI" button (`FoodEntryForm.jsx`) that fills in the numbers
+  from just the name (saving with no calories given also triggers this
+  automatically, server-side).
 
 ### Testing notes
 

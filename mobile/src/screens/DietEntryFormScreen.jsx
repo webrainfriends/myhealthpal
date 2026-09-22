@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import FoodEntryForm from '../components/FoodEntryForm';
 import PrimaryButton from '../components/PrimaryButton';
 import { colors, spacing, typography } from '../theme/theme';
-import { createFoodEntry, deleteFoodEntry, fetchFoodEntry, updateFoodEntry } from '../api/client';
+import { createFoodEntry, deleteFoodEntry, estimateFoodNutrition, fetchFoodEntry, updateFoodEntry } from '../api/client';
 import { showAlert } from '../utils/alert';
 
 // Mirrors dietScanService.js's classifyMealType - a client-side-only
@@ -44,6 +44,7 @@ export default function DietEntryFormScreen({ route, navigation }) {
   const entryId = route.params?.entryId;
   const [entry, setEntry] = useState(entryId ? null : emptyEntry());
   const [saving, setSaving] = useState(false);
+  const [estimating, setEstimating] = useState(false);
 
   useEffect(() => {
     if (!entryId) return;
@@ -51,6 +52,34 @@ export default function DietEntryFormScreen({ route, navigation }) {
       .then((data) => setEntry(data.entry))
       .catch((err) => showAlert('Could not load item', err.message));
   }, [entryId]);
+
+  // Explicit re-estimate (e.g. after changing the name/brand/quantity) -
+  // saving a brand-new manual entry with no calories given also gets this
+  // automatically server-side (routes/diet.js's POST /entries), so this is
+  // for previewing/adjusting the AI numbers before that, not the only path
+  // to getting them.
+  async function handleEstimate() {
+    if (!entry.name || !entry.name.trim()) return;
+    setEstimating(true);
+    try {
+      const result = await estimateFoodNutrition({
+        name: entry.name,
+        brand: entry.brand || undefined,
+        quantity_amount: entry.quantity_amount ?? undefined,
+        quantity_unit: entry.quantity_unit || undefined,
+      });
+      if (!result.recognized) {
+        showAlert('Could not identify this food', `"${entry.name}" wasn't recognized - enter the nutrition details manually.`);
+        return;
+      }
+      const { recognized, matched_food_description, confidence, ...patch } = result;
+      setEntry((prev) => ({ ...prev, ...patch, needs_quantity: false }));
+    } catch (err) {
+      showAlert('Could not estimate nutrition', err.message);
+    } finally {
+      setEstimating(false);
+    }
+  }
 
   async function handleSave() {
     if (!entry.name || !entry.name.trim()) {
@@ -96,7 +125,7 @@ export default function DietEntryFormScreen({ route, navigation }) {
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={typography.title}>{entryId ? 'Edit item' : 'Add item'}</Text>
-        <FoodEntryForm value={entry} onChange={setEntry} />
+        <FoodEntryForm value={entry} onChange={setEntry} onEstimate={handleEstimate} estimating={estimating} />
         <PrimaryButton title="Save" onPress={handleSave} loading={saving} />
         {entryId && <PrimaryButton title="Delete" variant="secondary" onPress={handleDelete} loading={saving} />}
       </ScrollView>

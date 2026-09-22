@@ -395,6 +395,15 @@ export async function fetchFoodEntry(entryId) {
   return handleResponse(response);
 }
 
+export async function estimateFoodNutrition(fields) {
+  const response = await apiFetch('/api/diet/entries/estimate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  });
+  return handleResponse(response);
+}
+
 export async function createFoodEntry(fields) {
   const response = await apiFetch('/api/diet/entries', {
     method: 'POST',
