@@ -19,6 +19,17 @@ const MICRONUTRIENT_FIELD_CONFIG = [
   { key: 'vitamin_d_mcg', label: 'Vitamin D (mcg)', placeholder: '1' },
 ];
 
+// Editing any of these by hand means the entry's numbers are no longer
+// exactly what an AI estimate produced - mirrors routes/diet.js's
+// nutritionValuesChanged (server-side, this same rule is re-applied as a
+// safety net on save; here it's what lets the badge disappear immediately
+// as the person types, before that round-trip even happens).
+const NUTRITION_AFFECTING_FIELDS = new Set([
+  'calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'sugar_g', 'sodium_mg',
+  ...MICRONUTRIENT_FIELD_CONFIG.map((f) => f.key),
+  'quantity_amount', 'quantity_unit',
+]);
+
 const QUANTITY_UNIT_OPTIONS = ['g', 'ml', 'serving', 'piece', 'cup', 'tbsp', 'tsp', 'oz', 'other'].map((v) => ({
   value: v,
   label: v,
@@ -134,7 +145,9 @@ function MicronutrientFields({ value, onChangeField }) {
 // button is for an explicit re-estimate rather than the only path to it.
 export default function FoodEntryForm({ value, onChange, onEstimate, estimating }) {
   function set(field, fieldValue) {
-    onChange({ ...value, [field]: fieldValue });
+    const patch = { ...value, [field]: fieldValue };
+    if (NUTRITION_AFFECTING_FIELDS.has(field)) patch.ai_verified = false;
+    onChange(patch);
   }
 
   function setConsumedAt(text) {

@@ -66,8 +66,9 @@ async function processDietScan(scanId) {
            user_id, scan_id, name, brand, quantity_amount, quantity_unit, serving_size_grams,
            calories, protein_g, carbs_g, fat_g, saturated_fat_g, fiber_g, sugar_g, sodium_mg,
            cholesterol_mg, potassium_mg, calcium_mg, iron_mg, vitamin_d_mcg,
-           meal_type, consumed_at, source_type, extraction_confidence, needs_quantity, needs_review, is_confirmed
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,'photo_scan',$23,$24,$25,false)`,
+           meal_type, consumed_at, source_type, extraction_confidence, needs_quantity, needs_review,
+           ai_verified, is_confirmed
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,'photo_scan',$23,$24,$25,$26,false)`,
         [
           scan.user_id,
           scanId,
@@ -94,6 +95,11 @@ async function processDietScan(scanId) {
           item.confidence,
           item.needs_quantity,
           item.needs_review,
+          // The AI could estimate nutrition for this item exactly when it
+          // didn't need a quantity to be supplied first - a needs_quantity
+          // item has no AI-sourced numbers yet, so it isn't "verified" until
+          // one is provided (via PATCH or the estimate endpoint).
+          !item.needs_quantity,
         ]
       );
     }
