@@ -165,6 +165,9 @@ export default function DietScreen({ navigation }) {
           <TouchableOpacity onPress={() => navigation.navigate('DietEntryForm')}>
             <Text style={styles.altAction}>Or add an item manually</Text>
           </TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.navigate('DietRecipe')}>
+            <Text style={styles.altAction}>Or generate a recipe idea with AI</Text>
+          </TouchableOpacity>
         </View>
 
         {summary && summary.pendingReviewCount > 0 && (
@@ -175,7 +178,12 @@ export default function DietScreen({ navigation }) {
           </TouchableOpacity>
         )}
 
-        <Text style={[typography.heading, styles.sectionHeading]}>Today</Text>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={typography.heading}>Today</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('DietStats')}>
+            <Text style={styles.addLabel}>View stats →</Text>
+          </TouchableOpacity>
+        </View>
         {today && (
           <View style={[styles.totalsCard, cardShadow]}>
             <Text style={styles.caloriesValue}>{Math.round(today.calories)} <Text style={styles.caloriesUnit}>cal</Text></Text>

@@ -73,7 +73,7 @@ export default function DietEntryFormScreen({ route, navigation }) {
         return;
       }
       const { recognized, matched_food_description, confidence, ...patch } = result;
-      setEntry((prev) => ({ ...prev, ...patch, needs_quantity: false }));
+      setEntry((prev) => ({ ...prev, ...patch, needs_quantity: false, ai_verified: true }));
     } catch (err) {
       showAlert('Could not estimate nutrition', err.message);
     } finally {

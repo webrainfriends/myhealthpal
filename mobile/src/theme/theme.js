@@ -27,6 +27,7 @@ export const statusColors = {
   'Needs Review': { fg: colors.warning, bg: colors.warningMuted },
   Completed: { fg: colors.success, bg: colors.successMuted },
   Failed: { fg: colors.danger, bg: colors.dangerMuted },
+  'AI estimate': { fg: colors.primary, bg: colors.primaryMuted },
 };
 
 // A medication's own lifecycle status (distinct from a scan's

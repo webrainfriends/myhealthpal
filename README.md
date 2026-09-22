@@ -524,6 +524,45 @@ diagnose or suggest a medication change. The cached row is regenerated
 whenever the confirmed-entry count for the window has changed since it was
 last built, or on demand (`?refresh=true`).
 
+Every `food_entries` row carries `ai_verified` (`014_diet_ai_verified.sql`)
+— whether its current numbers are exactly what an AI estimate produced,
+with nothing typed over since. A photo-scanned item is verified as soon as
+the scan can estimate it (never for one still flagged `needs_quantity`); a
+manual entry is verified when the server's own auto-estimate filled it in,
+or when the mobile client explicitly says so after applying a fresh
+"Estimate with AI" result. Editing any nutrition-affecting field by hand -
+in `FoodEntryForm.jsx` client-side for instant feedback, and again
+server-side in `PATCH /entries/:id` as a safety net
+(`src/diet/aiVerificationService.js`'s `nutritionValuesChanged`) - resets it
+to false; an explicit `ai_verified` in a request body always wins over that
+default logic. This is a provenance signal for the mobile app's "✨ AI
+estimate" badge (`FoodEntryCard.jsx`, `StatusBadge`), not a correctness
+claim.
+
+`GET /api/diet/summary?days=` (already covering up to 90 days of per-day
+totals) backs the mobile **Diet stats** screen: a dependency-free calorie
+bar chart (reusing `MiniTrendChart.jsx`, the same sparkline
+`ParameterTrendScreen.jsx` uses for lab trends), averages over the days
+actually logged (not diluted by empty days) for every macro/micronutrient,
+and a per-meal-type calorie breakdown - literally where the calories came
+from, computed client-side from the same `history[].meals` data the Diet
+tab's daily view already receives.
+
+`POST /api/diet/recipes/generate` (`src/diet/dietRecipeService.js`, forced
+tool call `generate_recipe`) generates one complete recipe - ingredients,
+ordered instructions, and estimated nutrition per serving - from an
+optional meal type and free-text preferences (ingredients on hand, a
+restriction, a cuisine). It reuses `dietInsightService.js`'s
+`computeConsiderations()` so the same active-medication/abnormal-lab
+considerations that drive recommendation tips can shape the recipe (e.g.
+lower sodium for a blood-pressure consideration); the model is only allowed
+to explain the fit (`why_this_recipe`) in terms of considerations it was
+actually given, with a fixed not-medical-advice line appended, and any
+stated preference/restriction is treated as a hard constraint. Nothing is
+persisted server-side - "Log this recipe" on the mobile app is an ordinary
+`POST /api/diet/entries` using the returned nutrition, `ai_verified: true`
+since it's AI-estimated the same as any other entry.
+
 ### Known scope limits
 
 - `generateSummary` (`src/services/summaryService.js`) is a heuristic,
@@ -647,7 +686,19 @@ trend, and Insights push over them full-screen:
   the consumed-at time that drives its auto-assigned meal, and an "Estimate
   nutrition with AI" button (`FoodEntryForm.jsx`) that fills in the numbers
   from just the name (saving with no calories given also triggers this
-  automatically, server-side).
+  automatically, server-side). Any logged item that's still exactly what
+  an AI estimate produced shows a "✨ AI estimate" badge
+  (`FoodEntryCard.jsx`), which disappears the moment a nutrition value is
+  edited by hand. **Diet stats** (`DietStatsScreen.jsx`, reached from the
+  Diet tab's "View stats" link) — 7D/14D/30D/90D range chips over
+  `GET /api/diet/summary`, a calorie sparkline, average macro/micronutrient
+  values over the days actually logged, and a calories-by-meal-type
+  breakdown. **Recipe ideas** (`DietRecipeScreen.jsx`, reached from the Diet
+  tab) — an optional meal-type chip and free-text preferences field, a
+  generated recipe (ingredients, steps, nutrition per serving, a
+  considerations-grounded "why this recipe" note) from
+  `POST /api/diet/recipes/generate`, and a "Log this recipe" button that
+  saves it as a confirmed, AI-verified diet entry.
 
 ### Testing notes
 

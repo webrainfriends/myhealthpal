@@ -443,4 +443,13 @@ export async function fetchDietRecommendations(refresh = false) {
   return handleResponse(response);
 }
 
+export async function generateDietRecipe(fields) {
+  const response = await apiFetch('/api/diet/recipes/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  });
+  return handleResponse(response);
+}
+
 export { API_BASE_URL };
