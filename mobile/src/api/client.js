@@ -443,4 +443,52 @@ export async function fetchDietRecommendations(refresh = false) {
   return handleResponse(response);
 }
 
+export async function fetchGmailStatus() {
+  const response = await apiFetch('/api/integrations/gmail/status');
+  return handleResponse(response);
+}
+
+export async function fetchGmailConnectUrl() {
+  const response = await apiFetch('/api/integrations/gmail/connect');
+  return handleResponse(response);
+}
+
+export async function disconnectGmail() {
+  const response = await apiFetch('/api/integrations/gmail/disconnect', { method: 'DELETE' });
+  if (!response.ok) return handleResponse(response);
+  return null;
+}
+
+export async function searchGmailCandidates() {
+  const response = await apiFetch('/api/integrations/gmail/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  return handleResponse(response);
+}
+
+export async function importGmailSelections(selections) {
+  const response = await apiFetch('/api/integrations/gmail/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ selections }),
+  });
+  return handleResponse(response);
+}
+
+export async function updateGmailSettings(syncMode) {
+  const response = await apiFetch('/api/integrations/gmail/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ syncMode }),
+  });
+  return handleResponse(response);
+}
+
+export async function fetchGmailDocuments() {
+  const response = await apiFetch('/api/integrations/gmail/documents');
+  return handleResponse(response);
+}
+
 export { API_BASE_URL };
