@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Alert, ScrollView, StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MedicationForm from '../components/MedicationForm';
 import PrimaryButton from '../components/PrimaryButton';
 import { colors, spacing } from '../theme/theme';
 import { createMedication } from '../api/client';
+import { showAlert } from '../utils/alert';
 
 const EMPTY = {
   name: '',
@@ -29,7 +30,7 @@ export default function MedicationCreateScreen({ navigation }) {
 
   async function handleSave() {
     if (!draft.name || !draft.name.trim()) {
-      Alert.alert('Name required', 'Enter a medication name before saving.');
+      showAlert('Name required', 'Enter a medication name before saving.');
       return;
     }
     setBusy(true);
@@ -43,7 +44,7 @@ export default function MedicationCreateScreen({ navigation }) {
       });
       navigation.replace('MedicationDetail', { medicationId: data.medication.id });
     } catch (err) {
-      Alert.alert('Could not save medication', err.message);
+      showAlert('Could not save medication', err.message);
     } finally {
       setBusy(false);
     }

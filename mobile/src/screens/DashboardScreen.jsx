@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ParameterPickerModal from '../components/ParameterPickerModal';
 import OrganHealthCard from '../components/OrganHealthCard';
@@ -7,6 +7,7 @@ import SummaryCard from '../components/SummaryCard';
 import { cardShadow, colors, healthStatusColors, radii, spacing, typography } from '../theme/theme';
 import { fetchDashboardSnapshot, fetchOrganHealth, pinParameter, unpinParameter } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
+import { showAlert } from '../utils/alert';
 
 function formatDate(value) {
   if (!value) return 'unknown date';
@@ -91,7 +92,7 @@ export default function DashboardScreen({ navigation }) {
       await pinParameter(parameterId);
       await load();
     } catch (err) {
-      Alert.alert('Could not pin metric', err.message);
+      showAlert('Could not pin metric', err.message);
     }
   }
 
@@ -100,7 +101,7 @@ export default function DashboardScreen({ navigation }) {
       await unpinParameter(parameterId);
       await load();
     } catch (err) {
-      Alert.alert('Could not unpin metric', err.message);
+      showAlert('Could not unpin metric', err.message);
     }
   }
 
