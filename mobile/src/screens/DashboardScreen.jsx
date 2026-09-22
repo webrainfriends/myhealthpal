@@ -145,11 +145,19 @@ export default function DashboardScreen({ navigation }) {
             </Text>
             <Text style={typography.bodySecondary}>Here's how your body is doing today.</Text>
           </View>
-          <TouchableOpacity onPress={signOut} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={styles.accountLabel}>
-              {user?.authProvider === 'guest' ? 'Guest' : user?.email || 'Account'} · Sign out
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.accountActions}>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Settings')}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.accountLabel}>Settings</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={signOut} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={styles.accountLabel}>
+                {user?.authProvider === 'guest' ? 'Guest' : user?.email || 'Account'} · Sign out
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {activity && (
@@ -262,6 +270,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     gap: spacing.sm,
+  },
+  accountActions: {
+    alignItems: 'flex-end',
+    gap: spacing.xs,
   },
   accountLabel: {
     color: colors.textSecondary,
