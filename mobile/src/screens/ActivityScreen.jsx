@@ -23,6 +23,23 @@ function RingLegendRow({ label, value, unit, goal, color }) {
   );
 }
 
+// Calories/distance come from imported wearable exports (see
+// activityImportService.js) - there's no goal or ring for them, just a
+// factual readout, so they're skipped entirely on days with neither value.
+function ImportedStatsRow({ caloriesBurned, distanceMeters }) {
+  if (caloriesBurned === null && distanceMeters === null) return null;
+  return (
+    <View style={styles.importedStatsRow}>
+      {caloriesBurned !== null && (
+        <Text style={typography.bodySecondary}>{Math.round(caloriesBurned)} cal burned</Text>
+      )}
+      {distanceMeters !== null && (
+        <Text style={typography.bodySecondary}>{(distanceMeters / 1000).toFixed(2)} km</Text>
+      )}
+    </View>
+  );
+}
+
 function formatDayLabel(dateStr) {
   const d = new Date(`${dateStr}T00:00:00`);
   return d.toLocaleDateString(undefined, { weekday: 'short' });
@@ -132,6 +149,7 @@ export default function ActivityScreen() {
               color={activityRingColors.standHours.fg}
             />
           </View>
+          <ImportedStatsRow caloriesBurned={today.caloriesBurned} distanceMeters={today.distanceMeters} />
         </View>
 
         <View style={styles.section}>
@@ -221,6 +239,12 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
+  },
+  importedStatsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: spacing.md,
+    marginTop: 2,
   },
   section: {
     gap: spacing.sm,
