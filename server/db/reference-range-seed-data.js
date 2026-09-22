@@ -345,4 +345,44 @@ module.exports = [
       },
     ],
   },
+  {
+    parameterCode: 'urine_ph',
+    unit: 'pH',
+    ranges: [
+      {
+        source: 'who',
+        conditionLabel: 'general',
+        low: 4.6,
+        high: 8.0,
+        citation: 'Standard adult reference interval for urine pH on a routine urinalysis.',
+      },
+    ],
+  },
+  {
+    parameterCode: 'urine_specific_gravity',
+    unit: 'SG',
+    ranges: [
+      {
+        source: 'who',
+        conditionLabel: 'general',
+        low: 1.005,
+        high: 1.03,
+        citation: 'Standard adult reference interval for urine specific gravity on a routine urinalysis.',
+      },
+    ],
+  },
+  {
+    parameterCode: 'insulin_resistance_homa_ir',
+    unit: '', // a dimensionless index - the report itself prints no unit for it
+    ranges: [
+      {
+        source: 'fda',
+        conditionLabel: 'general',
+        low: 0.7,
+        high: 2.0,
+        citation:
+          'Commonly used adult reference range for the HOMA-IR (Homeostatic Model Assessment of Insulin Resistance) index; values above this range suggest insulin resistance.',
+      },
+    ],
+  },
 ];

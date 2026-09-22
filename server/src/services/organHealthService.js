@@ -14,12 +14,15 @@
 // empty categories array is deliberate, not a placeholder to fill in:
 // buildOrganSummaries already reports a categories:[] group as 'no_data'
 // rather than fabricating a score, exactly like any other group with zero
-// tracked results.
+// tracked results. Urinalysis (the 'urine' category) is folded into the
+// Kidney card the same way - a urine complete analysis is clinically part
+// of a renal workup, and it keeps the dashboard's card list exactly as
+// already decided rather than unilaterally adding a new one.
 const ORGAN_GROUPS = [
   { key: 'diabetes', label: 'Diabetes', icon: '💉', categories: ['diabetes'] },
   { key: 'heart', label: 'Heart, Pressure & Cholesterol', icon: '❤️', categories: ['lipids', 'cardiac'] },
   { key: 'blood', label: 'Blood', icon: '🩸', categories: ['hematology'] },
-  { key: 'kidney', label: 'Kidney', icon: '🫘', categories: ['kidney', 'electrolytes'] },
+  { key: 'kidney', label: 'Kidney', icon: '🫘', categories: ['kidney', 'electrolytes', 'urine'] },
   { key: 'liver_pancreas', label: 'Liver & Pancreas', icon: '🔥', categories: ['liver', 'pancreas'] },
   { key: 'metabolism', label: 'Metabolism & Intestines', icon: '⚡', categories: ['metabolic', 'thyroid'] },
   { key: 'activity', label: 'Activity', icon: '🏃', categories: [] },
@@ -52,6 +55,31 @@ function parseRange(rangeRaw) {
   return Number.isFinite(min) && Number.isFinite(max) ? { min, max } : null;
 }
 
+// Most of a urine complete analysis is qualitative (Colour, Clarity, a
+// dipstick's Negative/Nil readings, ...), so neither the numeric-range
+// parse above nor a standards-table lookup applies - there's no "13-17" to
+// parse and no WHO/ICMR/FDA table for "is the urine clear". Deliberately
+// narrow: only parameters where a lab's "normal" phrasing is well-known and
+// unambiguous get an entry, so a value this never expects to see (e.g.
+// "Positive", "1+", "Turbid") correctly falls through to 'unknown' rather
+// than being guessed at.
+const QUALITATIVE_NORMAL_VALUES = {
+  urine_colour: new Set(['pale yellow', 'light yellow', 'yellow', 'straw', 'straw yellow']),
+  urine_clarity: new Set(['clear']),
+  urine_glucose: new Set(['nil', 'negative', 'absent', 'none']),
+  urine_protein: new Set(['nil', 'negative', 'absent', 'none']),
+  urine_nitrite: new Set(['negative', 'nil']),
+  urine_ketone: new Set(['negative', 'nil']),
+  urine_bile: new Set(['absent', 'nil', 'negative']),
+  urine_urobilinogen: new Set(['normal']),
+  urine_blood: new Set(['negative', 'nil']),
+  urine_crystals: new Set(['nil', 'absent', 'none']),
+  urine_pathological_cast: new Set(['nil', 'absent', 'none']),
+  urine_bacteria: new Set(['nil', 'absent', 'none']),
+  urine_yeast: new Set(['nil', 'absent', 'none']),
+  urine_mucus: new Set(['absent', 'nil', 'none']),
+};
+
 // 'normal' | 'abnormal' | 'unknown' (not enough information to judge -
 // excluded from the score rather than guessed at). `standardRange`, when
 // given, is this parameter's row from reference_ranges (see
@@ -81,6 +109,11 @@ function determineResultStatus(row, standardRange) {
     if (low !== null && low !== undefined && value < low) return 'abnormal';
     if (high !== null && high !== undefined && value > high) return 'abnormal';
     return 'normal';
+  }
+
+  const normalValues = QUALITATIVE_NORMAL_VALUES[row.code];
+  if (normalValues && row.qualitativeValue) {
+    return normalValues.has(String(row.qualitativeValue).trim().toLowerCase()) ? 'normal' : 'abnormal';
   }
 
   return 'unknown';
