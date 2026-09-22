@@ -1,6 +1,7 @@
 const fs = require('fs');
 const Anthropic = require('@anthropic-ai/sdk');
 const config = require('../../config');
+const { NUTRIENT_FIELDS, nutrientToolProperties } = require('./nutrientFields');
 
 const SYSTEM_PROMPT = [
   'You are a precise food/drink identification and nutrition-estimation engine reading a photo of a meal, snack, or drink.',
@@ -53,19 +54,7 @@ const EXTRACTION_TOOL = {
               type: ['number', 'null'],
               description: 'Approximate grams for one serving/piece of this item, when estimable, else null.',
             },
-            calories: { type: ['number', 'null'], description: 'Estimated total calories (kcal) for the portion shown, or null.' },
-            protein_g: { type: ['number', 'null'], description: 'Estimated protein in grams for the portion shown, or null.' },
-            carbs_g: { type: ['number', 'null'], description: 'Estimated carbohydrates in grams for the portion shown, or null.' },
-            fat_g: { type: ['number', 'null'], description: 'Estimated fat in grams for the portion shown, or null.' },
-            saturated_fat_g: { type: ['number', 'null'], description: 'Estimated saturated fat in grams for the portion shown, or null.' },
-            fiber_g: { type: ['number', 'null'], description: 'Estimated fiber in grams for the portion shown, or null.' },
-            sugar_g: { type: ['number', 'null'], description: 'Estimated sugar in grams for the portion shown, or null.' },
-            sodium_mg: { type: ['number', 'null'], description: 'Estimated sodium in milligrams for the portion shown, or null.' },
-            cholesterol_mg: { type: ['number', 'null'], description: 'Estimated dietary cholesterol in milligrams for the portion shown, or null.' },
-            potassium_mg: { type: ['number', 'null'], description: 'Estimated potassium in milligrams for the portion shown, or null.' },
-            calcium_mg: { type: ['number', 'null'], description: 'Estimated calcium in milligrams for the portion shown, or null.' },
-            iron_mg: { type: ['number', 'null'], description: 'Estimated iron in milligrams for the portion shown, or null.' },
-            vitamin_d_mcg: { type: ['number', 'null'], description: 'Estimated vitamin D in micrograms for the portion shown, or null.' },
+            ...nutrientToolProperties('the portion shown'),
             needs_quantity: {
               type: 'boolean',
               description: 'True when the portion size could not be confidently judged from the image.',
@@ -133,14 +122,6 @@ async function extract(document, context = {}) {
   if (!toolUse) {
     return { items: [], warnings: [...warnings, 'No structured extraction result was returned.'], rawModelOutput: response };
   }
-
-  // Every nutrient the model estimates, not just the original macros -
-  // listed once here so adding another one (e.g. a future zinc/magnesium
-  // column) is a one-line change rather than a repeated null-guard per field.
-  const NUTRIENT_FIELDS = [
-    'calories', 'protein_g', 'carbs_g', 'fat_g', 'saturated_fat_g', 'fiber_g', 'sugar_g',
-    'sodium_mg', 'cholesterol_mg', 'potassium_mg', 'calcium_mg', 'iron_mg', 'vitamin_d_mcg',
-  ];
 
   const rawItems = Array.isArray(toolUse.input?.items) ? toolUse.input.items : [];
   const items = rawItems

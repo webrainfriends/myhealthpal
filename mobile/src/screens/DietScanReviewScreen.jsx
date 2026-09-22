@@ -8,6 +8,7 @@ import { colors, radii, spacing, typography } from '../theme/theme';
 import {
   confirmFoodEntry,
   deleteFoodEntry,
+  estimateFoodNutrition,
   fetchDietScan,
   retryDietScan,
   updateFoodEntry,
@@ -20,6 +21,7 @@ const EDIT_DEBOUNCE_MS = 600;
 
 function CandidateCard({ entry, onChange, onConfirm, onDiscard, busy }) {
   const [local, setLocal] = useState(entry);
+  const [estimating, setEstimating] = useState(false);
   const pendingEdits = useRef({});
   const debounceTimer = useRef(null);
 
@@ -39,13 +41,40 @@ function CandidateCard({ entry, onChange, onConfirm, onDiscard, busy }) {
     }, EDIT_DEBOUNCE_MS);
   }
 
+  // Most useful right after typing in the quantity the photo couldn't
+  // judge (needs_quantity) - re-estimates nutrition for the name the scan
+  // already identified, now scaled to that quantity, the same estimator a
+  // manual entry uses.
+  async function handleEstimate() {
+    if (!local.name || !local.name.trim()) return;
+    setEstimating(true);
+    try {
+      const result = await estimateFoodNutrition({
+        name: local.name,
+        brand: local.brand || undefined,
+        quantity_amount: local.quantity_amount ?? undefined,
+        quantity_unit: local.quantity_unit || undefined,
+      });
+      if (!result.recognized) {
+        showAlert('Could not identify this food', `"${local.name}" wasn't recognized - enter the nutrition details manually.`);
+        return;
+      }
+      const { recognized, matched_food_description, confidence, ...patch } = result;
+      handleChange({ ...local, ...patch, needs_quantity: false });
+    } catch (err) {
+      showAlert('Could not estimate nutrition', err.message);
+    } finally {
+      setEstimating(false);
+    }
+  }
+
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
         <Text style={typography.heading}>{local.name || 'Unnamed item'}</Text>
         {(local.needs_quantity || local.needs_review) && <StatusBadge status="Needs Review" />}
       </View>
-      <FoodEntryForm value={local} onChange={handleChange} />
+      <FoodEntryForm value={local} onChange={handleChange} onEstimate={handleEstimate} estimating={estimating} />
       <View style={styles.cardActions}>
         <PrimaryButton title="Confirm" onPress={() => onConfirm(entry.id)} loading={busy} />
         <PrimaryButton title="Discard" variant="secondary" onPress={() => onDiscard(entry.id)} loading={busy} />

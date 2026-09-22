@@ -5,6 +5,8 @@ const config = require('../config');
 const { upload, extensionOf } = require('../middleware/upload');
 const { enqueueDietScanProcessing, classifyMealType } = require('../diet/dietScanService');
 const { getOrGenerateRecommendations, generateRecommendations } = require('../diet/dietInsightService');
+const dietTextProvider = require('../extraction/providers/dietTextProvider');
+const { NUTRIENT_FIELDS } = require('../extraction/providers/nutrientFields');
 
 const router = express.Router();
 
@@ -165,15 +167,10 @@ router.get('/entries/:id', async (req, res, next) => {
   }
 });
 
-// Every nutrient food_entries stores, in the same order used by the
-// INSERT/UPDATE column lists below - kept as one list (rather than
-// repeating the 13 names at each call site) so NUMERIC_FIELDS/
-// EDITABLE_FIELDS can't drift out of sync with what dietPhotoProvider.js
-// estimates.
-const NUTRIENT_FIELDS = [
-  'calories', 'protein_g', 'carbs_g', 'fat_g', 'saturated_fat_g', 'fiber_g', 'sugar_g',
-  'sodium_mg', 'cholesterol_mg', 'potassium_mg', 'calcium_mg', 'iron_mg', 'vitamin_d_mcg',
-];
+// NUTRIENT_FIELDS (imported above) is the same list dietPhotoProvider.js/
+// dietTextProvider.js estimate - used here for the INSERT/UPDATE column
+// lists below so NUMERIC_FIELDS/EDITABLE_FIELDS can't drift out of sync
+// with what the schema actually stores.
 const NUMERIC_FIELDS = ['quantity_amount', 'serving_size_grams', ...NUTRIENT_FIELDS];
 
 function validateEntryBody(body) {
@@ -188,14 +185,95 @@ function validateEntryBody(body) {
   return null;
 }
 
+// Calls dietTextProvider.estimate() and normalizes the result into a
+// body-shaped patch ({quantity_amount, quantity_unit, serving_size_grams,
+// ...nutrient fields}) containing only what was confidently estimated -
+// never a quantity_amount/quantity_unit pair when the caller already gave
+// one (the estimate was scaled to that quantity, not a replacement for it).
+async function estimateNutrition(name, brand, quantityAmount, quantityUnit) {
+  const description = brand ? `${name} (${brand})` : name;
+  const result = await dietTextProvider.estimate(description, { quantityAmount, quantityUnit });
+  if (!result.recognized) {
+    return { recognized: false, matchedFoodDescription: null, confidence: 0, patch: {} };
+  }
+
+  const patch = {};
+  for (const field of NUTRIENT_FIELDS) {
+    if (result.nutrients[field] != null) patch[field] = result.nutrients[field];
+  }
+  if (quantityAmount == null && result.quantityAmount != null) {
+    patch.quantity_amount = result.quantityAmount;
+    patch.quantity_unit = result.quantityUnit;
+  }
+  if (result.servingSizeGrams != null) patch.serving_size_grams = result.servingSizeGrams;
+
+  return { recognized: true, matchedFoodDescription: result.matchedFoodDescription, confidence: result.confidence, patch };
+}
+
+// Preview endpoint: given a name (+ optional brand/quantity), returns an
+// AI nutrition estimate without creating anything - what the mobile app's
+// "Estimate with AI" button calls so a person can review/adjust the
+// numbers before saving. POST /entries below calls the same estimator
+// automatically when a manual entry is saved with no calories given, so
+// this endpoint is for an explicit re-estimate (e.g. after changing the
+// name or quantity), not the only way AI nutrition gets attached.
+router.post('/entries/estimate', async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    if (!body.name || !String(body.name).trim()) {
+      return res.status(400).json({ error: 'name is required.' });
+    }
+    if (body.quantity_unit && !QUANTITY_UNITS.has(body.quantity_unit)) {
+      return res.status(400).json({ error: 'quantity_unit is not a recognized unit.' });
+    }
+
+    const quantityAmount = body.quantity_amount != null && Number.isFinite(Number(body.quantity_amount))
+      ? Number(body.quantity_amount)
+      : null;
+    const { recognized, matchedFoodDescription, confidence, patch } = await estimateNutrition(
+      body.name, body.brand || null, quantityAmount, body.quantity_unit || null
+    );
+
+    res.json({ recognized, matched_food_description: matchedFoodDescription, confidence, ...patch });
+  } catch (err) {
+    if (err.message && err.message.includes('ANTHROPIC_API_KEY')) {
+      return res.status(503).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
 // Manual entry: trusted immediately (is_confirmed = true), unlike a
 // scanned candidate - the same distinction routes/medications.js makes
 // between POST /scans (unconfirmed) and POST / (confirmed).
 router.post('/entries', async (req, res, next) => {
   try {
-    const body = req.body || {};
+    const body = { ...(req.body || {}) };
     const error = validateEntryBody(body);
     if (error) return res.status(400).json({ error });
+
+    // A manual entry saved with no calories given gets the same AI
+    // nutrition estimate a photo scan gets (dietTextProvider.js), filled in
+    // here rather than requiring the person to look every number up and
+    // type it in by hand. Never overwrites a field the person did provide,
+    // and never blocks the save if estimation fails (no ANTHROPIC_API_KEY,
+    // a transient API error, or the food simply not being recognized) -
+    // the entry still saves with whatever was given.
+    let aiEstimate = null;
+    if (body.calories == null && body.name) {
+      try {
+        const quantityAmount = body.quantity_amount != null ? Number(body.quantity_amount) : null;
+        const result = await estimateNutrition(body.name, body.brand, quantityAmount, body.quantity_unit || null);
+        if (result.recognized) {
+          for (const [key, value] of Object.entries(result.patch)) {
+            if (body[key] == null) body[key] = value;
+          }
+          aiEstimate = { matchedFoodDescription: result.matchedFoodDescription, confidence: result.confidence };
+        }
+      } catch (err) {
+        // Swallowed by design - see comment above.
+      }
+    }
 
     const consumedAt = parseConsumedAt(body.consumed_at);
     const mealType = body.meal_type || classifyMealType(consumedAt);
@@ -220,7 +298,7 @@ router.post('/entries', async (req, res, next) => {
       `INSERT INTO food_entries (${columns.join(', ')}) VALUES (${placeholders}) RETURNING *`,
       values
     );
-    res.status(201).json({ entry: rows[0] });
+    res.status(201).json({ entry: rows[0], ai_estimate: aiEstimate });
   } catch (err) {
     next(err);
   }

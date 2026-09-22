@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import ChipSelect from './ChipSelect';
+import PrimaryButton from './PrimaryButton';
 import { colors, radii, spacing, typography } from '../theme/theme';
 
 // The rest of the FDA Nutrition Facts label's nutrients beyond the primary
@@ -125,7 +126,13 @@ function MicronutrientFields({ value, onChangeField }) {
 // review screen (filling in what the photo couldn't confidently size) and
 // the manual add/edit screen - same fields, same ChipSelect-backed enum
 // columns as MedicationForm.jsx's equivalent pattern.
-export default function FoodEntryForm({ value, onChange }) {
+// `onEstimate`/`estimating` are optional - passed by a screen that wants to
+// offer AI-estimated nutrition (POST /api/diet/entries/estimate) for
+// whatever's currently in `value.name`/`brand`/`quantity_amount`/
+// `quantity_unit`; a manual save with no calories given gets this
+// automatically server-side regardless (see routes/diet.js), so this
+// button is for an explicit re-estimate rather than the only path to it.
+export default function FoodEntryForm({ value, onChange, onEstimate, estimating }) {
   function set(field, fieldValue) {
     onChange({ ...value, [field]: fieldValue });
   }
@@ -164,6 +171,16 @@ export default function FoodEntryForm({ value, onChange }) {
         value={value.quantity_unit}
         onChange={(v) => set('quantity_unit', v)}
       />
+
+      {onEstimate && (
+        <PrimaryButton
+          title="Estimate nutrition with AI"
+          variant="secondary"
+          onPress={onEstimate}
+          loading={estimating}
+          disabled={!value.name || !value.name.trim()}
+        />
+      )}
 
       <View style={styles.row}>
         <Field
