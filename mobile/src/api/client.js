@@ -133,6 +133,15 @@ export async function uploadReport(file) {
   return handleResponse(response);
 }
 
+export async function fetchReportFileUrl(reportId) {
+  const response = await apiFetch(`/api/reports/${reportId}/file-url`);
+  const data = await handleResponse(response);
+  // The signed url is server-relative (it's opened by window.open/
+  // Linking.openURL, not through apiFetch, so it needs to be absolute -
+  // API_BASE_URL is '' on web same-origin builds, which is also correct.
+  return `${API_BASE_URL}${data.url}`;
+}
+
 export async function retryReport(reportId) {
   const response = await apiFetch(`/api/reports/${reportId}/retry`, { method: 'POST' });
   return handleResponse(response);

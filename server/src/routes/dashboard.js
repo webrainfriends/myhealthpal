@@ -73,15 +73,6 @@ router.get('/snapshot', async (req, res, next) => {
       [userId]
     );
 
-    const recentReports = await pool.query(
-      `SELECT id, original_filename, effective_date, date_status, ingestion_status, generated_summary, created_at
-       FROM reports
-       WHERE user_id = $1
-       ORDER BY COALESCE(effective_date, created_at::date) DESC, created_at DESC
-       LIMIT 5`,
-      [userId]
-    );
-
     const insights = await pool.query(
       `SELECT i.id, i.insight_type, i.title, i.explanation, i.severity, i.generated_at, i.evidence,
               hp.display_name AS parameter_display_name
@@ -96,7 +87,6 @@ router.get('/snapshot', async (req, res, next) => {
     res.json({
       trackedMetrics: tracked.rows,
       needsAttention: needsAttention.rows,
-      recentReports: recentReports.rows,
       insights: insights.rows,
     });
   } catch (err) {

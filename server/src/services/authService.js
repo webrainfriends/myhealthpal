@@ -20,6 +20,30 @@ function verifySessionUserId(token) {
   return payload.sub;
 }
 
+// A file-open link (window.open/Linking.openURL, or a plain <a href>) can't
+// carry an Authorization header, so viewing an original report file uses a
+// second, narrowly-scoped token instead of the session one: short-lived,
+// tied to one specific report, and tagged with its own `type` so a leaked
+// download link can never be replayed as a session token (or vice versa).
+const DOWNLOAD_TOKEN_TTL = '10m';
+
+function signReportDownloadToken({ userId, reportId }) {
+  return jwt.sign({ sub: userId, reportId, type: 'report_download' }, config.jwtSecret, {
+    expiresIn: DOWNLOAD_TOKEN_TTL,
+  });
+}
+
+// Throws on a missing/expired/tampered token, or one that isn't actually a
+// download token (e.g. a session token reused here) - same "never silently
+// fall back" contract as verifySessionUserId.
+function verifyReportDownloadToken(token) {
+  const payload = jwt.verify(token, config.jwtSecret);
+  if (payload.type !== 'report_download') {
+    throw new Error('Not a report download token');
+  }
+  return { userId: payload.sub, reportId: payload.reportId };
+}
+
 async function findUserById(id) {
   const { rows } = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
   return rows[0] || null;
@@ -57,4 +81,12 @@ async function upsertOAuthUser({ provider, providerUserId, email, displayName })
   return rows[0];
 }
 
-module.exports = { signSession, verifySessionUserId, findUserById, createGuestUser, upsertOAuthUser };
+module.exports = {
+  signSession,
+  verifySessionUserId,
+  signReportDownloadToken,
+  verifyReportDownloadToken,
+  findUserById,
+  createGuestUser,
+  upsertOAuthUser,
+};

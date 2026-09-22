@@ -8,6 +8,7 @@ const registry = require('../extraction/registry');
 const { classifyValue } = require('../extraction/normalizationService');
 const { refreshSummaryForReport } = require('../extraction/reportNarrativeService');
 const { runForMeasurement, supersedeInsightsForMeasurement } = require('../insights/insightService');
+const { signReportDownloadToken } = require('../services/authService');
 
 const router = express.Router();
 
@@ -68,6 +69,27 @@ router.get('/:id', async (req, res, next) => {
       dates: dates.rows,
       narrativeSummary: narrative.rows[0] || null,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Mints a short-lived, single-report-scoped token for viewing/downloading
+// the original uploaded file exactly as-is. Kept separate from the file
+// bytes themselves (served unauthenticated-by-header at GET /api/files/
+// report/:id?token=... - see routes/files.js) because opening a link with
+// window.open/Linking.openURL can't attach an Authorization header; this
+// endpoint is where that still gets checked, once, right before minting.
+router.get('/:id/file-url', async (req, res, next) => {
+  try {
+    const { rows } = await pool.query('SELECT id FROM reports WHERE id = $1 AND user_id = $2', [
+      req.params.id,
+      currentUserId(req),
+    ]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Report not found' });
+
+    const token = signReportDownloadToken({ userId: currentUserId(req), reportId: req.params.id });
+    res.json({ url: `/api/files/report/${req.params.id}?token=${token}` });
   } catch (err) {
     next(err);
   }
