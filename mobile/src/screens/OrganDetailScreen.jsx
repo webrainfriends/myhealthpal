@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import ResultSummaryModal from '../components/ResultSummaryModal';
 import { cardShadow, colors, healthStatusColors, radii, spacing, typography } from '../theme/theme';
 import { fetchOrganHealth } from '../api/client';
 
@@ -11,20 +12,38 @@ function formatDate(value) {
   return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function ParameterRow({ parameter, onPress }) {
+function ParameterRow({ parameter, onPress, onAlertPress }) {
   const palette =
     parameter.resultStatus === 'normal'
       ? healthStatusColors.good
       : parameter.resultStatus === 'abnormal'
         ? healthStatusColors.attention
         : healthStatusColors.no_data;
+  const isAbnormal = parameter.resultStatus === 'abnormal';
 
   return (
     <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.7}>
       <View style={styles.rowMain}>
-        <Text style={typography.body} numberOfLines={1}>
-          {parameter.displayName}
-        </Text>
+        <View style={styles.rowNameLine}>
+          {isAbnormal && (
+            <TouchableOpacity
+              onPress={(e) => {
+                // Web bubbles a touch to the parent row's own onPress
+                // unless stopped; native's responder system already gives
+                // the inner Touchable exclusive claim on the gesture, and
+                // has no stopPropagation on its event, hence the guard.
+                e.stopPropagation?.();
+                onAlertPress();
+              }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.alertBadge}>⚠️</Text>
+            </TouchableOpacity>
+          )}
+          <Text style={[typography.body, styles.rowNameText]} numberOfLines={1}>
+            {parameter.displayName}
+          </Text>
+        </View>
         <Text style={typography.caption}>{formatDate(parameter.effectiveDate)}</Text>
       </View>
       <View style={styles.rowValueBlock}>
@@ -44,6 +63,7 @@ function ParameterRow({ parameter, onPress }) {
 export default function OrganDetailScreen({ route, navigation }) {
   const { organKey, initialOrgan } = route.params;
   const [organ, setOrgan] = useState(initialOrgan || null);
+  const [summaryParameter, setSummaryParameter] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -116,10 +136,25 @@ export default function OrganDetailScreen({ route, navigation }) {
                   ? navigation.navigate('ParameterTrend', { code: parameter.code, displayName: parameter.displayName })
                   : undefined
               }
+              onAlertPress={() => setSummaryParameter(parameter)}
             />
           ))
         )}
       </ScrollView>
+
+      <ResultSummaryModal
+        parameter={summaryParameter}
+        onClose={() => setSummaryParameter(null)}
+        onViewTrend={
+          summaryParameter?.code
+            ? () => {
+                const { code, displayName } = summaryParameter;
+                setSummaryParameter(null);
+                navigation.navigate('ParameterTrend', { code, displayName });
+              }
+            : undefined
+        }
+      />
     </SafeAreaView>
   );
 }
@@ -202,6 +237,17 @@ const styles = StyleSheet.create({
   rowMain: {
     flex: 1,
     gap: 2,
+  },
+  rowNameLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  alertBadge: {
+    fontSize: 14,
+  },
+  rowNameText: {
+    flexShrink: 1,
   },
   rowValueBlock: {
     alignItems: 'flex-end',
