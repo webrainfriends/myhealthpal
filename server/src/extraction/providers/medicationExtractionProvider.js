@@ -15,19 +15,23 @@ const SYSTEM_PROMPT = [
 function instructionFor(scanType) {
   if (scanType === 'tablet_photo') {
     return (
-      'This is a photo of a medicine\'s packaging, strip/blister pack, bottle label, or the tablet/capsule itself. Extract ' +
-      'every distinct medicine shown by calling record_medications once. Read the drug name, strength (dosage_amount + ' +
-      'dosage_unit), form, manufacturer batch/expiry date if printed, and quantity if printed (e.g. "10 tablets"). Frequency, ' +
-      'route, instructions, prescribed_for, and prescribing_doctor are usually not printed on packaging - omit them rather ' +
-      'than guessing. If nothing legible is found, still call it with an empty medications array.'
+      'This is a photo of a medicine\'s packaging, strip/blister pack, bottle/tube label, or the tablet/capsule/tonic/lotion ' +
+      'itself. Extract every distinct medicine shown by calling record_medications once. Read the drug name, strength ' +
+      '(dosage_amount + dosage_unit), form, manufacturer batch/expiry date if printed, and quantity if printed (e.g. "10 ' +
+      'tablets" or "100 ml"). Also read the printed composition/ingredients list (e.g. "Composition: Paracetamol 500mg, ' +
+      'Caffeine 65mg" or a lotion\'s ingredient list) into "ingredients", exactly as printed - omit it if no such list is ' +
+      'legible, never infer one from the drug name. Frequency, route, instructions, prescribed_for, and prescribing_doctor ' +
+      'are usually not printed on packaging - omit them rather than guessing. If nothing legible is found, still call it ' +
+      'with an empty medications array.'
     );
   }
   return (
     'This is a doctor\'s prescription. Extract every distinct medicine listed by calling record_medications once. Put ' +
     'everything about one medicine (dose, form, frequency, route, instructions, duration/quantity, what it was prescribed ' +
-    'for) in its own entry in "medications", and the prescription-level details (prescribing doctor, prescription date, ' +
-    'pharmacy/clinic name) in "document". If the document is unreadable or lists no medicines, still call it with an ' +
-    'empty medications array.'
+    'for, and its printed composition/ingredients into "ingredients" if a compounded formula is spelled out) in its own ' +
+    'entry in "medications", and the prescription-level details (prescribing doctor, prescription date, pharmacy/clinic ' +
+    'name) in "document". If the document is unreadable or lists no medicines, still call it with an empty medications ' +
+    'array.'
   );
 }
 
@@ -63,7 +67,7 @@ const EXTRACTION_TOOL = {
             },
             form: {
               type: ['string', 'null'],
-              enum: ['tablet', 'capsule', 'syrup', 'injection', 'drops', 'inhaler', 'cream', 'other', null],
+              enum: ['tablet', 'capsule', 'syrup', 'tonic', 'injection', 'drops', 'lotion', 'inhaler', 'cream', 'other', null],
               description: 'Dosage form, or null.',
             },
             frequency_per_day: { type: ['number', 'null'], description: 'Number of doses per day, e.g. 2 for "twice daily", or null.' },
@@ -80,6 +84,12 @@ const EXTRACTION_TOOL = {
             quantity_dispensed: { type: ['number', 'null'], description: 'Quantity dispensed (count of tablets/capsules/units), or null.' },
             quantity_unit: { type: ['string', 'null'], description: 'Unit for quantity_dispensed (e.g. "tablets"), or null.' },
             expiry_date: { type: ['string', 'null'], description: 'Manufacturer expiry date in YYYY-MM-DD if printed on packaging, else null.' },
+            ingredients: {
+              type: ['string', 'null'],
+              description:
+                'Composition/ingredients list exactly as printed on the label/prescription (e.g. "Paracetamol 500mg, ' +
+                'Caffeine 65mg"), or null if none is legible. Never inferred from the drug name.',
+            },
             confidence: { type: 'number', description: '0-1 confidence that this was read correctly from the source.' },
           },
           required: ['name', 'confidence'],
@@ -173,6 +183,7 @@ async function extract(document, context = {}) {
       quantity_dispensed: typeof m.quantity_dispensed === 'number' ? m.quantity_dispensed : null,
       quantity_unit: m.quantity_unit || null,
       expiry_date: m.expiry_date || null,
+      ingredients_raw: m.ingredients || null,
       confidence: typeof m.confidence === 'number' ? m.confidence : 0.7,
       needs_review: typeof m.confidence !== 'number' || m.confidence < 0.75,
     }));

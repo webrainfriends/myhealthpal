@@ -12,6 +12,7 @@ const EMPTY = {
   dosage_amount: null,
   dosage_unit: null,
   form: null,
+  ingredients_raw: null,
   frequency_per_day: null,
   instructions: null,
   prescribed_for: null,

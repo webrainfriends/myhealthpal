@@ -24,7 +24,14 @@ function currentUserId(req) {
 function knowledgeSummary(medication) {
   const entry = findKnowledgeEntry(medication);
   if (!entry) return null;
-  return { category: entry.category, usage: entry.usage, typicalDailyDose: entry.typicalDailyDose };
+  return {
+    category: entry.category,
+    usage: entry.usage,
+    typicalDailyDose: entry.typicalDailyDose,
+    activeIngredient: entry.activeIngredient,
+    commonSideEffects: entry.commonSideEffects,
+    warnings: entry.warnings,
+  };
 }
 
 router.get('/', async (req, res, next) => {
@@ -167,9 +174,9 @@ router.post('/', async (req, res, next) => {
       `INSERT INTO medications (
          user_id, name, generic_name, brand_name, form, dosage_amount, dosage_unit,
          frequency_per_day, times_of_day, route, instructions, prescribed_for, prescribing_doctor,
-         start_date, duration_days, end_date, quantity_dispensed, quantity_unit, expiry_date,
+         start_date, duration_days, end_date, quantity_dispensed, quantity_unit, expiry_date, ingredients_raw,
          source_type, status, notes, is_confirmed
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'manual',$20,$21,true)
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,'manual',$21,$22,true)
        RETURNING *`,
       [
         currentUserId(req),
@@ -191,6 +198,7 @@ router.post('/', async (req, res, next) => {
         body.quantity_dispensed ?? null,
         body.quantity_unit || null,
         body.expiry_date || null,
+        body.ingredients_raw || null,
         body.status || 'active',
         body.notes || null,
       ]
@@ -220,7 +228,7 @@ router.get('/:id', async (req, res, next) => {
 
     res.json({
       medication,
-      knowledge: entry ? { category: entry.category, usage: entry.usage, typicalDailyDose: entry.typicalDailyDose } : null,
+      knowledge: knowledgeSummary(medication),
       forecast,
     });
   } catch (err) {
@@ -246,6 +254,7 @@ const EDITABLE_FIELDS = [
   'quantity_dispensed',
   'quantity_unit',
   'expiry_date',
+  'ingredients_raw',
   'status',
   'notes',
 ];
@@ -274,8 +283,8 @@ router.patch('/:id', async (req, res, next) => {
          name = $2, generic_name = $3, brand_name = $4, form = $5, dosage_amount = $6, dosage_unit = $7,
          frequency_per_day = $8, times_of_day = $9, route = $10, instructions = $11, prescribed_for = $12,
          prescribing_doctor = $13, start_date = $14, duration_days = $15, end_date = $16,
-         quantity_dispensed = $17, quantity_unit = $18, expiry_date = $19, status = $20, notes = $21,
-         updated_at = now()
+         quantity_dispensed = $17, quantity_unit = $18, expiry_date = $19, ingredients_raw = $20,
+         status = $21, notes = $22, updated_at = now()
        WHERE id = $1
        RETURNING *`,
       [
@@ -298,6 +307,7 @@ router.patch('/:id', async (req, res, next) => {
         next_.quantity_dispensed,
         next_.quantity_unit,
         next_.expiry_date,
+        next_.ingredients_raw,
         next_.status,
         next_.notes,
       ]

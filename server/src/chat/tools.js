@@ -356,8 +356,10 @@ const listMedications = {
   name: 'list_medications',
   description:
     "List the user's tracked medications/prescriptions (from scanned or manually entered records), optionally filtered by " +
-    'status. Each entry includes dose, form, frequency, what it was prescribed for, course dates, and expiry - call ' +
-    'get_medication_detail with an id from here for its linked lab parameters and improvement forecast.',
+    'status. Each entry includes dose, form, frequency, what it was prescribed for, course dates, expiry, and any ' +
+    'composition/ingredients read off the user\'s own scanned label (if a scan provided one) - call get_medication_detail ' +
+    'with an id from here for its curated active-ingredient/side-effect/warning info, linked lab parameters, and ' +
+    'improvement forecast.',
   inputSchema: {
     type: 'object',
     additionalProperties: false,
@@ -370,7 +372,7 @@ const listMedications = {
     const { rows } = await pool.query(
       `SELECT id, name, generic_name, brand_name, form, dosage_amount, dosage_unit, frequency_per_day, times_of_day,
               instructions, prescribed_for, prescribing_doctor, start_date, end_date, duration_days, expiry_date,
-              status, is_confirmed, needs_review
+              ingredients_raw, status, is_confirmed, needs_review
        FROM medications
        WHERE user_id = $1 AND ($2::text IS NULL OR status = $2)
        ORDER BY status = 'active' DESC, created_at DESC
@@ -384,10 +386,12 @@ const listMedications = {
 const getMedicationDetail = {
   name: 'get_medication_detail',
   description:
-    "Get full detail for one of the user's medications by its id: what it's for, dose-adequacy vs. a typical daily dose, " +
-    'and every lab parameter it\'s linked to with a standards-based (WHO/ICMR/FDA - never a lab report\'s own printed ' +
-    "range) in-range status, the user's latest confirmed result for it, and a forecast of when improvement is expected " +
-    'given how long the medication has been taken.',
+    "Get full detail for one of the user's medications by its id: what it's for, its active ingredient(s)/composition " +
+    "(from the curated drug reference, plus whatever was literally read off the user's own scanned label/prescription if " +
+    "available), common side effects and safety warnings, dose-adequacy vs. a typical daily dose, and every lab " +
+    'parameter it\'s linked to with a standards-based (WHO/ICMR/FDA - never a lab report\'s own printed range) in-range ' +
+    "status, the user's latest confirmed result for it, and a forecast of when improvement is expected given how long " +
+    'the medication has been taken.',
   inputSchema: {
     type: 'object',
     additionalProperties: false,
@@ -409,8 +413,16 @@ const getMedicationDetail = {
       data: {
         medication,
         knowledge: knowledgeEntry
-          ? { category: knowledgeEntry.category, usage: knowledgeEntry.usage, typicalDailyDose: knowledgeEntry.typicalDailyDose }
+          ? {
+              category: knowledgeEntry.category,
+              usage: knowledgeEntry.usage,
+              typicalDailyDose: knowledgeEntry.typicalDailyDose,
+              activeIngredient: knowledgeEntry.activeIngredient,
+              commonSideEffects: knowledgeEntry.commonSideEffects,
+              warnings: knowledgeEntry.warnings,
+            }
           : null,
+        ingredientsAsPrinted: medication.ingredients_raw || null,
         doseAssessment: forecast.doseAssessment,
         standardsScorePercent: forecast.standardsScorePercent,
         linkedParameters: forecast.parameterForecasts,

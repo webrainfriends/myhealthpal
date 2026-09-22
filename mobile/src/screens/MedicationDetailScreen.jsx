@@ -39,6 +39,19 @@ function formatDate(value) {
   return new Date(value).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+function BulletList({ items, textStyle }) {
+  return (
+    <View style={styles.bulletList}>
+      {items.map((item, i) => (
+        <View key={i} style={styles.bulletRow}>
+          <Text style={[typography.bodySecondary, textStyle]}>{'•'}</Text>
+          <Text style={[typography.bodySecondary, styles.bulletText, textStyle]}>{item}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function ScoreBar({ percent, palette }) {
   const width = percent === null ? 0 : Math.max(4, Math.min(100, percent));
   return (
@@ -134,6 +147,7 @@ export default function MedicationDetailScreen({ route, navigation }) {
         duration_days: draft.duration_days === '' ? null : draft.duration_days,
         quantity_dispensed: draft.quantity_dispensed === '' ? null : draft.quantity_dispensed,
         expiry_date: draft.expiry_date || null,
+        ingredients_raw: draft.ingredients_raw || null,
       });
       setEditing(false);
       await load();
@@ -202,11 +216,55 @@ export default function MedicationDetailScreen({ route, navigation }) {
               </Text>
             </View>
 
+            {(medication.ingredients_raw || knowledge?.activeIngredient) && (
+              <View style={styles.section}>
+                <Text style={[typography.heading, styles.sectionHeading]}>Ingredients</Text>
+                {medication.ingredients_raw && (
+                  <Text style={typography.body}>{medication.ingredients_raw}</Text>
+                )}
+                {knowledge?.activeIngredient && (
+                  <Text style={typography.bodySecondary}>
+                    {medication.ingredients_raw ? 'Active ingredient: ' : ''}
+                    {knowledge.activeIngredient}
+                  </Text>
+                )}
+                {!medication.ingredients_raw && (
+                  <Text style={styles.disclaimer}>
+                    Not read from a scanned label - this is the drug's general active ingredient, not necessarily this
+                    exact product's full composition.
+                  </Text>
+                )}
+              </View>
+            )}
+
             {knowledge && (
               <View style={styles.section}>
                 <Text style={[typography.heading, styles.sectionHeading]}>{knowledge.category}</Text>
                 <Text style={typography.bodySecondary}>{knowledge.usage}</Text>
               </View>
+            )}
+
+            {knowledge?.commonSideEffects?.length > 0 && (
+              <View style={styles.section}>
+                <Text style={[typography.heading, styles.sectionHeading]}>Common side effects</Text>
+                <BulletList items={knowledge.commonSideEffects} />
+              </View>
+            )}
+
+            {knowledge?.warnings?.length > 0 && (
+              <View style={[styles.section, styles.warningBox]}>
+                <Text style={[typography.heading, styles.sectionHeading, styles.warningHeading]}>
+                  Alerts &amp; safety warnings
+                </Text>
+                <BulletList items={knowledge.warnings} textStyle={styles.warningText} />
+              </View>
+            )}
+
+            {(knowledge?.commonSideEffects?.length > 0 || knowledge?.warnings?.length > 0) && (
+              <Text style={styles.disclaimer}>
+                General drug reference information, not personalized medical advice - always check the product label and
+                your doctor or pharmacist.
+              </Text>
             )}
 
             <View style={styles.section}>
@@ -356,6 +414,28 @@ const styles = StyleSheet.create({
   },
   doseNote: {
     marginTop: 4,
+  },
+  bulletList: {
+    gap: 2,
+  },
+  bulletRow: {
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'flex-start',
+  },
+  bulletText: {
+    flex: 1,
+  },
+  warningBox: {
+    backgroundColor: colors.warningMuted,
+    borderRadius: radii.md,
+    padding: spacing.md,
+  },
+  warningHeading: {
+    color: colors.warning,
+  },
+  warningText: {
+    color: colors.warning,
   },
   paramRow: {
     backgroundColor: colors.surface,
