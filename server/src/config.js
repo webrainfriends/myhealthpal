@@ -46,6 +46,12 @@ module.exports = {
   extractionProvider: process.env.EXTRACTION_PROVIDER || 'heuristic',
   summaryProvider: process.env.SUMMARY_PROVIDER || 'heuristic',
   insightProvider: process.env.INSIGHT_PROVIDER || 'heuristic',
+  // Diet photo identification always requires Claude (like medication scan
+  // extraction, there is no heuristic vision substitute) - dietProvider
+  // only controls whether the *tip phrasing* on top of the deterministic
+  // pattern analysis is Claude-rephrased ('claude') or left as the
+  // always-correct heuristic template (default).
+  dietProvider: process.env.DIET_PROVIDER || 'heuristic',
   chatProvider: process.env.CHAT_PROVIDER || (process.env.ANTHROPIC_API_KEY ? 'claude' : 'unavailable'),
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || null,
   anthropicModel: process.env.ANTHROPIC_MODEL || 'claude-sonnet-5',

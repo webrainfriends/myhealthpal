@@ -4,9 +4,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import ParameterPickerModal from '../components/ParameterPickerModal';
 import OrganHealthCard from '../components/OrganHealthCard';
 import ActivityCard from '../components/ActivityCard';
+import DietCard from '../components/DietCard';
 import SummaryCard from '../components/SummaryCard';
 import { cardShadow, colors, healthStatusColors, radii, spacing, typography } from '../theme/theme';
-import { fetchActivitySummary, fetchDashboardSnapshot, fetchOrganHealth, pinParameter, unpinParameter } from '../api/client';
+import {
+  fetchActivitySummary,
+  fetchDashboardSnapshot,
+  fetchDietSummary,
+  fetchOrganHealth,
+  pinParameter,
+  unpinParameter,
+} from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { showAlert } from '../utils/alert';
 
@@ -71,11 +79,12 @@ export default function DashboardScreen({ navigation }) {
   const [snapshot, setSnapshot] = useState(null);
   const [organs, setOrgans] = useState(null);
   const [activity, setActivity] = useState(null);
+  const [diet, setDiet] = useState(null);
   const [pickerVisible, setPickerVisible] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [data, organData, activityData] = await Promise.all([
+      const [data, organData, activityData, dietData] = await Promise.all([
         fetchDashboardSnapshot(),
         fetchOrganHealth(),
         // A window wide enough that the card can fall back to the most
@@ -83,10 +92,12 @@ export default function DashboardScreen({ navigation }) {
         // logged for today itself - a wearable export upload is common and
         // rarely includes literally today.
         fetchActivitySummary(7),
+        fetchDietSummary(1),
       ]);
       setSnapshot(data);
       setOrgans(organData.organs);
       setActivity({ current: activityData.current, isCurrentToday: activityData.isCurrentToday });
+      setDiet(dietData);
     } catch (err) {
       console.warn('Failed to load dashboard', err.message);
     }
@@ -147,6 +158,16 @@ export default function DashboardScreen({ navigation }) {
               current={activity.current}
               isCurrentToday={activity.isCurrentToday}
               onPress={() => navigation.navigate('Activity')}
+            />
+          </View>
+        )}
+
+        {diet && (
+          <View style={styles.sectionSpacing}>
+            <DietCard
+              today={diet.today}
+              pendingReviewCount={diet.pendingReviewCount}
+              onPress={() => navigation.navigate('Diet')}
             />
           </View>
         )}
