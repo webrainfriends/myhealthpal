@@ -17,6 +17,10 @@ covering:
   ([issue #11](https://github.com/webrainfriends/myhealthpal/issues/11)).
 - A retrieval-grounded conversational assistant over the user's own data
   ([issue #10](https://github.com/webrainfriends/myhealthpal/issues/10)).
+- AI photo-based diet tracking: scan a meal to identify items and estimate
+  calories/macros, auto-tagged by meal (breakfast/lunch/snack/dinner/supper)
+  from the time logged, plus a pattern analysis with recommendations that
+  considers the user's confirmed lab results and active medications.
 - Guest, Google, and Apple sign-in, with every user's reports, timeline,
   dashboard, insights, and chat history strictly scoped to their own signed-in
   session and never visible to anyone else.
@@ -436,6 +440,57 @@ every personal-data claim comes from a fresh tool call. `chat_events` logs
 non-sensitive telemetry (latency, tokens, tool name, success) — never
 message content.
 
+### Diet tracking
+
+`POST /api/diet/scans` (multipart, field `file`, JPG/PNG only) uploads a
+photo of food/drink and processes it the same way a medication scan does
+(`src/diet/dietScanService.js`, modeled directly on
+`medicationScanService.js`): an in-process async job reads the image with
+Claude vision (`src/extraction/providers/dietPhotoProvider.js`, forced tool
+call `record_food_items`) to identify every distinct item and estimate its
+calories/macros for the portion shown. When the portion size can't be
+confidently judged from the photo (no visible package, no countable unit),
+the model is instructed to leave quantity/calories null and set
+`needs_quantity` rather than guess — the review screen (`GET
+/api/diet/scans/:id`) then asks the person directly. Requires
+`ANTHROPIC_API_KEY` (no heuristic vision substitute, same as medication
+scanning); `DIET_PROVIDER` only controls whether the *recommendation text*
+below is Claude-rephrased.
+
+Every item — scanned or entered manually via `POST /api/diet/entries` — is
+auto-tagged into `breakfast`/`lunch`/`snack`/`dinner`/`supper` from the time
+it was consumed (`classifyMealType`'s fixed time-of-day bands), always
+user-correctable afterward and re-derived automatically if the consumed-at
+time is edited without an explicit meal override. A scanned item starts
+unconfirmed (like a scanned medication) until reviewed
+(`POST /api/diet/entries/:id/confirm`); a manual one is trusted immediately.
+`GET /api/diet/summary?days=` returns per-day calorie/macro totals and a
+meal breakdown for a recent window, the diet analog of
+`GET /api/activity/summary`.
+
+`GET /api/diet/recommendations` returns a cached, regenerable pattern
+analysis (`src/diet/dietInsightService.js`): every number (daily
+calorie/macro averages, how many days ran over a general sodium/sugar
+guideline, late-night-eating frequency, skipped-breakfast frequency) is
+computed in code from confirmed entries over a rolling window, never asked
+of an LLM. That pattern is then cross-referenced against the user's active
+medications (matched to `medicationKnowledgeBase.js`'s drug category, e.g.
+an antidiabetic, antihypertensive/diuretic, statin, gout, or reflux
+medication) and confirmed abnormal-flagged lab results on diet-relevant
+parameters (glucose/HbA1c, cholesterol/triglycerides, sodium, potassium,
+uric acid) to surface considerations like "keep sodium low and consistent"
+when both a blood-pressure medication and a flagged sodium result are
+present. Tip text is a heuristic template by default, or (`DIET_PROVIDER=
+claude`) a Claude rephrasing — validated the same way
+`insightExplanationService.js` validates insight text: rejected (falling
+back to the heuristic template) if it mentions any number not traceable to
+that tip's own structured evidence, so a hallucinated calorie/gram figure
+can never reach the user. Every non-informational tip ends with a fixed
+not-medical-advice line, and the model is explicitly instructed never to
+diagnose or suggest a medication change. The cached row is regenerated
+whenever the confirmed-entry count for the window has changed since it was
+last built, or on demand (`?refresh=true`).
+
 ### Known scope limits
 
 - `generateSummary` (`src/services/summaryService.js`) is a heuristic,
@@ -449,6 +504,11 @@ message content.
 - The registry seed (`server/db/registry-seed-data.js`) is a curated starter
   set of ~18 common lab parameters, not an exhaustive one — extend it rather
   than hardcoding test names elsewhere.
+- Diet tracking's meal-time bands and sodium/sugar/fiber thresholds are
+  fixed, general-population dietary-guideline defaults (like insights'
+  15%/30% thresholds) — not personalized, and evaluated against the server
+  process's local time the same way `routes/activity.js` treats "today",
+  since there's no stored per-user timezone anywhere in the app yet.
 - The Claude provider hasn't been exercised end-to-end in this environment
   (no `ANTHROPIC_API_KEY` configured here); the heuristic provider was used
   for all testing described below. Its request/response shape was reviewed
@@ -541,6 +601,17 @@ trend, and Insights push over them full-screen:
   (7D/30D/90D/6M/1Y/All) over `GET .../trend`, a dependency-free sparkline
   (`MiniTrendChart.jsx`, plain `View`s — no charting library), and a list of
   points that jump back to their source report.
+- **Diet** (`src/screens/DietScreen.jsx`, reached from a Dashboard card) —
+  camera/library capture (`expo-image-picker`) or manual entry
+  (`FoodEntryForm.jsx`), today's calorie/macro totals and logged items
+  (`FoodEntryCard.jsx`, color-coded by meal), and an AI recommendations
+  section with a manual refresh. **Diet scan review**
+  (`DietScanReviewScreen.jsx`) — polls a processing scan the same way
+  Medication scan review does, lets the person fill in anything flagged
+  `needs_quantity`, and confirms or discards each identified item.
+  **Diet entry form** (`DietEntryFormScreen.jsx`) — the same shared form
+  for adding an item by hand or editing/deleting an existing one, including
+  the consumed-at time that drives its auto-assigned meal.
 
 ### Testing notes
 

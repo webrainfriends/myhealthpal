@@ -353,4 +353,85 @@ export async function dismissMedicationAlert(alertId) {
   return handleResponse(response);
 }
 
+export async function uploadDietScan(file, consumedAt) {
+  const formData = new FormData();
+  if (file.file) {
+    formData.append('file', file.file, file.name);
+  } else {
+    formData.append('file', {
+      uri: file.uri,
+      name: file.name,
+      type: file.mimeType || 'application/octet-stream',
+    });
+  }
+  if (consumedAt) formData.append('consumed_at', consumedAt);
+
+  const response = await apiFetch('/api/diet/scans', {
+    method: 'POST',
+    body: formData,
+    // Do not set Content-Type manually - see uploadReport() above.
+  });
+  return handleResponse(response);
+}
+
+export async function fetchDietScan(scanId) {
+  const response = await apiFetch(`/api/diet/scans/${scanId}`);
+  return handleResponse(response);
+}
+
+export async function retryDietScan(scanId) {
+  const response = await apiFetch(`/api/diet/scans/${scanId}/retry`, { method: 'POST' });
+  return handleResponse(response);
+}
+
+export async function fetchDietEntries(filters = {}) {
+  const params = new URLSearchParams(Object.entries(filters).filter(([, v]) => v));
+  const response = await apiFetch(`/api/diet/entries?${params.toString()}`);
+  return handleResponse(response);
+}
+
+export async function fetchFoodEntry(entryId) {
+  const response = await apiFetch(`/api/diet/entries/${entryId}`);
+  return handleResponse(response);
+}
+
+export async function createFoodEntry(fields) {
+  const response = await apiFetch('/api/diet/entries', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  });
+  return handleResponse(response);
+}
+
+export async function updateFoodEntry(entryId, changes) {
+  const response = await apiFetch(`/api/diet/entries/${entryId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(changes),
+  });
+  return handleResponse(response);
+}
+
+export async function confirmFoodEntry(entryId) {
+  const response = await apiFetch(`/api/diet/entries/${entryId}/confirm`, { method: 'POST' });
+  return handleResponse(response);
+}
+
+export async function deleteFoodEntry(entryId) {
+  const response = await apiFetch(`/api/diet/entries/${entryId}`, { method: 'DELETE' });
+  if (!response.ok) return handleResponse(response);
+  return null;
+}
+
+export async function fetchDietSummary(days = 7) {
+  const response = await apiFetch(`/api/diet/summary?days=${days}`);
+  return handleResponse(response);
+}
+
+export async function fetchDietRecommendations(refresh = false) {
+  const response = await apiFetch(`/api/diet/recommendations${refresh ? '?refresh=true' : ''}`);
+  return handleResponse(response);
+}
+
 export { API_BASE_URL };
