@@ -16,10 +16,10 @@ import {
   updateReportDate,
 } from '../api/client';
 import { showAlert } from '../utils/alert';
+import { formatCalendarDate } from '../utils/date';
 
 function formatDate(value) {
-  if (!value) return null;
-  return new Date(value).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+  return formatCalendarDate(value, { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 function truncateFilename(name, maxLength = 28) {

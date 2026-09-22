@@ -1,10 +1,10 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import StatusBadge from './StatusBadge';
 import { colors, radii, spacing, typography } from '../theme/theme';
+import { formatCalendarDate } from '../utils/date';
 
 function formatDate(value) {
-  if (!value) return null;
-  return new Date(value).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  return formatCalendarDate(value, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 export default function TimelineItemCard({ item, onPress, onDelete }) {

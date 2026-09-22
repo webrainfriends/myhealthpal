@@ -97,6 +97,20 @@ export async function fetchMe() {
   return handleResponse(response);
 }
 
+export async function fetchSupportedLanguages() {
+  const response = await apiFetch('/api/auth/languages');
+  return handleResponse(response);
+}
+
+export async function updatePreferredLanguage(languageCode) {
+  const response = await apiFetch('/api/auth/me', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ preferred_language: languageCode }),
+  });
+  return handleResponse(response);
+}
+
 export async function fetchReports() {
   const response = await apiFetch('/api/reports');
   return handleResponse(response);

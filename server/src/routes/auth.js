@@ -4,6 +4,8 @@ const authService = require('../services/authService');
 const { verifyGoogleIdToken } = require('../services/googleAuthService');
 const { verifyAppleIdentityToken } = require('../services/appleAuthService');
 const { requireAuth } = require('../middleware/auth');
+const { SUPPORTED_LANGUAGES, normalizeLanguage } = require('../services/languageService');
+const pool = require('../db/pool');
 
 const router = express.Router();
 
@@ -13,6 +15,7 @@ function publicUser(user) {
     email: user.email,
     displayName: user.display_name,
     authProvider: user.auth_provider,
+    preferredLanguage: user.preferred_language,
   };
 }
 
@@ -70,6 +73,32 @@ router.post('/apple', async (req, res) => {
 
 router.get('/me', requireAuth, (req, res) => {
   res.json({ user: publicUser(req.user) });
+});
+
+// Lists the languages a user can pick for AI-generated explanatory text
+// (insight explanations, report summaries, chat responses, custom
+// dashboard card labels, medication knowledge for an uncurated medicine) -
+// never the app's own UI chrome, which stays English for now. Public (no
+// auth) - it's just a fixed list, the same one every client needs before
+// showing a language picker.
+router.get('/languages', (req, res) => {
+  res.json({ languages: SUPPORTED_LANGUAGES });
+});
+
+router.patch('/me', requireAuth, async (req, res, next) => {
+  try {
+    if (req.body.preferred_language === undefined) {
+      return res.status(400).json({ error: 'preferred_language is required.' });
+    }
+    const language = normalizeLanguage(req.body.preferred_language);
+    const { rows } = await pool.query(
+      `UPDATE users SET preferred_language = $2 WHERE id = $1 RETURNING *`,
+      [req.user.id, language]
+    );
+    res.json({ user: publicUser(rows[0]) });
+  } catch (err) {
+    next(err);
+  }
 });
 
 module.exports = router;

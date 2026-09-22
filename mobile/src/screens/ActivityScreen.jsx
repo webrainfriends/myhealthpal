@@ -6,6 +6,7 @@ import PrimaryButton from '../components/PrimaryButton';
 import { activityRingColors, cardShadow, colors, radii, spacing, typography } from '../theme/theme';
 import { fetchActivitySummary, logActivity } from '../api/client';
 import { showAlert } from '../utils/alert';
+import { parseCalendarDate } from '../utils/date';
 
 function RingLegendRow({ label, value, unit, goal, color }) {
   return (
@@ -41,13 +42,13 @@ function ImportedStatsRow({ caloriesBurned, distanceMeters }) {
 }
 
 function formatDayLabel(dateStr) {
-  const d = new Date(`${dateStr}T00:00:00`);
-  return d.toLocaleDateString(undefined, { weekday: 'short' });
+  const d = parseCalendarDate(dateStr);
+  return d ? d.toLocaleDateString(undefined, { weekday: 'short' }) : '';
 }
 
 function formatFullDayLabel(dateStr) {
-  const d = new Date(`${dateStr}T00:00:00`);
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const d = parseCalendarDate(dateStr);
+  return d ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
 }
 
 // A plain-View bar graph (no chart library, consistent with the rest of the

@@ -18,10 +18,11 @@ import {
 } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { showAlert } from '../utils/alert';
+import { formatCalendarDate } from '../utils/date';
 
 function formatDate(value) {
   if (!value) return 'unknown date';
-  return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return formatCalendarDate(value, { month: 'short', day: 'numeric' });
 }
 
 function greetingForNow() {

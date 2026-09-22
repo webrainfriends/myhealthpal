@@ -3,10 +3,11 @@ import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { cardShadow, colors, radii, spacing, typography } from '../theme/theme';
 import { fetchDashboardSnapshot } from '../api/client';
+import { formatCalendarDate } from '../utils/date';
 
 function formatDate(value) {
   if (!value) return 'unknown date';
-  return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  return formatCalendarDate(value, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function AttentionRow({ item, onPress }) {

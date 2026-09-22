@@ -3,6 +3,7 @@ const config = require('../config');
 const { getChatProvider } = require('./providers');
 const { getToolDefinitions, executeTool } = require('./tools');
 const { checkForEmergency } = require('./safetyPreCheck');
+const { languageInstruction, DEFAULT_LANGUAGE } = require('../services/languageService');
 
 const MAX_TOOL_ITERATIONS = 5;
 
@@ -82,7 +83,7 @@ function dedupeEvidence(evidence) {
 // only — intermediate tool exchanges are not replayed across turns, so
 // personal-data answers always come from a fresh tool call, never from
 // memorized conversation history.
-async function runTurn({ userId, sessionId, userMessage, priorMessages }) {
+async function runTurn({ userId, sessionId, userMessage, priorMessages, language = DEFAULT_LANGUAGE }) {
   const safety = checkForEmergency(userMessage);
   if (safety.isEmergency) {
     await logEvent({ sessionId, eventType: 'safety_intercept' });
@@ -100,12 +101,13 @@ async function runTurn({ userId, sessionId, userMessage, priorMessages }) {
   const tools = getToolDefinitions();
   const allEvidence = [];
   let finalText = null;
+  const systemPrompt = SYSTEM_PROMPT + languageInstruction(language);
 
   for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration += 1) {
     const start = Date.now();
     let response;
     try {
-      response = await provider.converse({ systemPrompt: SYSTEM_PROMPT, messages, tools });
+      response = await provider.converse({ systemPrompt, messages, tools });
     } catch (err) {
       await logEvent({ sessionId, eventType: 'error', provider: provider.name, success: false });
       return { answer: `Sorry, I ran into a problem answering that: ${err.message}`, evidence: [] };
@@ -133,7 +135,7 @@ async function runTurn({ userId, sessionId, userMessage, priorMessages }) {
       let result;
       let success = true;
       try {
-        result = await executeTool(call.name, call.input, { userId });
+        result = await executeTool(call.name, call.input, { userId, language });
       } catch (err) {
         success = false;
         result = { data: { error: err.message }, evidence: [] };

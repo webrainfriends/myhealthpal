@@ -5,6 +5,7 @@ const config = require('../config');
 const { upload, extensionOf } = require('../middleware/upload');
 const { enqueueMedicationScanProcessing, computeEndDate } = require('../medications/medicationScanService');
 const { syncParameterLinks, findKnowledgeEntry } = require('../medications/medicationLinkingService');
+const { getMedicationKnowledge } = require('../medications/medicationKnowledgeService');
 const { recomputeAlertsForMedication, recomputeAlertsForUser } = require('../medications/medicationAlertService');
 const { buildMedicationForecast } = require('../medications/medicationForecastService');
 
@@ -21,19 +22,6 @@ function currentUserId(req) {
   return req.user.id;
 }
 
-function knowledgeSummary(medication) {
-  const entry = findKnowledgeEntry(medication);
-  if (!entry) return null;
-  return {
-    category: entry.category,
-    usage: entry.usage,
-    typicalDailyDose: entry.typicalDailyDose,
-    activeIngredient: entry.activeIngredient,
-    commonSideEffects: entry.commonSideEffects,
-    warnings: entry.warnings,
-  };
-}
-
 router.get('/', async (req, res, next) => {
   try {
     await recomputeAlertsForUser(currentUserId(req));
@@ -42,7 +30,14 @@ router.get('/', async (req, res, next) => {
       `SELECT * FROM medications WHERE user_id = $1 ORDER BY is_confirmed ASC, created_at DESC`,
       [currentUserId(req)]
     );
-    const medications = rows.map((med) => ({ ...med, knowledge: knowledgeSummary(med) }));
+    // A medication outside the curated knowledge base falls through to an
+    // AI-generated lookup (see medicationKnowledgeService.js) - "details
+    // irrespective of whether it's in the tracking list", same as this
+    // list already shows results for a measurement the app never learned
+    // to canonically track.
+    const medications = await Promise.all(
+      rows.map(async (med) => ({ ...med, knowledge: await getMedicationKnowledge(med, req.user.preferred_language) }))
+    );
     res.json({ medications });
   } catch (err) {
     next(err);
@@ -228,7 +223,7 @@ router.get('/:id', async (req, res, next) => {
 
     res.json({
       medication,
-      knowledge: knowledgeSummary(medication),
+      knowledge: await getMedicationKnowledge(medication, req.user.preferred_language),
       forecast,
     });
   } catch (err) {

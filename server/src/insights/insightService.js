@@ -54,8 +54,8 @@ function buildEvidence(candidate) {
   return evidence;
 }
 
-async function persistInsight({ userId, healthParameterId, candidate, dedupKey, existingActive }) {
-  const { title, explanation, provider, model } = await generateExplanation(candidate);
+async function persistInsight({ userId, healthParameterId, candidate, dedupKey, existingActive, language }) {
+  const { title, explanation, provider, model } = await generateExplanation(candidate, language);
 
   if (existingActive) {
     await pool.query(`UPDATE insights SET lifecycle_state = 'superseded', updated_at = now() WHERE id = $1`, [
@@ -111,9 +111,10 @@ async function autoResolveIfNormal(userId, healthParameterId, current) {
 // parameter and only superseded when the evidence set actually changed.
 async function runForMeasurement(measurementId) {
   const { rows } = await pool.query(
-    `SELECT hm.*, r.user_id
+    `SELECT hm.*, r.user_id, u.preferred_language
      FROM health_measurements hm
      JOIN reports r ON r.id = hm.report_id
+     JOIN users u ON u.id = r.user_id
      WHERE hm.id = $1`,
     [measurementId]
   );
@@ -152,6 +153,7 @@ async function runForMeasurement(measurementId) {
       candidate,
       dedupKey,
       existingActive,
+      language: measurement.preferred_language,
     });
     publishedIds.push(id);
   }

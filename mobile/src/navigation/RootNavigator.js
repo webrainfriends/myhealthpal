@@ -22,6 +22,10 @@ import DietEntryFormScreen from '../screens/DietEntryFormScreen';
 import DietStatsScreen from '../screens/DietStatsScreen';
 import DietRecipeScreen from '../screens/DietRecipeScreen';
 import LoginScreen from '../screens/LoginScreen';
+import SettingsScreen from '../screens/SettingsScreen';
+import RecipePreferencesScreen from '../screens/RecipePreferencesScreen';
+import GmailIntegrationScreen from '../screens/GmailIntegrationScreen';
+import LanguagePreferenceScreen from '../screens/LanguagePreferenceScreen';
 import { useAuth } from '../auth/AuthContext';
 import { colors } from '../theme/theme';
 
@@ -163,6 +167,22 @@ export default function RootNavigator() {
         />
         <Stack.Screen name="DietStats" component={DietStatsScreen} options={{ title: 'Diet stats' }} />
         <Stack.Screen name="DietRecipe" component={DietRecipeScreen} options={{ title: 'Recipe ideas' }} />
+        <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
+        <Stack.Screen
+          name="RecipePreferences"
+          component={RecipePreferencesScreen}
+          options={{ title: 'Recipe preferences' }}
+        />
+        <Stack.Screen
+          name="GmailIntegration"
+          component={GmailIntegrationScreen}
+          options={{ title: 'Connected health sources' }}
+        />
+        <Stack.Screen
+          name="LanguagePreference"
+          component={LanguagePreferenceScreen}
+          options={{ title: 'AI explanation language' }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );
