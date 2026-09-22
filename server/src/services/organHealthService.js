@@ -5,15 +5,27 @@
 // deterministic readout of the user's own data (never a diagnosis, and
 // never fabricated by a model) - framed plainly so it can't be mistaken for
 // clinical judgement.
+// Thyroid strongly regulates metabolic rate, so its category is folded into
+// "Metabolism & Intestines" rather than given its own card - this changes
+// only which card a thyroid result counts toward, never the category value
+// stored on the parameter itself (still 'thyroid', still filterable
+// elsewhere). "Activity", "Brain", and "Bones" have no registry category
+// yet (this app has no fitness/cognitive/bone-density parameters) - an
+// empty categories array is deliberate, not a placeholder to fill in:
+// buildOrganSummaries already reports a categories:[] group as 'no_data'
+// rather than fabricating a score, exactly like any other group with zero
+// tracked results.
 const ORGAN_GROUPS = [
-  { key: 'heart', label: 'Heart & Cholesterol', icon: '❤️', categories: ['lipids'] },
-  { key: 'blood', label: 'Blood Health', icon: '🩸', categories: ['hematology'] },
-  { key: 'kidneys', label: 'Kidneys', icon: '🫘', categories: ['kidney', 'electrolytes'] },
-  { key: 'liver', label: 'Liver', icon: '🔥', categories: ['liver'] },
-  { key: 'thyroid', label: 'Thyroid', icon: '🦋', categories: ['thyroid'] },
-  { key: 'metabolism', label: 'Metabolism', icon: '⚡', categories: ['metabolic'] },
-  { key: 'immune', label: 'Immune System', icon: '🛡️', categories: ['infectious_disease'] },
-  { key: 'nutrition', label: 'Nutrition', icon: '🥗', categories: ['vitamins'] },
+  { key: 'diabetes', label: 'Diabetes', icon: '💉', categories: ['diabetes'] },
+  { key: 'heart', label: 'Heart, Pressure & Cholesterol', icon: '❤️', categories: ['lipids', 'cardiac'] },
+  { key: 'blood', label: 'Blood', icon: '🩸', categories: ['hematology'] },
+  { key: 'kidney', label: 'Kidney', icon: '🫘', categories: ['kidney', 'electrolytes'] },
+  { key: 'liver_pancreas', label: 'Liver & Pancreas', icon: '🔥', categories: ['liver', 'pancreas'] },
+  { key: 'metabolism', label: 'Metabolism & Intestines', icon: '⚡', categories: ['metabolic', 'thyroid'] },
+  { key: 'activity', label: 'Activity', icon: '🏃', categories: [] },
+  { key: 'brain', label: 'Brain', icon: '🧠', categories: [] },
+  { key: 'bones', label: 'Bones', icon: '🦴', categories: [] },
+  { key: 'vitamins', label: 'Vitamins', icon: '💊', categories: ['vitamins'] },
 ];
 
 const NORMAL_FLAGS = new Set(['normal', 'n']);

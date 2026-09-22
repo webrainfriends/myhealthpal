@@ -50,7 +50,7 @@ module.exports = [
   {
     code: 'glucose',
     displayName: 'Glucose',
-    category: 'metabolic',
+    category: 'diabetes',
     dataType: 'numeric',
     canonicalUnit: 'mg/dL',
     displayPrecision: 0,
@@ -68,7 +68,7 @@ module.exports = [
   {
     code: 'glucose_fasting',
     displayName: 'Glucose (Fasting)',
-    category: 'metabolic',
+    category: 'diabetes',
     dataType: 'numeric',
     canonicalUnit: 'mg/dL',
     displayPrecision: 0,
@@ -78,7 +78,7 @@ module.exports = [
   {
     code: 'glucose_post_prandial',
     displayName: 'Glucose (Post Prandial)',
-    category: 'metabolic',
+    category: 'diabetes',
     dataType: 'numeric',
     canonicalUnit: 'mg/dL',
     displayPrecision: 0,
@@ -92,7 +92,7 @@ module.exports = [
   {
     code: 'hba1c',
     displayName: 'Hemoglobin A1c',
-    category: 'metabolic',
+    category: 'diabetes',
     dataType: 'numeric',
     canonicalUnit: '%',
     displayPrecision: 1,
@@ -751,7 +751,7 @@ module.exports = [
   {
     code: 'hscrp',
     displayName: 'hs-CRP',
-    category: 'metabolic',
+    category: 'cardiac',
     dataType: 'numeric',
     canonicalUnit: 'mg/L',
     displayPrecision: 2,
@@ -761,7 +761,7 @@ module.exports = [
   {
     code: 'homocysteine',
     displayName: 'Homocysteine',
-    category: 'metabolic',
+    category: 'cardiac',
     dataType: 'numeric',
     canonicalUnit: 'umol/L',
     displayPrecision: 2,
@@ -772,7 +772,7 @@ module.exports = [
   {
     code: 'lipase',
     displayName: 'Lipase',
-    category: 'metabolic',
+    category: 'pancreas',
     dataType: 'numeric',
     canonicalUnit: 'U/L',
     displayPrecision: 0,
@@ -782,7 +782,7 @@ module.exports = [
   {
     code: 'amylase',
     displayName: 'Amylase',
-    category: 'metabolic',
+    category: 'pancreas',
     dataType: 'numeric',
     canonicalUnit: 'U/L',
     displayPrecision: 0,
@@ -792,7 +792,7 @@ module.exports = [
   {
     code: 'cpk_total',
     displayName: 'CPK Total',
-    category: 'metabolic',
+    category: 'cardiac',
     dataType: 'numeric',
     canonicalUnit: 'U/L',
     displayPrecision: 0,
@@ -812,7 +812,7 @@ module.exports = [
   {
     code: 'insulin_fasting',
     displayName: 'Insulin, Fasting',
-    category: 'metabolic',
+    category: 'diabetes',
     dataType: 'numeric',
     canonicalUnit: 'uIU/mL',
     displayPrecision: 1,
