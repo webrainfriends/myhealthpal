@@ -15,6 +15,7 @@ import MedicationsScreen from '../screens/MedicationsScreen';
 import MedicationDetailScreen from '../screens/MedicationDetailScreen';
 import MedicationScanReviewScreen from '../screens/MedicationScanReviewScreen';
 import MedicationCreateScreen from '../screens/MedicationCreateScreen';
+import ActivityScreen from '../screens/ActivityScreen';
 import LoginScreen from '../screens/LoginScreen';
 import { useAuth } from '../auth/AuthContext';
 import { colors } from '../theme/theme';
@@ -57,6 +58,7 @@ const linking = {
       NeedsAttention: 'needs-attention',
       MedicationDetail: 'medications/:medicationId',
       MedicationScanReview: 'medications/scans/:scanId',
+      Activity: 'activity',
     },
   },
 };
@@ -141,6 +143,7 @@ export default function RootNavigator() {
           options={{ title: 'Review scan' }}
         />
         <Stack.Screen name="MedicationCreate" component={MedicationCreateScreen} options={{ title: 'Add medication' }} />
+        <Stack.Screen name="Activity" component={ActivityScreen} options={{ title: 'Activity' }} />
       </Stack.Navigator>
     </NavigationContainer>
   );

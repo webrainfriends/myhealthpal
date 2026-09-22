@@ -55,6 +55,16 @@ export const healthStatusColors = {
   no_data: { fg: colors.textTertiary, bg: colors.surfaceMuted, track: colors.border },
 };
 
+// Apple Health-style activity rings - one fixed color per ring (not a
+// good/bad status like healthStatusColors above), reusing this theme's own
+// palette rather than Apple's neon red/green/cyan so it still reads as part
+// of the same clinical-but-friendly system.
+export const activityRingColors = {
+  steps: { fg: colors.danger, track: colors.dangerMuted },
+  exerciseMinutes: { fg: colors.success, track: colors.successMuted },
+  standHours: { fg: colors.primary, track: colors.primaryMuted },
+};
+
 // A soft card elevation used across the dashboard's redesigned cards - subtle
 // on both platforms rather than a hard drop-shadow.
 export const cardShadow = {
@@ -94,6 +104,7 @@ const theme = {
   healthStatusColors,
   medicationStatusColors,
   alertSeverityColors,
+  activityRingColors,
   cardShadow,
   spacing,
   radii,

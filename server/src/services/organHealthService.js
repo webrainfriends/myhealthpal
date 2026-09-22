@@ -9,15 +9,21 @@
 // "Metabolism & Intestines" rather than given its own card - this changes
 // only which card a thyroid result counts toward, never the category value
 // stored on the parameter itself (still 'thyroid', still filterable
-// elsewhere). "Activity", "Brain", and "Bones" have no registry category
-// yet (this app has no fitness/cognitive/bone-density parameters) - an
-// empty categories array is deliberate, not a placeholder to fill in:
-// buildOrganSummaries already reports a categories:[] group as 'no_data'
-// rather than fabricating a score, exactly like any other group with zero
-// tracked results. Urinalysis (the 'urine' category) is folded into the
-// Kidney card the same way - a urine complete analysis is clinically part
-// of a renal workup, and it keeps the dashboard's card list exactly as
-// already decided rather than unilaterally adding a new one.
+// elsewhere). "Brain" and "Bones" have no registry category yet (this app
+// has no cognitive/bone-density parameters) - an empty categories array is
+// deliberate, not a placeholder to fill in: buildOrganSummaries already
+// reports a categories:[] group as 'no_data' rather than fabricating a
+// score, exactly like any other group with zero tracked results.
+// Urinalysis (the 'urine' category) is folded into the Kidney card the same
+// way - a urine complete analysis is clinically part of a renal workup, and
+// it keeps the dashboard's card list exactly as already decided rather than
+// unilaterally adding a new one.
+// Physical activity (steps/exercise/stand) is deliberately NOT an organ
+// group here at all - it isn't a lab result, has no reference range, and is
+// never "abnormal" the way this file's score-against-a-range model assumes.
+// It's tracked in its own activity_logs table and rendered as its own
+// dashboard section (see src/routes/activity.js and the mobile Activity
+// screen), never mixed into this scoring system or into "Needs attention".
 const ORGAN_GROUPS = [
   { key: 'diabetes', label: 'Diabetes', icon: '💉', categories: ['diabetes'] },
   { key: 'heart', label: 'Heart, Pressure & Cholesterol', icon: '❤️', categories: ['lipids', 'cardiac'] },
@@ -25,7 +31,6 @@ const ORGAN_GROUPS = [
   { key: 'kidney', label: 'Kidney', icon: '🫘', categories: ['kidney', 'electrolytes', 'urine'] },
   { key: 'liver_pancreas', label: 'Liver & Pancreas', icon: '🔥', categories: ['liver', 'pancreas'] },
   { key: 'metabolism', label: 'Metabolism & Intestines', icon: '⚡', categories: ['metabolic', 'thyroid'] },
-  { key: 'activity', label: 'Activity', icon: '🏃', categories: [] },
   { key: 'brain', label: 'Brain', icon: '🧠', categories: [] },
   { key: 'bones', label: 'Bones', icon: '🦴', categories: [] },
   { key: 'vitamins', label: 'Vitamins', icon: '💊', categories: ['vitamins'] },

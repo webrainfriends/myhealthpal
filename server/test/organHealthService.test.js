@@ -38,13 +38,20 @@ test('every currently-carded category maps to its expected organ group', () => {
   }
 });
 
-test('activity, brain, and bones have no registry category yet and always report no_data', () => {
-  for (const key of ['activity', 'brain', 'bones']) {
+test('activity has no organ group at all (tracked separately, never scored against a range)', () => {
+  assert.equal(
+    ORGAN_GROUPS.find((g) => g.key === 'activity'),
+    undefined
+  );
+});
+
+test('brain and bones have no registry category yet and always report no_data', () => {
+  for (const key of ['brain', 'bones']) {
     const group = ORGAN_GROUPS.find((g) => g.key === key);
     assert.deepEqual(group.categories, []);
   }
   const summaries = buildOrganSummaries([]);
-  for (const key of ['activity', 'brain', 'bones']) {
+  for (const key of ['brain', 'bones']) {
     const organ = summaries.find((s) => s.key === key);
     assert.equal(organ.status, 'no_data');
   }

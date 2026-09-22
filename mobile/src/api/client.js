@@ -196,6 +196,20 @@ export async function fetchParameterTrend(code, range = '90d') {
   return handleResponse(response);
 }
 
+export async function fetchActivitySummary(days = 14) {
+  const response = await apiFetch(`/api/activity/summary?days=${days}`);
+  return handleResponse(response);
+}
+
+export async function logActivity(fields) {
+  const response = await apiFetch('/api/activity', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  });
+  return handleResponse(response);
+}
+
 export async function fetchPinnedParameters() {
   const response = await apiFetch('/api/pinned-parameters');
   return handleResponse(response);
