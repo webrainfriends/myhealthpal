@@ -22,6 +22,18 @@ const MACRO_LABELS = [
   { key: 'sodium_mg', label: 'Sodium', suffix: 'mg' },
 ];
 
+// The rest of the AI-estimated nutrients (dietPhotoProvider.js) - tucked
+// behind a toggle so the default "Today" card stays a quick glance rather
+// than a 12-value nutrition label.
+const MICRONUTRIENT_LABELS = [
+  { key: 'saturated_fat_g', label: 'Sat. fat', suffix: 'g' },
+  { key: 'cholesterol_mg', label: 'Cholesterol', suffix: 'mg' },
+  { key: 'potassium_mg', label: 'Potassium', suffix: 'mg' },
+  { key: 'calcium_mg', label: 'Calcium', suffix: 'mg' },
+  { key: 'iron_mg', label: 'Iron', suffix: 'mg' },
+  { key: 'vitamin_d_mcg', label: 'Vitamin D', suffix: 'mcg' },
+];
+
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -43,6 +55,7 @@ export default function DietScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [refreshingTips, setRefreshingTips] = useState(false);
+  const [showMicronutrients, setShowMicronutrients] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -176,6 +189,21 @@ export default function DietScreen({ navigation }) {
                 </View>
               ))}
             </View>
+            <TouchableOpacity onPress={() => setShowMicronutrients((s) => !s)}>
+              <Text style={styles.altAction}>{showMicronutrients ? 'Hide' : 'Show'} more nutrients ▾</Text>
+            </TouchableOpacity>
+            {showMicronutrients && (
+              <View style={styles.macroGrid}>
+                {MICRONUTRIENT_LABELS.map((m) => (
+                  <View key={m.key} style={styles.macroItem}>
+                    <Text style={typography.caption}>{m.label}</Text>
+                    <Text style={typography.body}>
+                      {Math.round(today[m.key] || 0)}{m.suffix}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
           </View>
         )}
 

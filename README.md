@@ -448,11 +448,19 @@ photo of food/drink and processes it the same way a medication scan does
 `medicationScanService.js`): an in-process async job reads the image with
 Claude vision (`src/extraction/providers/dietPhotoProvider.js`, forced tool
 call `record_food_items`) to identify every distinct item and estimate its
-calories/macros for the portion shown. When the portion size can't be
-confidently judged from the photo (no visible package, no countable unit),
-the model is instructed to leave quantity/calories null and set
-`needs_quantity` rather than guess — the review screen (`GET
-/api/diet/scans/:id`) then asks the person directly. Requires
+full nutrition profile for the portion shown — not just calories, but every
+nutrient on the FDA Nutrition Facts label: protein, carbs, fat, saturated
+fat, fiber, sugar, sodium, cholesterol, potassium, calcium, iron, and
+vitamin D (`food_entries` — `013_diet_micronutrients.sql`). When a packaged
+product's own printed nutrition facts are legible in the photo, the model is
+instructed to read those exact printed values (including converting a
+printed %DV micronutrient line to its actual amount) rather than estimating
+from general food data. When the portion size can't be confidently judged
+from the photo at all (no visible package, no countable unit), the model is
+instructed to leave every nutrient null and set `needs_quantity` rather than
+guess — the review screen (`GET /api/diet/scans/:id`) then asks the person
+directly, and any individual nutrient it isn't reasonably confident about is
+left null rather than a fabricated precise-looking number. Requires
 `ANTHROPIC_API_KEY` (no heuristic vision substitute, same as medication
 scanning); `DIET_PROVIDER` only controls whether the *recommendation text*
 below is Claude-rephrased.
@@ -470,18 +478,21 @@ meal breakdown for a recent window, the diet analog of
 
 `GET /api/diet/recommendations` returns a cached, regenerable pattern
 analysis (`src/diet/dietInsightService.js`): every number (daily
-calorie/macro averages, how many days ran over a general sodium/sugar
-guideline, late-night-eating frequency, skipped-breakfast frequency) is
-computed in code from confirmed entries over a rolling window, never asked
-of an LLM. That pattern is then cross-referenced against the user's active
-medications (matched to `medicationKnowledgeBase.js`'s drug category, e.g.
-an antidiabetic, antihypertensive/diuretic, statin, gout, or reflux
-medication) and confirmed abnormal-flagged lab results on diet-relevant
-parameters (glucose/HbA1c, cholesterol/triglycerides, sodium, potassium,
-uric acid) to surface considerations like "keep sodium low and consistent"
-when both a blood-pressure medication and a flagged sodium result are
-present. Tip text is a heuristic template by default, or (`DIET_PROVIDER=
-claude`) a Claude rephrasing — validated the same way
+calorie/macro/micronutrient averages, how many days ran over a general
+sodium/sugar/cholesterol guideline or under the general iron guideline,
+late-night-eating frequency, skipped-breakfast frequency) is computed in
+code from confirmed entries over a rolling window, never asked of an LLM.
+That pattern is then cross-referenced against the user's active medications
+(matched to `medicationKnowledgeBase.js`'s drug category, e.g. an
+antidiabetic, antihypertensive/diuretic, statin, gout, reflux, or iron
+supplement medication) and confirmed abnormal-flagged lab results on
+diet-relevant parameters (glucose/HbA1c, cholesterol/triglycerides, sodium,
+potassium, uric acid, serum iron) to surface considerations like "keep
+sodium low and consistent" when both a blood-pressure medication and a
+flagged sodium result are present, or "pair iron-rich meals with vitamin C"
+when both an iron supplement and a low-iron-intake pattern (or a flagged
+serum iron result) are present. Tip text is a heuristic template by default,
+or (`DIET_PROVIDER=claude`) a Claude rephrasing — validated the same way
 `insightExplanationService.js` validates insight text: rejected (falling
 back to the heuristic template) if it mentions any number not traceable to
 that tip's own structured evidence, so a hallucinated calorie/gram figure
@@ -504,8 +515,8 @@ last built, or on demand (`?refresh=true`).
 - The registry seed (`server/db/registry-seed-data.js`) is a curated starter
   set of ~18 common lab parameters, not an exhaustive one — extend it rather
   than hardcoding test names elsewhere.
-- Diet tracking's meal-time bands and sodium/sugar/fiber thresholds are
-  fixed, general-population dietary-guideline defaults (like insights'
+- Diet tracking's meal-time bands and sodium/sugar/fiber/iron/cholesterol
+  thresholds are fixed, general-population dietary-guideline defaults (like insights'
   15%/30% thresholds) — not personalized, and evaluated against the server
   process's local time the same way `routes/activity.js` treats "today",
   since there's no stored per-user timezone anywhere in the app yet.

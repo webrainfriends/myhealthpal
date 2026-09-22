@@ -77,6 +77,25 @@ test('computeFlags does not fire lowFiber with too little logging history', () =
   assert.equal(flags.lowFiber, false);
 });
 
+test('computeFlags fires lowIron when average daily iron falls under the FDA daily value', () => {
+  const entries = [
+    entry({ consumed_at: '2026-06-14T13:00:00Z', iron_mg: 3 }),
+    entry({ consumed_at: '2026-06-15T13:00:00Z', iron_mg: 4 }),
+    entry({ consumed_at: '2026-06-16T13:00:00Z', iron_mg: 2 }),
+  ];
+  const flags = computeFlags(computeMetrics(entries, 14));
+  assert.equal(flags.lowIron, true);
+});
+
+test('computeFlags fires highCholesterol when most logged days exceed the daily limit', () => {
+  const entries = [
+    entry({ consumed_at: '2026-06-14T13:00:00Z', cholesterol_mg: 450 }),
+    entry({ consumed_at: '2026-06-15T13:00:00Z', cholesterol_mg: 100 }),
+  ];
+  const flags = computeFlags(computeMetrics(entries, 14));
+  assert.equal(flags.highCholesterol, true); // 1 of 2 days = 50% >= 40% threshold
+});
+
 test('computeConsiderations matches an active diabetes medication to the "diabetes" key', () => {
   const considerations = computeConsiderations([medication()], []);
   assert.equal(considerations.length, 1);
@@ -131,6 +150,35 @@ test('buildPatternTips detail text only cites numbers present in its own templat
   for (const n of numbersInText) {
     assert.ok(allowed.some((a) => Math.round(a) === Math.round(n)), `unexpected number ${n} not in template data`);
   }
+});
+
+test('computeConsiderations matches an active iron supplement to the "ironAbsorption" key', () => {
+  const considerations = computeConsiderations(
+    [medication({ name: 'Ferrous Sulfate', generic_name: 'ferrous sulfate' })],
+    []
+  );
+  assert.equal(considerations.length, 1);
+  assert.equal(considerations[0].key, 'ironAbsorption');
+});
+
+test('buildPatternTips escalates lowIron and highCholesterol severity with a matching consideration', () => {
+  const metrics = computeMetrics(
+    [
+      entry({ consumed_at: '2026-06-14T13:00:00Z', iron_mg: 2, cholesterol_mg: 400 }),
+      entry({ consumed_at: '2026-06-15T13:00:00Z', iron_mg: 3, cholesterol_mg: 350 }),
+      entry({ consumed_at: '2026-06-16T13:00:00Z', iron_mg: 4, cholesterol_mg: 300 }),
+    ],
+    14
+  );
+  const flags = computeFlags(metrics);
+
+  const withoutConsideration = buildPatternTips(metrics, flags, new Set());
+  const withConsideration = buildPatternTips(metrics, flags, new Set(['ironAbsorption', 'cholesterol']));
+
+  assert.equal(withoutConsideration.find((t) => t.type === 'low_iron_intake').severity, 'info');
+  assert.equal(withConsideration.find((t) => t.type === 'low_iron_intake').severity, 'attention');
+  assert.equal(withoutConsideration.find((t) => t.type === 'high_cholesterol_intake').severity, 'attention');
+  assert.equal(withConsideration.find((t) => t.type === 'high_cholesterol_intake').severity, 'important');
 });
 
 test('buildConsiderationTips cites the medication name(s) that produced the consideration', () => {

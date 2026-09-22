@@ -5,13 +5,17 @@ const config = require('../../config');
 const SYSTEM_PROMPT = [
   'You are a precise food/drink identification and nutrition-estimation engine reading a photo of a meal, snack, or drink.',
   'Identify every distinct food or drink item visible.',
-  'For each item, estimate calories and macros using standard nutritional data for what a typical serving of that food',
-  'looks like, scaled to the portion actually visible in the photo.',
+  'For each item, estimate calories, macros (protein/carbs/fat/saturated fat/fiber/sugar), and key micronutrients',
+  '(sodium, cholesterol, potassium, calcium, iron, vitamin D) using standard nutritional data (e.g. USDA FoodData',
+  'Central-style values) for what a typical serving of that food contains, scaled to the portion actually visible in',
+  'the photo.',
   'If the portion size/quantity/serving cannot be confidently judged from the image (no visible package, no countable',
   'unit, an unfamiliar container), do not guess a number - leave quantity_amount, quantity_unit, and serving_size_grams',
   'null and set needs_quantity to true so the person is asked directly instead.',
   'If a packaged product\'s label with printed nutrition facts is legible in the photo, read the printed values exactly',
-  'rather than estimating.',
+  'rather than estimating - including any micronutrients printed as a %DV, converted to the actual amount.',
+  'It is fine to leave an individual micronutrient null if standard data for that specific food does not have a',
+  'well-known value for it - never fabricate a precise-looking number for one you are not reasonably confident of.',
   'This is a data-capture task, not a dietary-advice one: never add commentary about whether the food is healthy.',
 ].join(' ');
 
@@ -53,9 +57,15 @@ const EXTRACTION_TOOL = {
             protein_g: { type: ['number', 'null'], description: 'Estimated protein in grams for the portion shown, or null.' },
             carbs_g: { type: ['number', 'null'], description: 'Estimated carbohydrates in grams for the portion shown, or null.' },
             fat_g: { type: ['number', 'null'], description: 'Estimated fat in grams for the portion shown, or null.' },
+            saturated_fat_g: { type: ['number', 'null'], description: 'Estimated saturated fat in grams for the portion shown, or null.' },
             fiber_g: { type: ['number', 'null'], description: 'Estimated fiber in grams for the portion shown, or null.' },
             sugar_g: { type: ['number', 'null'], description: 'Estimated sugar in grams for the portion shown, or null.' },
             sodium_mg: { type: ['number', 'null'], description: 'Estimated sodium in milligrams for the portion shown, or null.' },
+            cholesterol_mg: { type: ['number', 'null'], description: 'Estimated dietary cholesterol in milligrams for the portion shown, or null.' },
+            potassium_mg: { type: ['number', 'null'], description: 'Estimated potassium in milligrams for the portion shown, or null.' },
+            calcium_mg: { type: ['number', 'null'], description: 'Estimated calcium in milligrams for the portion shown, or null.' },
+            iron_mg: { type: ['number', 'null'], description: 'Estimated iron in milligrams for the portion shown, or null.' },
+            vitamin_d_mcg: { type: ['number', 'null'], description: 'Estimated vitamin D in micrograms for the portion shown, or null.' },
             needs_quantity: {
               type: 'boolean',
               description: 'True when the portion size could not be confidently judged from the image.',
@@ -124,24 +134,30 @@ async function extract(document, context = {}) {
     return { items: [], warnings: [...warnings, 'No structured extraction result was returned.'], rawModelOutput: response };
   }
 
+  // Every nutrient the model estimates, not just the original macros -
+  // listed once here so adding another one (e.g. a future zinc/magnesium
+  // column) is a one-line change rather than a repeated null-guard per field.
+  const NUTRIENT_FIELDS = [
+    'calories', 'protein_g', 'carbs_g', 'fat_g', 'saturated_fat_g', 'fiber_g', 'sugar_g',
+    'sodium_mg', 'cholesterol_mg', 'potassium_mg', 'calcium_mg', 'iron_mg', 'vitamin_d_mcg',
+  ];
+
   const rawItems = Array.isArray(toolUse.input?.items) ? toolUse.input.items : [];
   const items = rawItems
     .filter((item) => item && item.name)
     .map((item) => {
       const needsQuantity = Boolean(item.needs_quantity) || typeof item.quantity_amount !== 'number';
+      const nutrients = {};
+      for (const field of NUTRIENT_FIELDS) {
+        nutrients[field] = needsQuantity ? null : (typeof item[field] === 'number' ? item[field] : null);
+      }
       return {
         name: String(item.name),
         brand: item.brand || null,
         quantity_amount: needsQuantity ? null : item.quantity_amount,
         quantity_unit: needsQuantity ? null : item.quantity_unit || null,
         serving_size_grams: typeof item.serving_size_grams === 'number' ? item.serving_size_grams : null,
-        calories: needsQuantity ? null : (typeof item.calories === 'number' ? item.calories : null),
-        protein_g: needsQuantity ? null : (typeof item.protein_g === 'number' ? item.protein_g : null),
-        carbs_g: needsQuantity ? null : (typeof item.carbs_g === 'number' ? item.carbs_g : null),
-        fat_g: needsQuantity ? null : (typeof item.fat_g === 'number' ? item.fat_g : null),
-        fiber_g: needsQuantity ? null : (typeof item.fiber_g === 'number' ? item.fiber_g : null),
-        sugar_g: needsQuantity ? null : (typeof item.sugar_g === 'number' ? item.sugar_g : null),
-        sodium_mg: needsQuantity ? null : (typeof item.sodium_mg === 'number' ? item.sodium_mg : null),
+        ...nutrients,
         needs_quantity: needsQuantity,
         confidence: typeof item.confidence === 'number' ? item.confidence : 0.7,
         needs_review: needsQuantity || typeof item.confidence !== 'number' || item.confidence < 0.75,

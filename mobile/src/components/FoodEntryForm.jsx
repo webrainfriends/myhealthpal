@@ -1,6 +1,22 @@
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { useState } from 'react';
+import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import ChipSelect from './ChipSelect';
 import { colors, radii, spacing, typography } from '../theme/theme';
+
+// The rest of the FDA Nutrition Facts label's nutrients beyond the primary
+// macros above - shown in a collapsed-by-default section (see
+// MicronutrientFields below) so the common case (log calories/macros,
+// confirm, move on) doesn't get buried under 6 extra rows. AI-estimated
+// scans (dietPhotoProvider.js) fill these in the same way as the macros;
+// they're just as editable here.
+const MICRONUTRIENT_FIELD_CONFIG = [
+  { key: 'saturated_fat_g', label: 'Saturated fat (g)', placeholder: '3' },
+  { key: 'cholesterol_mg', label: 'Cholesterol (mg)', placeholder: '20' },
+  { key: 'potassium_mg', label: 'Potassium (mg)', placeholder: '300' },
+  { key: 'calcium_mg', label: 'Calcium (mg)', placeholder: '100' },
+  { key: 'iron_mg', label: 'Iron (mg)', placeholder: '2' },
+  { key: 'vitamin_d_mcg', label: 'Vitamin D (mcg)', placeholder: '1' },
+];
 
 const QUANTITY_UNIT_OPTIONS = ['g', 'ml', 'serving', 'piece', 'cup', 'tbsp', 'tsp', 'oz', 'other'].map((v) => ({
   value: v,
@@ -68,6 +84,39 @@ function Field({ label, value, onChangeText, placeholder, keyboardType }) {
         placeholderTextColor={colors.textTertiary}
         keyboardType={keyboardType}
       />
+    </View>
+  );
+}
+
+function MicronutrientFields({ value, onChangeField }) {
+  const [expanded, setExpanded] = useState(false);
+  const hasAnyValue = MICRONUTRIENT_FIELD_CONFIG.some((f) => value[f.key] != null);
+
+  return (
+    <View style={styles.micronutrientSection}>
+      <TouchableOpacity onPress={() => setExpanded((e) => !e)}>
+        <Text style={styles.toggleLabel}>
+          {expanded ? 'Hide' : hasAnyValue ? 'Show' : 'Add'} more nutrition details (saturated fat, cholesterol, potassium, calcium, iron, vitamin D) {expanded ? '▾' : '▸'}
+        </Text>
+      </TouchableOpacity>
+      {expanded && (
+        <View style={styles.micronutrientGrid}>
+          {[0, 2, 4].map((i) => (
+            <View key={i} style={styles.row}>
+              {MICRONUTRIENT_FIELD_CONFIG.slice(i, i + 2).map((f) => (
+                <Field
+                  key={f.key}
+                  label={f.label}
+                  value={value[f.key] != null ? String(value[f.key]) : ''}
+                  onChangeText={(t) => onChangeField(f.key, t)}
+                  placeholder={f.placeholder}
+                  keyboardType="decimal-pad"
+                />
+              ))}
+            </View>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
@@ -172,6 +221,8 @@ export default function FoodEntryForm({ value, onChange }) {
         keyboardType="decimal-pad"
       />
 
+      <MicronutrientFields value={value} onChangeField={set} />
+
       <Field
         label="Consumed at (YYYY-MM-DDTHH:MM)"
         value={toLocalInput(value.consumed_at)}
@@ -196,6 +247,17 @@ const styles = StyleSheet.create({
   },
   row: {
     flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  micronutrientSection: {
+    gap: spacing.sm,
+  },
+  toggleLabel: {
+    color: colors.primary,
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  micronutrientGrid: {
     gap: spacing.sm,
   },
   field: {

@@ -11,9 +11,20 @@ const { findKnowledgeEntry } = require('../medications/medicationLinkingService'
 const SODIUM_DAILY_LIMIT_MG = 2300; // general upper limit (AHA/FDA)
 const SUGAR_DAILY_LIMIT_G = 50; // WHO upper-bound guideline
 const FIBER_DAILY_TARGET_G = 25;
+const IRON_DAILY_TARGET_MG = 18; // FDA Nutrition Facts label Daily Value (unisex reference)
+const CHOLESTEROL_DAILY_LIMIT_MG = 300; // FDA Nutrition Facts label Daily Value
 const LATE_NIGHT_ENTRY_THRESHOLD = 3; // within the window
 const SAFETY_TAIL =
   ' This is an automated observation based on your logged food and drink, not medical or dietary advice - talk to a healthcare professional or dietitian before making a significant change.';
+
+// Every nutrient a food_entries row can carry - kept as one list (mirroring
+// routes/diet.js's NUTRIENT_FIELDS) so averaging/summing them in
+// computeMetrics is a loop, not 13 repeated lines, and so adding another
+// nutrient column later only means updating it in one place per file.
+const NUTRIENT_FIELDS = [
+  'calories', 'protein_g', 'carbs_g', 'fat_g', 'saturated_fat_g', 'fiber_g', 'sugar_g',
+  'sodium_mg', 'cholesterol_mg', 'potassium_mg', 'calcium_mg', 'iron_mg', 'vitamin_d_mcg',
+];
 
 // Diet-relevant lab parameters, mapped to the same "consideration key" a
 // matching active medication's category can also produce (see
@@ -30,6 +41,7 @@ const LAB_CODE_CONSIDERATIONS = {
   sodium: { key: 'bloodPressure', label: 'sodium' },
   potassium: { key: 'potassium', label: 'potassium' },
   uric_acid: { key: 'gout', label: 'uric acid' },
+  iron: { key: 'ironAbsorption', label: 'serum iron' },
 };
 
 // Active-medication category (medicationKnowledgeBase.js's free-text
@@ -69,14 +81,8 @@ function computeMetrics(entries, windowDays) {
       lateNightCount += 1;
     }
 
-    const day = byDay.get(key) || { calories: 0, sodium_mg: 0, sugar_g: 0, fiber_g: 0, protein_g: 0, carbs_g: 0, fat_g: 0 };
-    day.calories += Number(e.calories) || 0;
-    day.sodium_mg += Number(e.sodium_mg) || 0;
-    day.sugar_g += Number(e.sugar_g) || 0;
-    day.fiber_g += Number(e.fiber_g) || 0;
-    day.protein_g += Number(e.protein_g) || 0;
-    day.carbs_g += Number(e.carbs_g) || 0;
-    day.fat_g += Number(e.fat_g) || 0;
+    const day = byDay.get(key) || Object.fromEntries(NUTRIENT_FIELDS.map((f) => [f, 0]));
+    for (const field of NUTRIENT_FIELDS) day[field] += Number(e[field]) || 0;
     byDay.set(key, day);
   }
 
@@ -87,6 +93,7 @@ function computeMetrics(entries, windowDays) {
 
   const highSodiumDayCount = days.filter((d) => d.sodium_mg > SODIUM_DAILY_LIMIT_MG).length;
   const highSugarDayCount = days.filter((d) => d.sugar_g > SUGAR_DAILY_LIMIT_G).length;
+  const highCholesterolDayCount = days.filter((d) => d.cholesterol_mg > CHOLESTEROL_DAILY_LIMIT_MG).length;
 
   // Only judged against a real logging habit (>=5 distinct days logged in
   // the window) - a couple of sparse days shouldn't read as "you skip
@@ -105,8 +112,15 @@ function computeMetrics(entries, windowDays) {
     avgDailyProteinG: round1(avg('protein_g')),
     avgDailyCarbsG: round1(avg('carbs_g')),
     avgDailyFatG: round1(avg('fat_g')),
+    avgDailySaturatedFatG: round1(avg('saturated_fat_g')),
+    avgDailyCholesterolMg: Math.round(avg('cholesterol_mg')),
+    avgDailyPotassiumMg: Math.round(avg('potassium_mg')),
+    avgDailyCalciumMg: Math.round(avg('calcium_mg')),
+    avgDailyIronMg: round1(avg('iron_mg')),
+    avgDailyVitaminDMcg: round1(avg('vitamin_d_mcg')),
     highSodiumDayCount,
     highSugarDayCount,
+    highCholesterolDayCount,
     lateNightEntryCount: lateNightCount,
     breakfastSkipRatio,
     breakfastDayCount: breakfastDays.size,
@@ -121,6 +135,8 @@ function computeFlags(metrics) {
     highSodium: metrics.loggedDayCount > 0 && metrics.highSodiumDayCount / metrics.loggedDayCount >= 0.4,
     highSugar: metrics.loggedDayCount > 0 && metrics.highSugarDayCount / metrics.loggedDayCount >= 0.4,
     lowFiber: metrics.loggedDayCount >= 3 && metrics.avgDailyFiberG < FIBER_DAILY_TARGET_G,
+    lowIron: metrics.loggedDayCount >= 3 && metrics.avgDailyIronMg < IRON_DAILY_TARGET_MG,
+    highCholesterol: metrics.loggedDayCount > 0 && metrics.highCholesterolDayCount / metrics.loggedDayCount >= 0.4,
     frequentLateNightEating: metrics.lateNightEntryCount >= LATE_NIGHT_ENTRY_THRESHOLD,
     frequentSkippedBreakfast: metrics.breakfastSkipRatio !== null && metrics.breakfastSkipRatio >= 0.5,
   };
@@ -199,6 +215,34 @@ function buildPatternTips(metrics, flags, considerationKeys) {
     });
   }
 
+  if (flags.lowIron) {
+    const d = { avgDailyIronMg: metrics.avgDailyIronMg, target: IRON_DAILY_TARGET_MG };
+    tips.push({
+      type: 'low_iron_intake',
+      severity: considerationKeys.has('ironAbsorption') ? 'attention' : 'info',
+      title: 'Iron intake looks low',
+      templateData: d,
+      heuristicDetail:
+        `You're averaging about ${d.avgDailyIronMg}mg of iron a day, below the general ${d.target}mg/day guideline. ` +
+        `Leafy greens, legumes, and lean red meat are common sources` +
+        `${considerationKeys.has('ironAbsorption') ? ', which matters more given your iron-related medication' : ''}.`,
+    });
+  }
+
+  if (flags.highCholesterol) {
+    const d = { avgDailyCholesterolMg: metrics.avgDailyCholesterolMg, highCholesterolDayCount: metrics.highCholesterolDayCount, loggedDayCount: metrics.loggedDayCount, limit: CHOLESTEROL_DAILY_LIMIT_MG };
+    tips.push({
+      type: 'high_cholesterol_intake',
+      severity: considerationKeys.has('cholesterol') ? 'important' : 'attention',
+      title: 'Dietary cholesterol has been running high',
+      templateData: d,
+      heuristicDetail:
+        `${d.highCholesterolDayCount} of the last ${d.loggedDayCount} logged days went over ${d.limit}mg of dietary cholesterol ` +
+        `(averaging ${d.avgDailyCholesterolMg}mg/day). Organ meats, egg yolks, and fried food are common contributors` +
+        `${considerationKeys.has('cholesterol') ? ', which matters more given your cholesterol-related medication or lab result' : ''}.`,
+    });
+  }
+
   if (flags.frequentLateNightEating) {
     const d = { lateNightEntryCount: metrics.lateNightEntryCount };
     tips.push({
@@ -248,7 +292,7 @@ function buildConsiderationTips(considerations) {
 
 async function fetchConfirmedEntries(userId, windowDays) {
   const { rows } = await pool.query(
-    `SELECT calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg, meal_type, consumed_at
+    `SELECT ${NUTRIENT_FIELDS.join(', ')}, meal_type, consumed_at
      FROM food_entries
      WHERE user_id = $1 AND is_confirmed = true AND consumed_at >= now() - ($2::int * INTERVAL '1 day')
      ORDER BY consumed_at ASC`,

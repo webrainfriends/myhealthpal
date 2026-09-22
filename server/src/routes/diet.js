@@ -165,7 +165,16 @@ router.get('/entries/:id', async (req, res, next) => {
   }
 });
 
-const NUMERIC_FIELDS = ['quantity_amount', 'serving_size_grams', 'calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'sugar_g', 'sodium_mg'];
+// Every nutrient food_entries stores, in the same order used by the
+// INSERT/UPDATE column lists below - kept as one list (rather than
+// repeating the 13 names at each call site) so NUMERIC_FIELDS/
+// EDITABLE_FIELDS can't drift out of sync with what dietPhotoProvider.js
+// estimates.
+const NUTRIENT_FIELDS = [
+  'calories', 'protein_g', 'carbs_g', 'fat_g', 'saturated_fat_g', 'fiber_g', 'sugar_g',
+  'sodium_mg', 'cholesterol_mg', 'potassium_mg', 'calcium_mg', 'iron_mg', 'vitamin_d_mcg',
+];
+const NUMERIC_FIELDS = ['quantity_amount', 'serving_size_grams', ...NUTRIENT_FIELDS];
 
 function validateEntryBody(body) {
   if (!body.name || !String(body.name).trim()) return 'name is required.';
@@ -191,31 +200,25 @@ router.post('/entries', async (req, res, next) => {
     const consumedAt = parseConsumedAt(body.consumed_at);
     const mealType = body.meal_type || classifyMealType(consumedAt);
 
+    // Columns/values built from NUTRIENT_FIELDS (a fixed, hardcoded
+    // whitelist - never from req.body's own keys) rather than spelled out
+    // 13 times over, so this can't silently drift from what
+    // dietPhotoProvider.js/the migration actually store.
+    const columns = [
+      'user_id', 'name', 'brand', 'quantity_amount', 'quantity_unit', 'serving_size_grams',
+      ...NUTRIENT_FIELDS, 'meal_type', 'consumed_at', 'source_type', 'notes', 'is_confirmed',
+    ];
+    const values = [
+      currentUserId(req), body.name, body.brand || null, body.quantity_amount ?? null,
+      body.quantity_unit || null, body.serving_size_grams ?? null,
+      ...NUTRIENT_FIELDS.map((f) => body[f] ?? null),
+      mealType, consumedAt, 'manual', body.notes || null, true,
+    ];
+    const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
+
     const { rows } = await pool.query(
-      `INSERT INTO food_entries (
-         user_id, name, brand, quantity_amount, quantity_unit, serving_size_grams,
-         calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg,
-         meal_type, consumed_at, source_type, notes, is_confirmed
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'manual',$16,true)
-       RETURNING *`,
-      [
-        currentUserId(req),
-        body.name,
-        body.brand || null,
-        body.quantity_amount ?? null,
-        body.quantity_unit || null,
-        body.serving_size_grams ?? null,
-        body.calories ?? null,
-        body.protein_g ?? null,
-        body.carbs_g ?? null,
-        body.fat_g ?? null,
-        body.fiber_g ?? null,
-        body.sugar_g ?? null,
-        body.sodium_mg ?? null,
-        mealType,
-        consumedAt,
-        body.notes || null,
-      ]
+      `INSERT INTO food_entries (${columns.join(', ')}) VALUES (${placeholders}) RETURNING *`,
+      values
     );
     res.status(201).json({ entry: rows[0] });
   } catch (err) {
@@ -225,7 +228,7 @@ router.post('/entries', async (req, res, next) => {
 
 const EDITABLE_FIELDS = [
   'name', 'brand', 'quantity_amount', 'quantity_unit', 'serving_size_grams',
-  'calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'sugar_g', 'sodium_mg',
+  ...NUTRIENT_FIELDS,
   'meal_type', 'consumed_at', 'notes',
 ];
 
@@ -260,32 +263,16 @@ router.patch('/entries/:id', async (req, res, next) => {
     const providedQuantity = body.quantity_amount !== undefined || body.calories !== undefined;
     const needsQuantity = providedQuantity ? false : existing.needs_quantity;
 
+    // Same whitelist-driven approach as POST /entries above: UPDATE_COLUMNS
+    // only ever comes from EDITABLE_FIELDS (a fixed list), never from
+    // req.body's own keys.
+    const UPDATE_COLUMNS = ['name', 'brand', 'quantity_amount', 'quantity_unit', 'serving_size_grams', ...NUTRIENT_FIELDS, 'meal_type', 'consumed_at', 'notes'];
+    const setClauses = UPDATE_COLUMNS.map((col, i) => `${col} = $${i + 2}`);
+    setClauses.push(`needs_quantity = $${UPDATE_COLUMNS.length + 2}`, 'updated_at = now()');
+
     const { rows } = await pool.query(
-      `UPDATE food_entries SET
-         name = $2, brand = $3, quantity_amount = $4, quantity_unit = $5, serving_size_grams = $6,
-         calories = $7, protein_g = $8, carbs_g = $9, fat_g = $10, fiber_g = $11, sugar_g = $12, sodium_mg = $13,
-         meal_type = $14, consumed_at = $15, notes = $16, needs_quantity = $17, updated_at = now()
-       WHERE id = $1
-       RETURNING *`,
-      [
-        req.params.id,
-        next_.name,
-        next_.brand,
-        next_.quantity_amount,
-        next_.quantity_unit,
-        next_.serving_size_grams,
-        next_.calories,
-        next_.protein_g,
-        next_.carbs_g,
-        next_.fat_g,
-        next_.fiber_g,
-        next_.sugar_g,
-        next_.sodium_mg,
-        next_.meal_type,
-        next_.consumed_at,
-        next_.notes,
-        needsQuantity,
-      ]
+      `UPDATE food_entries SET ${setClauses.join(', ')} WHERE id = $1 RETURNING *`,
+      [req.params.id, ...UPDATE_COLUMNS.map((col) => next_[col]), needsQuantity]
     );
     res.json({ entry: rows[0] });
   } catch (err) {
@@ -328,24 +315,24 @@ router.get('/summary', async (req, res, next) => {
     const days = Math.min(Math.max(Number.parseInt(req.query.days, 10) || 7, 1), 90);
 
     const { rows } = await pool.query(
-      `SELECT id, name, meal_type, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg, consumed_at, is_confirmed, needs_quantity, needs_review
+      `SELECT id, name, meal_type, ${NUTRIENT_FIELDS.join(', ')}, consumed_at, is_confirmed, needs_quantity, needs_review
        FROM food_entries
        WHERE user_id = $1 AND consumed_at >= CURRENT_DATE - ($2::int - 1) AND is_confirmed = true
        ORDER BY consumed_at ASC`,
       [userId, days]
     );
 
+    function emptyDay(key) {
+      const day = { date: key, meals: { breakfast: [], lunch: [], snack: [], dinner: [], supper: [] } };
+      for (const field of NUTRIENT_FIELDS) day[field] = 0;
+      return day;
+    }
+
     const byDay = new Map();
     for (const row of rows) {
       const key = new Date(row.consumed_at).toISOString().slice(0, 10);
-      const day = byDay.get(key) || { date: key, calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0, sugar_g: 0, sodium_mg: 0, meals: { breakfast: [], lunch: [], snack: [], dinner: [], supper: [] } };
-      day.calories += Number(row.calories) || 0;
-      day.protein_g += Number(row.protein_g) || 0;
-      day.carbs_g += Number(row.carbs_g) || 0;
-      day.fat_g += Number(row.fat_g) || 0;
-      day.fiber_g += Number(row.fiber_g) || 0;
-      day.sugar_g += Number(row.sugar_g) || 0;
-      day.sodium_mg += Number(row.sodium_mg) || 0;
+      const day = byDay.get(key) || emptyDay(key);
+      for (const field of NUTRIENT_FIELDS) day[field] += Number(row[field]) || 0;
       day.meals[row.meal_type].push({ id: row.id, name: row.name, calories: row.calories });
       byDay.set(key, day);
     }
@@ -355,7 +342,7 @@ router.get('/summary', async (req, res, next) => {
       const d = new Date();
       d.setUTCDate(d.getUTCDate() - i);
       const key = d.toISOString().slice(0, 10);
-      history.push(byDay.get(key) || { date: key, calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0, sugar_g: 0, sodium_mg: 0, meals: { breakfast: [], lunch: [], snack: [], dinner: [], supper: [] } });
+      history.push(byDay.get(key) || emptyDay(key));
     }
 
     const todayKey = new Date().toISOString().slice(0, 10);

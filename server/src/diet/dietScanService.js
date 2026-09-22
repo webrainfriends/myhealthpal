@@ -64,9 +64,10 @@ async function processDietScan(scanId) {
       await pool.query(
         `INSERT INTO food_entries (
            user_id, scan_id, name, brand, quantity_amount, quantity_unit, serving_size_grams,
-           calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg,
+           calories, protein_g, carbs_g, fat_g, saturated_fat_g, fiber_g, sugar_g, sodium_mg,
+           cholesterol_mg, potassium_mg, calcium_mg, iron_mg, vitamin_d_mcg,
            meal_type, consumed_at, source_type, extraction_confidence, needs_quantity, needs_review, is_confirmed
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'photo_scan',$17,$18,$19,false)`,
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,'photo_scan',$23,$24,$25,false)`,
         [
           scan.user_id,
           scanId,
@@ -79,9 +80,15 @@ async function processDietScan(scanId) {
           item.protein_g,
           item.carbs_g,
           item.fat_g,
+          item.saturated_fat_g,
           item.fiber_g,
           item.sugar_g,
           item.sodium_mg,
+          item.cholesterol_mg,
+          item.potassium_mg,
+          item.calcium_mg,
+          item.iron_mg,
+          item.vitamin_d_mcg,
           mealType,
           scan.consumed_at,
           item.confidence,
