@@ -894,4 +894,21 @@ module.exports = [
       },
     ],
   },
+  {
+    id: 'cerumol',
+    genericNames: ['chlorobutanol'],
+    brandNames: ['cerumol'],
+    category: 'Ear drops (cerumenolytic / earwax softener)',
+    usage:
+      'Softens and loosens hardened/impacted earwax (cerumen) so it can be removed or clear from the ear naturally. Usually a few drops instilled in the affected ear and left in place for a short time; sometimes followed by ear syringing/irrigation by a clinician.',
+    activeIngredient: 'Chlorobutanol in an oil base (exact formulation varies by manufacturer/region; some contain arachis/peanut oil)',
+    commonSideEffects: ['Mild ear irritation or stinging', 'Temporary reduced hearing while the drops are in the ear'],
+    warnings: [
+      'Do not use if you have a perforated eardrum, ear discharge, or an ear infection',
+      'Some formulations contain arachis (peanut) oil - check the label and avoid if you have a peanut allergy',
+      'Stop and seek medical advice if pain, dizziness, or worsening symptoms occur',
+    ],
+    typicalDailyDose: null,
+    parameterLinks: [],
+  },
 ];
