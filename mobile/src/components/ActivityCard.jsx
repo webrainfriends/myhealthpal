@@ -2,17 +2,27 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import ActivityRings from './ActivityRings';
 import { activityRingColors, cardShadow, colors, radii, spacing, typography } from '../theme/theme';
 
-// Compact dashboard preview of today's three rings - deliberately its own
-// card, not part of the organ-score grid above it (see organHealthService.js
-// for why activity is never scored like a lab result).
-export default function ActivityCard({ today, onPress }) {
-  const rings = today
+function formatShortDate(dateStr) {
+  if (!dateStr) return '';
+  return new Date(`${dateStr}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+// Compact dashboard preview of the most recent day's three rings -
+// deliberately its own card, not part of the organ-score grid above it (see
+// organHealthService.js for why activity is never scored like a lab
+// result). `current` falls back to the latest logged day when nothing is
+// logged for today itself (see /api/activity/summary) - a wearable export
+// upload is common and rarely includes literally today, so this card
+// mustn't show an empty ring just because of that lag.
+export default function ActivityCard({ current, isCurrentToday, onPress }) {
+  const rings = current
     ? [
-        { percent: today.rings.steps, ...activityRingColors.steps },
-        { percent: today.rings.exerciseMinutes, ...activityRingColors.exerciseMinutes },
-        { percent: today.rings.standHours, ...activityRingColors.standHours },
+        { percent: current.rings.steps, ...activityRingColors.steps },
+        { percent: current.rings.exerciseMinutes, ...activityRingColors.exerciseMinutes },
+        { percent: current.rings.standHours, ...activityRingColors.standHours },
       ]
     : [];
+  const hasData = current?.steps || current?.exerciseMinutes || current?.standHours;
 
   return (
     <TouchableOpacity style={[styles.card, cardShadow]} onPress={onPress} activeOpacity={0.8}>
@@ -22,8 +32,10 @@ export default function ActivityCard({ today, onPress }) {
       <View style={styles.textBlock}>
         <Text style={typography.heading}>Activity</Text>
         <Text style={typography.bodySecondary} numberOfLines={2}>
-          {today?.steps || today?.exerciseMinutes || today?.standHours
-            ? `${today.steps ?? 0} steps · ${today.exerciseMinutes ?? 0} min exercise`
+          {hasData
+            ? `${current.steps ?? 0} steps · ${current.exerciseMinutes ?? 0} min exercise${
+                isCurrentToday ? '' : ` · ${formatShortDate(current.date)}`
+              }`
             : 'Log today’s steps and exercise'}
         </Text>
       </View>
