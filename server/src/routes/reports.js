@@ -348,4 +348,41 @@ router.post('/:id/confirm', async (req, res, next) => {
   }
 });
 
+// Removes an uploaded report entirely - the whole "batch" from that upload,
+// not individual measurements within it (correcting/removing one result at
+// a time already exists via the measurement PATCH endpoint above and the
+// per-parameter mapping controls on Report Detail). Every dependent row
+// (health_measurements, ingestion_jobs, extraction_runs, measurement_sources,
+// report_dates, report_summaries) cascades via FK ON DELETE CASCADE - see
+// the reports table's migration - so this only needs to delete the report
+// row itself, plus the uploaded file on disk that nothing else references
+// once it's gone.
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const { rows } = await pool.query('DELETE FROM reports WHERE id = $1 AND user_id = $2 RETURNING storage_path', [
+      req.params.id,
+      currentUserId(req),
+    ]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Report not found' });
+
+    const { storage_path: storagePath } = rows[0];
+    if (storagePath) {
+      fs.unlink(storagePath, (err) => {
+        // ENOENT (already gone) is fine; anything else is worth knowing
+        // about but must never fail a delete that already succeeded in the
+        // database - the file is orphaned disk space at worst, not a
+        // correctness problem for the user.
+        if (err && err.code !== 'ENOENT') {
+          // eslint-disable-next-line no-console
+          console.error(`Failed to remove report file ${storagePath}:`, err);
+        }
+      });
+    }
+
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

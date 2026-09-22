@@ -7,6 +7,7 @@ import PrimaryButton from '../components/PrimaryButton';
 import { colors, radii, spacing, typography } from '../theme/theme';
 import {
   confirmReport,
+  deleteReport,
   fetchReport,
   fetchReportFileUrl,
   retryReport,
@@ -185,6 +186,35 @@ export default function ReportDetailScreen({ route, navigation }) {
     }
   }
 
+  function handleDelete() {
+    showAlert(
+      'Delete this report?',
+      `This removes "${report.original_filename}" and every result extracted from it. This can't be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteReport(reportId);
+              // See MedicationDetailScreen's handleDelete for why goBack()
+              // alone isn't safe: this screen is also reachable with no
+              // prior in-app history (a deep link, a bookmark, a refresh).
+              if (navigation.canGoBack()) {
+                navigation.goBack();
+              } else {
+                navigation.navigate('Tabs', { screen: 'TimelineTab' });
+              }
+            } catch (err) {
+              showAlert('Could not delete report', err.message);
+            }
+          },
+        },
+      ]
+    );
+  }
+
   if (!report) {
     return (
       <SafeAreaView style={styles.container}>
@@ -302,6 +332,10 @@ export default function ReportDetailScreen({ route, navigation }) {
             loading={busy}
           />
         )}
+
+        <TouchableOpacity onPress={handleDelete} style={styles.deleteButton}>
+          <Text style={styles.deleteLabel}>Delete report</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -411,5 +445,13 @@ const styles = StyleSheet.create({
   },
   sectionHeading: {
     marginBottom: spacing.xs,
+  },
+  deleteButton: {
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+  },
+  deleteLabel: {
+    color: colors.danger,
+    fontWeight: '600',
   },
 });
