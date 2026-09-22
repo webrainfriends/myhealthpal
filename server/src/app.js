@@ -13,6 +13,7 @@ const chatRouter = require('./routes/chat');
 const medicationsRouter = require('./routes/medications');
 const activityRouter = require('./routes/activity');
 const dietRouter = require('./routes/diet');
+const recipePreferencesRouter = require('./routes/recipePreferences');
 const filesRouter = require('./routes/files');
 
 const app = express();
@@ -44,6 +45,7 @@ app.use('/api/chat', requireAuth, chatRouter);
 app.use('/api/medications', requireAuth, medicationsRouter);
 app.use('/api/activity', requireAuth, activityRouter);
 app.use('/api/diet', requireAuth, dietRouter);
+app.use('/api/recipe-preferences', requireAuth, recipePreferencesRouter);
 // Not wrapped in requireAuth - see routes/files.js for why (a plain link
 // open can't carry an Authorization header, so a short-lived scoped token
 // is the credential here instead).
