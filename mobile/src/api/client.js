@@ -452,4 +452,56 @@ export async function generateDietRecipe(fields) {
   return handleResponse(response);
 }
 
+export async function fetchGmailStatus() {
+  const response = await apiFetch('/api/integrations/gmail/status');
+  return handleResponse(response);
+}
+
+export async function fetchGmailConnectUrl() {
+  const response = await apiFetch('/api/integrations/gmail/connect');
+  return handleResponse(response);
+}
+
+export async function disconnectGmail() {
+  const response = await apiFetch('/api/integrations/gmail/disconnect', { method: 'DELETE' });
+  return handleResponse(response);
+}
+
+export async function searchGmailCandidates(sinceDays) {
+  const response = await apiFetch('/api/integrations/gmail/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(sinceDays ? { sinceDays } : {}),
+  });
+  return handleResponse(response);
+}
+
+export async function importGmailSelections(selections) {
+  const response = await apiFetch('/api/integrations/gmail/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ selections }),
+  });
+  return handleResponse(response);
+}
+
+export async function fetchGmailDocuments() {
+  const response = await apiFetch('/api/integrations/gmail/documents');
+  return handleResponse(response);
+}
+
+export async function fetchRecipePreferences() {
+  const response = await apiFetch('/api/recipe-preferences');
+  return handleResponse(response);
+}
+
+export async function saveRecipePreferences(dietTypes, cuisines) {
+  const response = await apiFetch('/api/recipe-preferences', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dietTypes, cuisines }),
+  });
+  return handleResponse(response);
+}
+
 export { API_BASE_URL };
