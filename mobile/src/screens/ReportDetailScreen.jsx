@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Linking, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Linking, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import StatusBadge from '../components/StatusBadge';
 import MeasurementRow from '../components/MeasurementRow';
@@ -13,6 +13,7 @@ import {
   updateMeasurement,
   updateReportDate,
 } from '../api/client';
+import { showAlert } from '../utils/alert';
 
 function formatDate(value) {
   if (!value) return null;
@@ -122,7 +123,7 @@ export default function ReportDetailScreen({ route, navigation }) {
       try {
         await updateMeasurement(reportId, measurementId, edits);
       } catch (err) {
-        Alert.alert('Could not save edit', err.message);
+        showAlert('Could not save edit', err.message);
       }
     }, EDIT_DEBOUNCE_MS);
   }
@@ -135,7 +136,7 @@ export default function ReportDetailScreen({ route, navigation }) {
       // patching local state with the bare row the PATCH response returns.
       await load();
     } catch (err) {
-      Alert.alert('Could not update mapping', err.message);
+      showAlert('Could not update mapping', err.message);
     }
   }
 
@@ -145,7 +146,7 @@ export default function ReportDetailScreen({ route, navigation }) {
       const data = await confirmReport(reportId);
       setReport(data.report);
     } catch (err) {
-      Alert.alert('Could not confirm report', err.message);
+      showAlert('Could not confirm report', err.message);
     } finally {
       setBusy(false);
     }
@@ -157,7 +158,7 @@ export default function ReportDetailScreen({ route, navigation }) {
       const url = await fetchReportFileUrl(reportId);
       await Linking.openURL(url);
     } catch (err) {
-      Alert.alert('Could not open original file', err.message);
+      showAlert('Could not open original file', err.message);
     } finally {
       setOpeningFile(false);
     }
@@ -169,7 +170,7 @@ export default function ReportDetailScreen({ route, navigation }) {
       await retryReport(reportId);
       await load();
     } catch (err) {
-      Alert.alert('Could not retry processing', err.message);
+      showAlert('Could not retry processing', err.message);
     } finally {
       setBusy(false);
     }
@@ -180,7 +181,7 @@ export default function ReportDetailScreen({ route, navigation }) {
       await updateReportDate(reportId, value);
       await load();
     } catch (err) {
-      Alert.alert('Could not update date', err.message);
+      showAlert('Could not update date', err.message);
     }
   }
 

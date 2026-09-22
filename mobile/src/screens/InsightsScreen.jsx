@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, FlatList, StyleSheet, Text } from 'react-native';
+import { FlatList, StyleSheet, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import InsightCard from '../components/InsightCard';
 import { colors, spacing, typography } from '../theme/theme';
 import { dismissInsight, fetchInsights, sendInsightFeedback } from '../api/client';
+import { showAlert } from '../utils/alert';
 
 export default function InsightsScreen({ navigation }) {
   const [insights, setInsights] = useState([]);
@@ -30,7 +31,7 @@ export default function InsightsScreen({ navigation }) {
     try {
       await dismissInsight(id);
     } catch (err) {
-      Alert.alert('Could not dismiss insight', err.message);
+      showAlert('Could not dismiss insight', err.message);
       load();
     }
   }
@@ -39,7 +40,7 @@ export default function InsightsScreen({ navigation }) {
     try {
       await sendInsightFeedback(id, feedback);
     } catch (err) {
-      Alert.alert('Could not send feedback', err.message);
+      showAlert('Could not send feedback', err.message);
     }
   }
 

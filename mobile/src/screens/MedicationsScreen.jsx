@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
@@ -7,6 +7,7 @@ import MedicationCard from '../components/MedicationCard';
 import PrimaryButton from '../components/PrimaryButton';
 import { alertSeverityColors, colors, radii, spacing, typography } from '../theme/theme';
 import { dismissMedicationAlert, fetchMedicationAlerts, fetchMedications, uploadMedicationScan } from '../api/client';
+import { showAlert } from '../utils/alert';
 
 function AlertBanner({ alert, onDismiss, onPress }) {
   const palette = alertSeverityColors[alert.severity] || alertSeverityColors.info;
@@ -59,7 +60,7 @@ export default function MedicationsScreen({ navigation }) {
       const data = await uploadMedicationScan(file, scanType);
       navigation.navigate('MedicationScanReview', { scanId: data.scan.id });
     } catch (err) {
-      Alert.alert('Scan failed', err.message);
+      showAlert('Scan failed', err.message);
     } finally {
       setScanning(false);
     }
@@ -78,7 +79,7 @@ export default function MedicationsScreen({ navigation }) {
   async function photograph(scanType, defaultName) {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Permission needed', 'Camera access is required to take a photo.');
+      showAlert('Permission needed', 'Camera access is required to take a photo.');
       return;
     }
     const result = await ImagePicker.launchCameraAsync();
@@ -93,7 +94,7 @@ export default function MedicationsScreen({ navigation }) {
   async function pickFromLibrary(scanType, defaultName) {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Permission needed', 'Photo library access is required.');
+      showAlert('Permission needed', 'Photo library access is required.');
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'] });
@@ -110,7 +111,7 @@ export default function MedicationsScreen({ navigation }) {
     try {
       await dismissMedicationAlert(id);
     } catch (err) {
-      Alert.alert('Could not dismiss alert', err.message);
+      showAlert('Could not dismiss alert', err.message);
       load();
     }
   }

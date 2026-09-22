@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
@@ -7,6 +7,7 @@ import PrimaryButton from '../components/PrimaryButton';
 import StatusBadge from '../components/StatusBadge';
 import { cardShadow, colors, radii, spacing, typography } from '../theme/theme';
 import { fetchReports, fetchSupportedFormats, uploadReport } from '../api/client';
+import { showAlert } from '../utils/alert';
 
 function formatDate(value) {
   if (!value) return 'Date pending';
@@ -65,9 +66,9 @@ export default function UploadScreen({ navigation }) {
     try {
       await uploadReport(file);
       await loadReports();
-      Alert.alert('Uploaded', 'Your report is processing - it will appear below once ready.');
+      showAlert('Uploaded', 'Your report is processing - it will appear below once ready.');
     } catch (err) {
-      Alert.alert('Upload failed', err.message);
+      showAlert('Upload failed', err.message);
     } finally {
       setUploading(false);
     }
@@ -95,7 +96,7 @@ export default function UploadScreen({ navigation }) {
   async function pickFromLibrary() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Permission needed', 'Photo library access is required to select a scanned report.');
+      showAlert('Permission needed', 'Photo library access is required to select a scanned report.');
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'] });
@@ -112,7 +113,7 @@ export default function UploadScreen({ navigation }) {
   async function takePhoto() {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Permission needed', 'Camera access is required to capture a report.');
+      showAlert('Permission needed', 'Camera access is required to capture a report.');
       return;
     }
     const result = await ImagePicker.launchCameraAsync();

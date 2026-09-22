@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import PrimaryButton from '../components/PrimaryButton';
 import { colors, spacing, typography } from '../theme/theme';
@@ -7,6 +7,7 @@ import { fetchAuthConfig } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { renderGoogleButton } from '../auth/googleSignIn';
 import { isAppleSignInEligible, signInWithApple } from '../auth/appleSignIn';
+import { showAlert } from '../utils/alert';
 
 export default function LoginScreen() {
   const { signInAsGuest, signInWithGoogle, signInWithApple: completeAppleSignIn } = useAuth();
@@ -30,7 +31,7 @@ export default function LoginScreen() {
         try {
           await signInWithGoogle(idToken);
         } catch (err) {
-          Alert.alert('Sign-in failed', err.message);
+          showAlert('Sign-in failed', err.message);
         } finally {
           setBusy(false);
         }
@@ -47,7 +48,7 @@ export default function LoginScreen() {
     try {
       await signInAsGuest();
     } catch (err) {
-      Alert.alert('Could not continue as guest', err.message);
+      showAlert('Could not continue as guest', err.message);
     } finally {
       setBusy(false);
     }
@@ -59,7 +60,7 @@ export default function LoginScreen() {
       const { identityToken, fullName } = await signInWithApple({ clientId: authConfig.appleClientId });
       await completeAppleSignIn(identityToken, fullName);
     } catch (err) {
-      Alert.alert('Sign-in failed', err.message);
+      showAlert('Sign-in failed', err.message);
     } finally {
       setBusy(false);
     }

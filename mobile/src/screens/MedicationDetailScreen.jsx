@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ChipSelect from '../components/ChipSelect';
 import MedicationForm from '../components/MedicationForm';
 import PrimaryButton from '../components/PrimaryButton';
 import { cardShadow, colors, healthStatusColors, radii, spacing, typography } from '../theme/theme';
 import { deleteMedication, fetchMedication, updateMedication } from '../api/client';
+import { showAlert } from '../utils/alert';
 
 const STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
@@ -152,7 +153,7 @@ export default function MedicationDetailScreen({ route, navigation }) {
       setEditing(false);
       await load();
     } catch (err) {
-      Alert.alert('Could not save changes', err.message);
+      showAlert('Could not save changes', err.message);
     } finally {
       setBusy(false);
     }
@@ -164,12 +165,12 @@ export default function MedicationDetailScreen({ route, navigation }) {
       await updateMedication(medicationId, { status });
       await load();
     } catch (err) {
-      Alert.alert('Could not update status', err.message);
+      showAlert('Could not update status', err.message);
     }
   }
 
   function handleDelete() {
-    Alert.alert('Delete medication?', `This removes ${medication.name} and its tracking history.`, [
+    showAlert('Delete medication?', `This removes ${medication.name} and its tracking history.`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
@@ -179,7 +180,7 @@ export default function MedicationDetailScreen({ route, navigation }) {
             await deleteMedication(medicationId);
             navigation.goBack();
           } catch (err) {
-            Alert.alert('Could not delete medication', err.message);
+            showAlert('Could not delete medication', err.message);
           }
         },
       },

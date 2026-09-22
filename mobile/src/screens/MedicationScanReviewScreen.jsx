@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MedicationForm from '../components/MedicationForm';
 import PrimaryButton from '../components/PrimaryButton';
 import StatusBadge from '../components/StatusBadge';
 import { colors, radii, spacing, typography } from '../theme/theme';
 import { confirmMedication, deleteMedication, fetchMedicationScan, retryMedicationScan, updateMedication } from '../api/client';
+import { showAlert } from '../utils/alert';
 
 const POLL_STATUSES = new Set(['Uploaded', 'Processing']);
 const POLL_INTERVAL_MS = 2000;
@@ -87,7 +88,7 @@ export default function MedicationScanReviewScreen({ route, navigation }) {
     try {
       await updateMedication(medicationId, edits);
     } catch (err) {
-      Alert.alert('Could not save edit', err.message);
+      showAlert('Could not save edit', err.message);
     }
   }
 
@@ -100,7 +101,7 @@ export default function MedicationScanReviewScreen({ route, navigation }) {
       if (remaining.length === 0) navigation.navigate('MedicationsTab');
       else navigation.navigate('MedicationDetail', { medicationId });
     } catch (err) {
-      Alert.alert('Could not confirm medication', err.message);
+      showAlert('Could not confirm medication', err.message);
     } finally {
       setBusyId(null);
     }
@@ -112,7 +113,7 @@ export default function MedicationScanReviewScreen({ route, navigation }) {
       await deleteMedication(medicationId);
       setMedications((prev) => prev.filter((m) => m.id !== medicationId));
     } catch (err) {
-      Alert.alert('Could not discard medication', err.message);
+      showAlert('Could not discard medication', err.message);
     } finally {
       setBusyId(null);
     }
@@ -123,7 +124,7 @@ export default function MedicationScanReviewScreen({ route, navigation }) {
       await retryMedicationScan(scanId);
       await load();
     } catch (err) {
-      Alert.alert('Could not retry processing', err.message);
+      showAlert('Could not retry processing', err.message);
     }
   }
 
