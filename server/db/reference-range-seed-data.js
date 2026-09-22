@@ -14,6 +14,25 @@
 // (idempotent, keyed on parameterCode + source + conditionLabel).
 module.exports = [
   {
+    // A meal-agnostic/home-glucometer reading (see registry-seed-data.js's
+    // note on why this is a separate parameter from glucose_fasting) - no
+    // single "normal" band is as universally standardized as fasting
+    // glucose's, so this uses the WHO/ADA upper bound below which a random
+    // reading isn't itself diagnostic of diabetes.
+    parameterCode: 'glucose',
+    unit: 'mg/dL',
+    ranges: [
+      {
+        source: 'who',
+        conditionLabel: 'general',
+        low: 70,
+        high: 139,
+        citation:
+          'WHO/ADA: a random (non-fasting) plasma glucose below 140 mg/dL is not suggestive of diabetes; 140-199 mg/dL is the pre-diabetes range and 200 mg/dL or above (with symptoms) is diagnostic of diabetes.',
+      },
+    ],
+  },
+  {
     parameterCode: 'glucose_fasting',
     unit: 'mg/dL',
     ranges: [
@@ -49,6 +68,19 @@ module.exports = [
         low: 4.0,
         high: 5.6,
         citation: 'WHO/ADA diabetes diagnostic criteria: HbA1c below 5.7% is considered normal (non-diabetic).',
+      },
+    ],
+  },
+  {
+    parameterCode: 'insulin_fasting',
+    unit: 'uIU/mL',
+    ranges: [
+      {
+        source: 'fda',
+        conditionLabel: 'general',
+        low: 2.6,
+        high: 24.9,
+        citation: 'Standard US clinical laboratory (Mayo Clinic Laboratories) adult reference interval for fasting insulin.',
       },
     ],
   },

@@ -33,7 +33,15 @@ const NORMAL_FLAGS = new Set(['normal', 'n']);
 // "abnormal" - never counted against the score, same as no flag at all.
 const NEUTRAL_FLAGS = new Set(['', 'see note', 'na', 'n/a']);
 
-const RANGE_PATTERN = /(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)/;
+// Anchored to the whole (trimmed) string, with only non-digit characters
+// (e.g. a trailing unit) allowed after the range - a plain "13.0-17.0" or
+// "0.4-4.5 uIU/mL" matches, but a multi-tier diagnostic band like HbA1c's
+// "Non-Diabetic Level: < 5.7% Pre Diabetic 5.7-6.4% Diabetic Level: >=6.5%"
+// does not: an unanchored match would silently grab the first number pair
+// it finds (here, the Pre-Diabetic tier) as if it were the normal range,
+// which is worse than not parsing it at all. Text shaped like that falls
+// through to the standards-based fallback in determineResultStatus instead.
+const RANGE_PATTERN = /^\s*(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)\s*[^\d]*$/;
 
 function parseRange(rangeRaw) {
   if (!rangeRaw) return null;
@@ -45,8 +53,12 @@ function parseRange(rangeRaw) {
 }
 
 // 'normal' | 'abnormal' | 'unknown' (not enough information to judge -
-// excluded from the score rather than guessed at).
-function determineResultStatus(row) {
+// excluded from the score rather than guessed at). `standardRange`, when
+// given, is this parameter's row from reference_ranges (see
+// referenceRangeService.getAllReferenceRangesByCode) - the same
+// WHO/ICMR/FDA-aligned general clinical range the Medications tab scores
+// against, used here only as a fallback.
+function determineResultStatus(row, standardRange) {
   const flag = String(row.statusFlag || '').trim().toLowerCase();
   if (flag && !NEUTRAL_FLAGS.has(flag)) {
     return NORMAL_FLAGS.has(flag) ? 'normal' : 'abnormal';
@@ -56,6 +68,19 @@ function determineResultStatus(row) {
   const range = parseRange(row.referenceRangeRaw);
   if (value !== null && value !== undefined && range) {
     return value >= range.min && value <= range.max ? 'normal' : 'abnormal';
+  }
+
+  // A report's own printed range isn't always a plain "min-max" - a
+  // multi-tier diagnostic band like HbA1c's "Non-Diabetic <5.7 / Pre
+  // Diabetic 5.7-6.4 / Diabetic >=6.5" (or no range printed at all, common
+  // for a home glucometer reading) can't be parsed by the regex above.
+  // Rather than leave every such result stuck at 'unknown', fall back to
+  // the app's own standard reference range for this parameter.
+  if (value !== null && value !== undefined && standardRange) {
+    const { range_low: low, range_high: high } = standardRange;
+    if (low !== null && low !== undefined && value < low) return 'abnormal';
+    if (high !== null && high !== undefined && value > high) return 'abnormal';
+    return 'normal';
   }
 
   return 'unknown';
@@ -79,8 +104,11 @@ const STATUS_LABELS = {
 // latest measurement, e.g. by the caller's SQL) with at least:
 // { code, displayName, category, rawValue, rawUnit, qualitativeValue,
 //   statusFlag, referenceRangeRaw, numericValue, normalizedValue,
-//   effectiveDate, reportId }.
-function buildOrganSummaries(rows) {
+//   effectiveDate, reportId }. `standardRangesByCode` (optional, default
+// none) is a Map<parameterCode, reference_ranges row> - see
+// referenceRangeService.getAllReferenceRangesByCode - used as a fallback
+// when a row's own report didn't print a usable flag/range.
+function buildOrganSummaries(rows, standardRangesByCode = new Map()) {
   const rowsByCategory = new Map();
   for (const row of rows) {
     const list = rowsByCategory.get(row.category) || [];
@@ -96,7 +124,7 @@ function buildOrganSummaries(rows) {
       value: row.qualitativeValue || row.rawValue,
       unit: row.rawUnit || null,
       statusFlag: row.statusFlag || null,
-      resultStatus: determineResultStatus(row),
+      resultStatus: determineResultStatus(row, standardRangesByCode.get(row.code)),
       effectiveDate: row.effectiveDate || null,
       reportId: row.reportId || null,
     }));
