@@ -3,6 +3,7 @@ import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { cardShadow, colors, radii, spacing, typography } from '../theme/theme';
 import { fetchDashboardSnapshot } from '../api/client';
+import { useT } from '../i18n/I18nContext';
 import { formatCalendarDate } from '../utils/date';
 
 function formatDate(value) {
@@ -10,12 +11,12 @@ function formatDate(value) {
   return formatCalendarDate(value, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function AttentionRow({ item, onPress }) {
+function AttentionRow({ item, onPress, t }) {
   return (
     <TouchableOpacity style={[styles.row, cardShadow]} onPress={onPress} activeOpacity={0.7}>
       <Text style={typography.body}>{item.parameter_display_name || item.raw_test_name}</Text>
       <Text style={typography.caption}>
-        {item.raw_value} {item.raw_unit || ''} {item.status_flag ? `· ${item.status_flag}` : '· needs review'} ·{' '}
+        {item.raw_value} {item.raw_unit || ''} {item.status_flag ? `· ${item.status_flag}` : `· ${t('needsAttention.needsReview')}`} ·{' '}
         {item.original_filename} · {formatDate(item.effective_date)}
       </Text>
     </TouchableOpacity>
@@ -23,6 +24,7 @@ function AttentionRow({ item, onPress }) {
 }
 
 export default function NeedsAttentionScreen({ navigation }) {
+  const t = useT();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -49,10 +51,14 @@ export default function NeedsAttentionScreen({ navigation }) {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.content}
         renderItem={({ item }) => (
-          <AttentionRow item={item} onPress={() => navigation.navigate('ReportDetail', { reportId: item.report_id })} />
+          <AttentionRow
+            item={item}
+            t={t}
+            onPress={() => navigation.navigate('ReportDetail', { reportId: item.report_id })}
+          />
         )}
         ListEmptyComponent={
-          !loading && <Text style={[typography.bodySecondary, styles.empty]}>Nothing flagged right now.</Text>
+          !loading && <Text style={[typography.bodySecondary, styles.empty]}>{t('needsAttention.empty')}</Text>
         }
       />
     </SafeAreaView>

@@ -4,11 +4,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import TimelineItemCard from '../components/TimelineItemCard';
 import { colors, radii, spacing, typography } from '../theme/theme';
 import { deleteReport, fetchTimeline } from '../api/client';
+import { useT } from '../i18n/I18nContext';
 import { showAlert } from '../utils/alert';
 
 const CATEGORIES = ['hematology', 'metabolic', 'lipids', 'electrolytes', 'kidney', 'liver', 'thyroid', 'vitamins'];
 
 export default function TimelineScreen({ navigation }) {
+  const t = useT();
   const [items, setItems] = useState([]);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState(null);
@@ -41,12 +43,12 @@ export default function TimelineScreen({ navigation }) {
 
   function handleDelete(item) {
     showAlert(
-      'Delete this report?',
-      `This removes "${item.original_filename}" and every result extracted from it. This can't be undone.`,
+      t('timeline.deleteConfirmTitle'),
+      t('timeline.deleteConfirmMessage', { name: item.original_filename }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Delete',
+          text: t('common.delete'),
           style: 'destructive',
           onPress: async () => {
             // Optimistic removal - this screen owns the list, so there's no
@@ -56,7 +58,7 @@ export default function TimelineScreen({ navigation }) {
             try {
               await deleteReport(item.id);
             } catch (err) {
-              showAlert('Could not delete report', err.message);
+              showAlert(t('timeline.couldNotDelete'), err.message);
               load();
             }
           },
@@ -68,10 +70,10 @@ export default function TimelineScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={typography.title}>Timeline</Text>
+        <Text style={typography.title}>{t('timeline.title')}</Text>
         <TextInput
           style={styles.search}
-          placeholder="Search reports or parameters"
+          placeholder={t('timeline.searchPlaceholder')}
           placeholderTextColor={colors.textTertiary}
           value={search}
           onChangeText={setSearch}
@@ -81,7 +83,7 @@ export default function TimelineScreen({ navigation }) {
             style={[styles.chip, category === null && styles.chipActive]}
             onPress={() => setCategory(null)}
           >
-            <Text style={[styles.chipText, category === null && styles.chipTextActive]}>All</Text>
+            <Text style={[styles.chipText, category === null && styles.chipTextActive]}>{t('timeline.all')}</Text>
           </TouchableOpacity>
           {CATEGORIES.map((cat) => (
             <TouchableOpacity
@@ -89,7 +91,9 @@ export default function TimelineScreen({ navigation }) {
               style={[styles.chip, category === cat && styles.chipActive]}
               onPress={() => setCategory(category === cat ? null : cat)}
             >
-              <Text style={[styles.chipText, category === cat && styles.chipTextActive]}>{cat}</Text>
+              <Text style={[styles.chipText, category === cat && styles.chipTextActive]}>
+                {t(`timeline.categories.${cat}`)}
+              </Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -107,9 +111,7 @@ export default function TimelineScreen({ navigation }) {
           />
         )}
         ListEmptyComponent={
-          !loading && (
-            <Text style={[typography.bodySecondary, styles.empty]}>No reports match these filters yet.</Text>
-          )
+          !loading && <Text style={[typography.bodySecondary, styles.empty]}>{t('timeline.empty')}</Text>
         }
       />
     </SafeAreaView>

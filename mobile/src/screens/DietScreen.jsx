@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import FoodEntryCard from '../components/FoodEntryCard';
 import PrimaryButton from '../components/PrimaryButton';
+import SpeakButton from '../components/SpeakButton';
 import { alertSeverityColors, cardShadow, colors, radii, spacing, typography } from '../theme/theme';
 import {
   fetchDietEntries,
@@ -11,31 +12,48 @@ import {
   fetchDietSummary,
   uploadDietScan,
 } from '../api/client';
+import { useT } from '../i18n/I18nContext';
 import { showAlert } from '../utils/alert';
 
 const MACRO_LABELS = [
-  { key: 'protein_g', label: 'Protein', suffix: 'g' },
-  { key: 'carbs_g', label: 'Carbs', suffix: 'g' },
-  { key: 'fat_g', label: 'Fat', suffix: 'g' },
-  { key: 'fiber_g', label: 'Fiber', suffix: 'g' },
-  { key: 'sugar_g', label: 'Sugar', suffix: 'g' },
-  { key: 'sodium_mg', label: 'Sodium', suffix: 'mg' },
+  { key: 'protein_g', labelKey: 'diet.macroProtein', suffix: 'g' },
+  { key: 'carbs_g', labelKey: 'diet.macroCarbs', suffix: 'g' },
+  { key: 'fat_g', labelKey: 'diet.macroFat', suffix: 'g' },
+  { key: 'fiber_g', labelKey: 'diet.macroFiber', suffix: 'g' },
+  { key: 'sugar_g', labelKey: 'diet.macroSugar', suffix: 'g' },
+  { key: 'sodium_mg', labelKey: 'diet.macroSodium', suffix: 'mg' },
 ];
 
 // The rest of the AI-estimated nutrients (dietPhotoProvider.js) - tucked
 // behind a toggle so the default "Today" card stays a quick glance rather
 // than a 12-value nutrition label.
 const MICRONUTRIENT_LABELS = [
-  { key: 'saturated_fat_g', label: 'Sat. fat', suffix: 'g' },
-  { key: 'cholesterol_mg', label: 'Cholesterol', suffix: 'mg' },
-  { key: 'potassium_mg', label: 'Potassium', suffix: 'mg' },
-  { key: 'calcium_mg', label: 'Calcium', suffix: 'mg' },
-  { key: 'iron_mg', label: 'Iron', suffix: 'mg' },
-  { key: 'vitamin_d_mcg', label: 'Vitamin D', suffix: 'mcg' },
+  { key: 'saturated_fat_g', labelKey: 'diet.microSatFat', suffix: 'g' },
+  { key: 'cholesterol_mg', labelKey: 'diet.microCholesterol', suffix: 'mg' },
+  { key: 'potassium_mg', labelKey: 'diet.microPotassium', suffix: 'mg' },
+  { key: 'calcium_mg', labelKey: 'diet.microCalcium', suffix: 'mg' },
+  { key: 'iron_mg', labelKey: 'diet.microIron', suffix: 'mg' },
+  { key: 'vitamin_d_mcg', labelKey: 'diet.microVitaminD', suffix: 'mcg' },
 ];
 
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
+}
+
+// Builds the sentence SpeakButton reads for today's diet: totals, then the
+// AI recommendation summary and each tip - the same content a sighted user
+// reads off the "Today" card and "AI recommendations" section below.
+function buildDietSpeech(today, macroLabels, recommendation, t) {
+  const parts = [];
+  if (today) {
+    const macros = macroLabels.map((m) => `${t(m.labelKey)} ${Math.round(today[m.key] || 0)}${m.suffix}`).join(', ');
+    parts.push(`${Math.round(today.calories)} cal. ${macros}.`);
+  }
+  if (recommendation?.summary) parts.push(recommendation.summary);
+  for (const tip of recommendation?.tips || []) {
+    parts.push(`${tip.title}. ${tip.detail}`);
+  }
+  return parts.join(' ');
 }
 
 function TipRow({ tip }) {
@@ -49,6 +67,7 @@ function TipRow({ tip }) {
 }
 
 export default function DietScreen({ navigation }) {
+  const t = useT();
   const [summary, setSummary] = useState(null);
   const [entries, setEntries] = useState([]);
   const [recommendation, setRecommendation] = useState(null);
@@ -86,7 +105,7 @@ export default function DietScreen({ navigation }) {
       const data = await uploadDietScan(file, new Date().toISOString());
       navigation.navigate('DietScanReview', { scanId: data.scan.id });
     } catch (err) {
-      showAlert('Scan failed', err.message);
+      showAlert(t('diet.scanFailed'), err.message);
     } finally {
       setScanning(false);
     }
@@ -95,7 +114,7 @@ export default function DietScreen({ navigation }) {
   async function photograph() {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
-      showAlert('Permission needed', 'Camera access is required to take a photo.');
+      showAlert(t('common.permissionNeeded'), t('common.cameraPermissionMessage'));
       return;
     }
     const result = await ImagePicker.launchCameraAsync();
@@ -107,7 +126,7 @@ export default function DietScreen({ navigation }) {
   async function pickFromLibrary() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      showAlert('Permission needed', 'Photo library access is required.');
+      showAlert(t('common.permissionNeeded'), t('common.libraryPermissionMessage'));
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'] });
@@ -122,7 +141,7 @@ export default function DietScreen({ navigation }) {
       const pending = data.entries[0];
       if (pending?.scan_id) navigation.navigate('DietScanReview', { scanId: pending.scan_id });
     } catch (err) {
-      showAlert('Could not open pending review', err.message);
+      showAlert(t('diet.couldNotOpenPendingReview'), err.message);
     }
   }
 
@@ -132,7 +151,7 @@ export default function DietScreen({ navigation }) {
       const data = await fetchDietRecommendations(true);
       setRecommendation(data.recommendation);
     } catch (err) {
-      showAlert('Could not refresh recommendations', err.message);
+      showAlert(t('diet.couldNotRefresh'), err.message);
     } finally {
       setRefreshingTips(false);
     }
@@ -152,45 +171,51 @@ export default function DietScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={typography.title}>Diet</Text>
-        <Text style={[typography.bodySecondary, styles.subtitle]}>
-          Scan a photo of your food or drink to log it automatically, or add it by hand.
-        </Text>
+        <View style={styles.titleRow}>
+          <Text style={typography.title}>{t('diet.title')}</Text>
+          <SpeakButton
+            text={buildDietSpeech(today, MACRO_LABELS, recommendation, t)}
+            label={t('diet.readAloud')}
+          />
+        </View>
+        <Text style={[typography.bodySecondary, styles.subtitle]}>{t('diet.subtitle')}</Text>
 
         <View style={styles.scanSection}>
           <View style={styles.scanRow}>
-            <PrimaryButton title="Take a photo" onPress={photograph} loading={scanning} />
-            <PrimaryButton title="From library" variant="secondary" onPress={pickFromLibrary} loading={scanning} />
+            <PrimaryButton title={t('diet.takePhoto')} onPress={photograph} loading={scanning} />
+            <PrimaryButton title={t('diet.fromLibrary')} variant="secondary" onPress={pickFromLibrary} loading={scanning} />
           </View>
           <TouchableOpacity onPress={() => navigation.navigate('DietEntryForm')}>
-            <Text style={styles.altAction}>Or add an item manually</Text>
+            <Text style={styles.altAction}>{t('diet.orAddManually')}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => navigation.navigate('DietRecipe')}>
-            <Text style={styles.altAction}>Or generate a recipe idea with AI</Text>
+            <Text style={styles.altAction}>{t('diet.orGenerateRecipe')}</Text>
           </TouchableOpacity>
         </View>
 
         {summary && summary.pendingReviewCount > 0 && (
           <TouchableOpacity style={styles.reviewBanner} onPress={openPendingReview}>
             <Text style={[typography.body, styles.reviewBannerText]}>
-              {summary.pendingReviewCount} scanned item{summary.pendingReviewCount === 1 ? '' : 's'} need review
+              {t('diet.itemsNeedReview', { count: summary.pendingReviewCount, plural: summary.pendingReviewCount === 1 ? '' : 's' })}
             </Text>
           </TouchableOpacity>
         )}
 
         <View style={styles.sectionHeaderRow}>
-          <Text style={typography.heading}>Today</Text>
+          <Text style={typography.heading}>{t('diet.today')}</Text>
           <TouchableOpacity onPress={() => navigation.navigate('DietStats')}>
-            <Text style={styles.addLabel}>View stats →</Text>
+            <Text style={styles.addLabel}>{t('diet.viewStats')}</Text>
           </TouchableOpacity>
         </View>
         {today && (
           <View style={[styles.totalsCard, cardShadow]}>
-            <Text style={styles.caloriesValue}>{Math.round(today.calories)} <Text style={styles.caloriesUnit}>cal</Text></Text>
+            <Text style={styles.caloriesValue}>
+              {Math.round(today.calories)} <Text style={styles.caloriesUnit}>{t('diet.calSuffix').trim()}</Text>
+            </Text>
             <View style={styles.macroGrid}>
               {MACRO_LABELS.map((m) => (
                 <View key={m.key} style={styles.macroItem}>
-                  <Text style={typography.caption}>{m.label}</Text>
+                  <Text style={typography.caption}>{t(m.labelKey)}</Text>
                   <Text style={typography.body}>
                     {Math.round(today[m.key] || 0)}{m.suffix}
                   </Text>
@@ -198,13 +223,13 @@ export default function DietScreen({ navigation }) {
               ))}
             </View>
             <TouchableOpacity onPress={() => setShowMicronutrients((s) => !s)}>
-              <Text style={styles.altAction}>{showMicronutrients ? 'Hide' : 'Show'} more nutrients ▾</Text>
+              <Text style={styles.altAction}>{t(showMicronutrients ? 'diet.hideMore' : 'diet.showMore')}</Text>
             </TouchableOpacity>
             {showMicronutrients && (
               <View style={styles.macroGrid}>
                 {MICRONUTRIENT_LABELS.map((m) => (
                   <View key={m.key} style={styles.macroItem}>
-                    <Text style={typography.caption}>{m.label}</Text>
+                    <Text style={typography.caption}>{t(m.labelKey)}</Text>
                     <Text style={typography.body}>
                       {Math.round(today[m.key] || 0)}{m.suffix}
                     </Text>
@@ -216,9 +241,9 @@ export default function DietScreen({ navigation }) {
         )}
 
         <View style={styles.sectionHeaderRow}>
-          <Text style={typography.heading}>AI recommendations</Text>
+          <Text style={typography.heading}>{t('diet.aiRecommendations')}</Text>
           <TouchableOpacity onPress={handleRefreshTips} disabled={refreshingTips}>
-            <Text style={styles.addLabel}>{refreshingTips ? 'Refreshing…' : 'Refresh'}</Text>
+            <Text style={styles.addLabel}>{t(refreshingTips ? 'diet.refreshing' : 'diet.refresh')}</Text>
           </TouchableOpacity>
         </View>
         {recommendation && (
@@ -232,10 +257,10 @@ export default function DietScreen({ navigation }) {
           </View>
         )}
 
-        <Text style={[typography.heading, styles.sectionHeading]}>Today's log</Text>
+        <Text style={[typography.heading, styles.sectionHeading]}>{t('diet.todaysLog')}</Text>
         {entries.length === 0 ? (
           <Text style={[typography.bodySecondary, styles.empty]}>
-            {loading ? 'Loading…' : 'Nothing logged yet today. Scan a photo or add an item above.'}
+            {loading ? t('diet.loadingLog') : t('diet.empty')}
           </Text>
         ) : (
           entries.map((entry) => <FoodEntryCard key={entry.id} entry={entry} onPress={() => openEntry(entry)} />)
@@ -249,6 +274,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   content: {
     padding: spacing.lg,

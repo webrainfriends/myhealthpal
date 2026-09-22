@@ -7,6 +7,7 @@ import MedicationCard from '../components/MedicationCard';
 import PrimaryButton from '../components/PrimaryButton';
 import { alertSeverityColors, colors, radii, spacing, typography } from '../theme/theme';
 import { dismissMedicationAlert, fetchMedicationAlerts, fetchMedications, uploadMedicationScan } from '../api/client';
+import { useT } from '../i18n/I18nContext';
 import { showAlert } from '../utils/alert';
 
 function AlertBanner({ alert, onDismiss, onPress }) {
@@ -31,6 +32,7 @@ function AlertBanner({ alert, onDismiss, onPress }) {
 }
 
 export default function MedicationsScreen({ navigation }) {
+  const t = useT();
   const [medications, setMedications] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -60,7 +62,7 @@ export default function MedicationsScreen({ navigation }) {
       const data = await uploadMedicationScan(file, scanType);
       navigation.navigate('MedicationScanReview', { scanId: data.scan.id });
     } catch (err) {
-      showAlert('Scan failed', err.message);
+      showAlert(t('medications.scanFailed'), err.message);
     } finally {
       setScanning(false);
     }
@@ -79,7 +81,7 @@ export default function MedicationsScreen({ navigation }) {
   async function photograph(scanType, defaultName) {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
-      showAlert('Permission needed', 'Camera access is required to take a photo.');
+      showAlert(t('common.permissionNeeded'), t('common.cameraPermissionMessage'));
       return;
     }
     const result = await ImagePicker.launchCameraAsync();
@@ -94,7 +96,7 @@ export default function MedicationsScreen({ navigation }) {
   async function pickFromLibrary(scanType, defaultName) {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      showAlert('Permission needed', 'Photo library access is required.');
+      showAlert(t('common.permissionNeeded'), t('common.libraryPermissionMessage'));
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'] });
@@ -111,7 +113,7 @@ export default function MedicationsScreen({ navigation }) {
     try {
       await dismissMedicationAlert(id);
     } catch (err) {
-      showAlert('Could not dismiss alert', err.message);
+      showAlert(t('medications.couldNotDismissAlert'), err.message);
       load();
     }
   }
@@ -126,39 +128,36 @@ export default function MedicationsScreen({ navigation }) {
         contentContainerStyle={styles.content}
         ListHeaderComponent={
           <View>
-            <Text style={typography.title}>Medications</Text>
-            <Text style={[typography.bodySecondary, styles.subtitle]}>
-              Scan a prescription or a photo of your tablets to track doses, expiry, and how your linked lab results are
-              expected to respond.
-            </Text>
+            <Text style={typography.title}>{t('medications.title')}</Text>
+            <Text style={[typography.bodySecondary, styles.subtitle]}>{t('medications.subtitle')}</Text>
 
             <View style={styles.scanSection}>
-              <PrimaryButton title="Scan a prescription" onPress={pickPrescriptionFile} loading={scanning} />
+              <PrimaryButton title={t('medications.scanPrescription')} onPress={pickPrescriptionFile} loading={scanning} />
               <View style={styles.scanRow}>
                 <PrimaryButton
-                  title="Photo of tablet"
+                  title={t('medications.photoOfTablet')}
                   variant="secondary"
                   onPress={() => photograph('tablet_photo', 'tablet.jpg')}
                   loading={scanning}
                 />
                 <PrimaryButton
-                  title="From library"
+                  title={t('medications.fromLibrary')}
                   variant="secondary"
                   onPress={() => pickFromLibrary('tablet_photo', 'tablet.jpg')}
                   loading={scanning}
                 />
               </View>
               <TouchableOpacity onPress={() => photograph('prescription', 'prescription.jpg')}>
-                <Text style={styles.altAction}>Or take a photo of a prescription instead</Text>
+                <Text style={styles.altAction}>{t('medications.orPhotoPrescription')}</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => navigation.navigate('MedicationCreate')}>
-                <Text style={styles.altAction}>Or enter one manually</Text>
+                <Text style={styles.altAction}>{t('medications.orEnterManually')}</Text>
               </TouchableOpacity>
             </View>
 
             {alerts.length > 0 && (
               <View style={styles.section}>
-                <Text style={[typography.heading, styles.sectionHeading]}>Alerts</Text>
+                <Text style={[typography.heading, styles.sectionHeading]}>{t('medications.alertsHeading')}</Text>
                 {alerts.map((alert) => (
                   <AlertBanner
                     key={alert.id}
@@ -170,7 +169,7 @@ export default function MedicationsScreen({ navigation }) {
               </View>
             )}
 
-            <Text style={[typography.heading, styles.sectionHeading]}>Your medications</Text>
+            <Text style={[typography.heading, styles.sectionHeading]}>{t('medications.yourMedications')}</Text>
           </View>
         }
         renderItem={({ item }) => (
@@ -185,11 +184,7 @@ export default function MedicationsScreen({ navigation }) {
           />
         )}
         ListEmptyComponent={
-          !loading && (
-            <Text style={[typography.bodySecondary, styles.empty]}>
-              No medications tracked yet. Scan a prescription or a tablet photo above to get started.
-            </Text>
-          )
+          !loading && <Text style={[typography.bodySecondary, styles.empty]}>{t('medications.empty')}</Text>
         }
       />
     </SafeAreaView>

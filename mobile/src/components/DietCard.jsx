@@ -1,10 +1,12 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { cardShadow, colors, radii, spacing, typography } from '../theme/theme';
+import { useT } from '../i18n/I18nContext';
 
 // Compact dashboard preview of today's logged calories, the diet analog of
 // ActivityCard.jsx - deliberately just a teaser (today's total + entry
 // count), full detail lives on the Diet screen itself.
 export default function DietCard({ today, pendingReviewCount, onPress }) {
+  const t = useT();
   const hasData = today && today.calories > 0;
   const entryCount = today ? Object.values(today.meals || {}).reduce((sum, items) => sum + items.length, 0) : 0;
 
@@ -14,15 +16,19 @@ export default function DietCard({ today, pendingReviewCount, onPress }) {
         <Text style={styles.icon}>🍽️</Text>
       </View>
       <View style={styles.textBlock}>
-        <Text style={typography.heading}>Diet</Text>
+        <Text style={typography.heading}>{t('nav.diet')}</Text>
         <Text style={typography.bodySecondary} numberOfLines={2}>
           {hasData
-            ? `${Math.round(today.calories)} calories logged today · ${entryCount} item${entryCount === 1 ? '' : 's'}`
-            : 'Scan or log today’s meals'}
+            ? t('diet.caloriesLoggedToday', {
+                calories: Math.round(today.calories),
+                count: entryCount,
+                plural: entryCount === 1 ? '' : 's',
+              })
+            : t('diet.scanOrLogToday')}
         </Text>
         {pendingReviewCount > 0 && (
           <Text style={styles.reviewNote}>
-            {pendingReviewCount} scanned item{pendingReviewCount === 1 ? '' : 's'} awaiting review
+            {t('diet.itemsNeedReview', { count: pendingReviewCount, plural: pendingReviewCount === 1 ? '' : 's' })}
           </Text>
         )}
       </View>

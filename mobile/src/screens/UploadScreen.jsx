@@ -7,22 +7,23 @@ import PrimaryButton from '../components/PrimaryButton';
 import StatusBadge from '../components/StatusBadge';
 import { cardShadow, colors, radii, spacing, typography } from '../theme/theme';
 import { fetchReports, fetchSupportedFormats, uploadReport } from '../api/client';
+import { useT } from '../i18n/I18nContext';
 import { showAlert } from '../utils/alert';
 import { formatCalendarDate } from '../utils/date';
 
-function formatDate(value) {
-  if (!value) return 'Date pending';
+function formatDate(value, t) {
+  if (!value) return t('upload.datePending');
   return formatCalendarDate(value, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function ReportRow({ report, onPress }) {
+function ReportRow({ report, onPress, t }) {
   return (
     <TouchableOpacity style={[styles.reportRow, cardShadow]} onPress={onPress} activeOpacity={0.7}>
       <View style={styles.reportRowMain}>
         <Text style={typography.body} numberOfLines={1}>
           {report.original_filename}
         </Text>
-        <Text style={typography.caption}>{formatDate(report.effective_date)}</Text>
+        <Text style={typography.caption}>{formatDate(report.effective_date, t)}</Text>
       </View>
       <StatusBadge status={report.ingestion_status} />
     </TouchableOpacity>
@@ -30,6 +31,7 @@ function ReportRow({ report, onPress }) {
 }
 
 export default function UploadScreen({ navigation }) {
+  const t = useT();
   const [supportedFormats, setSupportedFormats] = useState([]);
   const [maxUploadBytes, setMaxUploadBytes] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -67,9 +69,9 @@ export default function UploadScreen({ navigation }) {
     try {
       await uploadReport(file);
       await loadReports();
-      showAlert('Uploaded', 'Your report is processing - it will appear below once ready.');
+      showAlert(t('upload.uploaded'), t('upload.uploadedMessage'));
     } catch (err) {
-      showAlert('Upload failed', err.message);
+      showAlert(t('upload.uploadFailed'), err.message);
     } finally {
       setUploading(false);
     }
@@ -97,7 +99,7 @@ export default function UploadScreen({ navigation }) {
   async function pickFromLibrary() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      showAlert('Permission needed', 'Photo library access is required to select a scanned report.');
+      showAlert(t('common.permissionNeeded'), t('upload.permissionLibrary'));
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'] });
@@ -114,7 +116,7 @@ export default function UploadScreen({ navigation }) {
   async function takePhoto() {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
-      showAlert('Permission needed', 'Camera access is required to capture a report.');
+      showAlert(t('common.permissionNeeded'), t('upload.permissionCamera'));
       return;
     }
     const result = await ImagePicker.launchCameraAsync();
@@ -138,10 +140,10 @@ export default function UploadScreen({ navigation }) {
         contentContainerStyle={styles.content}
         ListHeaderComponent={
           <View>
-            <Text style={typography.title}>Upload a health report</Text>
+            <Text style={typography.title}>{t('upload.title')}</Text>
             <Text style={[typography.bodySecondary, styles.subtitle]}>
-              PDF, JPG/PNG scans, DOCX, CSV, XLS, and XLSX are supported
-              {maxUploadMb ? ` — up to ${maxUploadMb}MB per file` : ''}.
+              {t('upload.subtitleBase')}
+              {maxUploadMb ? t('upload.subtitleMax', { mb: maxUploadMb }) : ''}.
             </Text>
             {supportedFormats.length > 0 && (
               <View style={styles.formatRow}>
@@ -154,23 +156,19 @@ export default function UploadScreen({ navigation }) {
             )}
 
             <View style={styles.actions}>
-              <PrimaryButton title="Choose a file" onPress={pickDocument} loading={uploading} />
-              <PrimaryButton title="Photo library" variant="secondary" onPress={pickFromLibrary} loading={uploading} />
-              <PrimaryButton title="Take a photo" variant="secondary" onPress={takePhoto} loading={uploading} />
+              <PrimaryButton title={t('upload.chooseFile')} onPress={pickDocument} loading={uploading} />
+              <PrimaryButton title={t('upload.photoLibrary')} variant="secondary" onPress={pickFromLibrary} loading={uploading} />
+              <PrimaryButton title={t('upload.takePhoto')} variant="secondary" onPress={takePhoto} loading={uploading} />
             </View>
 
-            <Text style={[typography.heading, styles.sectionHeading]}>Your reports</Text>
+            <Text style={[typography.heading, styles.sectionHeading]}>{t('upload.yourReports')}</Text>
           </View>
         }
         renderItem={({ item }) => (
-          <ReportRow report={item} onPress={() => navigation.navigate('ReportDetail', { reportId: item.id })} />
+          <ReportRow report={item} onPress={() => navigation.navigate('ReportDetail', { reportId: item.id })} t={t} />
         )}
         ListEmptyComponent={
-          !loadingReports && (
-            <Text style={[typography.bodySecondary, styles.empty]}>
-              No reports uploaded yet. Use one of the options above to add your first one.
-            </Text>
-          )
+          !loadingReports && <Text style={[typography.bodySecondary, styles.empty]}>{t('upload.empty')}</Text>
         }
       />
     </SafeAreaView>

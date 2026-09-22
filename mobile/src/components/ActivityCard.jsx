@@ -1,6 +1,7 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import ActivityRings from './ActivityRings';
 import { activityRingColors, cardShadow, colors, radii, spacing, typography } from '../theme/theme';
+import { useT } from '../i18n/I18nContext';
 import { formatCalendarDate } from '../utils/date';
 
 function formatShortDate(dateStr) {
@@ -15,6 +16,7 @@ function formatShortDate(dateStr) {
 // upload is common and rarely includes literally today, so this card
 // mustn't show an empty ring just because of that lag.
 export default function ActivityCard({ current, isCurrentToday, onPress }) {
+  const t = useT();
   const rings = current
     ? [
         { percent: current.rings.steps, ...activityRingColors.steps },
@@ -30,13 +32,15 @@ export default function ActivityCard({ current, isCurrentToday, onPress }) {
         <ActivityRings rings={rings} size={72} strokeWidth={8} gap={3} />
       </View>
       <View style={styles.textBlock}>
-        <Text style={typography.heading}>Activity</Text>
+        <Text style={typography.heading}>{t('nav.activity')}</Text>
         <Text style={typography.bodySecondary} numberOfLines={2}>
           {hasData
-            ? `${current.steps ?? 0} steps · ${current.exerciseMinutes ?? 0} min exercise${
-                isCurrentToday ? '' : ` · ${formatShortDate(current.date)}`
-              }`
-            : 'Log today’s steps and exercise'}
+            ? t('activity.summaryLine', {
+                steps: current.steps ?? 0,
+                min: current.exerciseMinutes ?? 0,
+                dateSuffix: isCurrentToday ? '' : ` · ${formatShortDate(current.date)}`,
+              })
+            : t('activity.logPrompt')}
         </Text>
       </View>
     </TouchableOpacity>

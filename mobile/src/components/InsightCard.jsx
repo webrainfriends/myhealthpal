@@ -1,5 +1,7 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { colors, radii, spacing, typography } from '../theme/theme';
+import { useT } from '../i18n/I18nContext';
+import SpeakButton from './SpeakButton';
 
 const SEVERITY_COLORS = {
   info: colors.primary,
@@ -8,6 +10,7 @@ const SEVERITY_COLORS = {
 };
 
 export default function InsightCard({ insight, onPress, onDismiss, onFeedback }) {
+  const t = useT();
   const accentColor = SEVERITY_COLORS[insight.severity] || colors.primary;
   const reportCount = new Set(
     (insight.evidence || []).filter((e) => e.type === 'report').map((e) => e.id)
@@ -19,6 +22,7 @@ export default function InsightCard({ insight, onPress, onDismiss, onFeedback })
         <Text style={[typography.heading, styles.title]} numberOfLines={2}>
           {insight.title}
         </Text>
+        <SpeakButton id={insight.id} text={`${insight.title}. ${insight.explanation}`} label={t('insights.readAloud')} />
         {onDismiss && (
           <TouchableOpacity onPress={onDismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Text style={styles.dismissLabel}>✕</Text>
@@ -28,15 +32,16 @@ export default function InsightCard({ insight, onPress, onDismiss, onFeedback })
       <Text style={typography.bodySecondary}>{insight.explanation}</Text>
       <View style={styles.footerRow}>
         <Text style={typography.caption}>
-          {reportCount} source{reportCount === 1 ? '' : 's'} · {new Date(insight.generated_at).toLocaleDateString()}
+          {reportCount} {reportCount === 1 ? t('insights.source') : t('insights.sources')} ·{' '}
+          {new Date(insight.generated_at).toLocaleDateString()}
         </Text>
         {onFeedback && (
           <View style={styles.feedbackRow}>
             <TouchableOpacity onPress={() => onFeedback('useful')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Text style={styles.feedbackLabel}>Useful</Text>
+              <Text style={styles.feedbackLabel}>{t('insights.useful')}</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => onFeedback('not_useful')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Text style={styles.feedbackLabel}>Not useful</Text>
+              <Text style={styles.feedbackLabel}>{t('insights.notUseful')}</Text>
             </TouchableOpacity>
           </View>
         )}

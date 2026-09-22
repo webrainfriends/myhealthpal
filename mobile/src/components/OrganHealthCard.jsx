@@ -1,5 +1,13 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { cardShadow, colors, healthStatusColors, radii, spacing, typography } from '../theme/theme';
+import { useT } from '../i18n/I18nContext';
+
+const STATUS_LABEL_KEYS = {
+  good: 'organDetail.statusGood',
+  watch: 'organDetail.statusWatch',
+  attention: 'organDetail.statusAttention',
+  no_data: 'organDetail.statusNoData',
+};
 
 // A dependency-free progress bar (no react-native-svg in this app) - a
 // rounded track with a colored fill, good enough to read "how full" a
@@ -14,6 +22,7 @@ function ScoreBar({ percent, palette }) {
 }
 
 export default function OrganHealthCard({ organ, onPress }) {
+  const t = useT();
   const palette = healthStatusColors[organ.status] || healthStatusColors.no_data;
   const scoreLabel = organ.scorePercent === null ? '—' : `${organ.scorePercent}%`;
 
@@ -33,15 +42,15 @@ export default function OrganHealthCard({ organ, onPress }) {
       <ScoreBar percent={organ.scorePercent} palette={palette} />
 
       <View style={[styles.statusPill, { backgroundColor: palette.bg }]}>
-        <Text style={[styles.statusPillText, { color: palette.fg }]}>{organ.statusLabel}</Text>
+        <Text style={[styles.statusPillText, { color: palette.fg }]}>
+          {t(STATUS_LABEL_KEYS[organ.status] || STATUS_LABEL_KEYS.no_data)}
+        </Text>
       </View>
 
       <Text style={typography.caption} numberOfLines={1}>
         {organ.trackedCount === 0
-          ? organ.suggestedTests?.length
-            ? 'Tap to see what tests to add'
-            : 'No results tracked yet'
-          : `${organ.trackedCount} test${organ.trackedCount === 1 ? '' : 's'} tracked`}
+          ? t(organ.suggestedTests?.length ? 'organDetail.tapToAddTests' : 'organDetail.noResultsTrackedYet')
+          : t('organDetail.testsTrackedCount', { count: organ.trackedCount, plural: organ.trackedCount === 1 ? '' : 's' })}
       </Text>
     </TouchableOpacity>
   );

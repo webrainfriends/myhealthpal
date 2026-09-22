@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import MiniTrendChart from '../components/MiniTrendChart';
 import { colors, radii, spacing, typography } from '../theme/theme';
 import { fetchParameterTrend } from '../api/client';
+import { useT } from '../i18n/I18nContext';
 import { formatCalendarDate } from '../utils/date';
 
 const RANGES = [
@@ -21,6 +22,7 @@ function formatDate(value) {
 
 export default function ParameterTrendScreen({ route, navigation }) {
   const { code, displayName } = route.params;
+  const t = useT();
   const [range, setRange] = useState('90d');
   const [data, setData] = useState(null);
 
@@ -34,8 +36,8 @@ export default function ParameterTrendScreen({ route, navigation }) {
   }, [code, range]);
 
   useEffect(() => {
-    navigation.setOptions({ title: displayName || 'Trend' });
-  }, [navigation, displayName]);
+    navigation.setOptions({ title: displayName || t('nav.trend') });
+  }, [navigation, displayName, t]);
 
   useEffect(() => {
     load();
@@ -61,11 +63,11 @@ export default function ParameterTrendScreen({ route, navigation }) {
         <View style={styles.chartCard}>
           <MiniTrendChart points={points} />
           {data.aggregated && (
-            <Text style={typography.caption}>Weekly averages shown — {points.length} buckets from dense source data.</Text>
+            <Text style={typography.caption}>{t('parameterTrend.weeklyAverages', { count: points.length })}</Text>
           )}
         </View>
       ) : (
-        <Text style={[typography.bodySecondary, styles.empty]}>No confirmed results in this range yet.</Text>
+        <Text style={[typography.bodySecondary, styles.empty]}>{t('parameterTrend.empty')}</Text>
       )}
 
       <FlatList
@@ -86,7 +88,9 @@ export default function ParameterTrendScreen({ route, navigation }) {
                 {formatDate(item.date)} {item.reportFilename ? `· ${item.reportFilename}` : ''}
               </Text>
             </View>
-            {item.referenceRange && <Text style={typography.caption}>Ref: {item.referenceRange}</Text>}
+            {item.referenceRange && (
+              <Text style={typography.caption}>{t('parameterTrend.ref', { range: item.referenceRange })}</Text>
+            )}
           </TouchableOpacity>
         )}
       />

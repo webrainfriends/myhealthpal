@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import StatusBadge from '../components/StatusBadge';
 import MeasurementRow from '../components/MeasurementRow';
 import PrimaryButton from '../components/PrimaryButton';
+import SpeakButton from '../components/SpeakButton';
 import { colors, radii, spacing, typography } from '../theme/theme';
 import {
   confirmReport,
@@ -15,6 +16,7 @@ import {
   updateMeasurement,
   updateReportDate,
 } from '../api/client';
+import { useT } from '../i18n/I18nContext';
 import { showAlert } from '../utils/alert';
 import { formatCalendarDate } from '../utils/date';
 
@@ -30,7 +32,25 @@ function truncateFilename(name, maxLength = 28) {
   return `${base.slice(0, Math.max(1, maxLength - extension.length - 1))}…${extension}`;
 }
 
-function EffectiveDateRow({ report, onSave }) {
+// Builds the sentence SpeakButton reads for the whole report: the summary
+// (or a synthesized one when no narrative exists yet) followed by every
+// extracted measurement read as "name: value unit, flag" - so a person
+// using Voice Mode gets the same result data a sighted user reads off the
+// measurement rows below, not just the free-text summary.
+function buildReportSpeech(report, measurements, narrativeSummary, t) {
+  const parts = [];
+  const summary = narrativeSummary?.summary_text || report.generated_summary;
+  if (summary) parts.push(summary);
+  for (const m of measurements) {
+    const name = m.parameter_display_name || m.raw_test_name;
+    const value = [m.raw_value, m.raw_unit].filter(Boolean).join(' ');
+    const flag = m.status_flag ? `, ${m.status_flag}` : '';
+    parts.push(`${name}: ${value}${flag}.`);
+  }
+  return parts.join(' ');
+}
+
+function EffectiveDateRow({ report, onSave, t }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(report.effective_date ? report.effective_date.slice(0, 10) : '');
 
@@ -50,7 +70,7 @@ function EffectiveDateRow({ report, onSave }) {
             setEditing(false);
           }}
         >
-          <Text style={styles.dateSaveLabel}>Save</Text>
+          <Text style={styles.dateSaveLabel}>{t('reportDetail.save')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -59,9 +79,11 @@ function EffectiveDateRow({ report, onSave }) {
   return (
     <TouchableOpacity onPress={() => setEditing(true)} style={styles.dateRow}>
       <Text style={typography.heading}>
-        {report.effective_date ? formatDate(report.effective_date) : 'Date needs review'}
+        {report.effective_date ? formatDate(report.effective_date) : t('reportDetail.dateNeedsReview')}
       </Text>
-      <Text style={styles.dateEditLabel}>{report.date_status === 'Confirmed' ? 'Edit' : 'Set date'}</Text>
+      <Text style={styles.dateEditLabel}>
+        {report.date_status === 'Confirmed' ? t('reportDetail.edit') : t('reportDetail.setDate')}
+      </Text>
     </TouchableOpacity>
   );
 }
@@ -72,6 +94,7 @@ const EDIT_DEBOUNCE_MS = 600;
 
 export default function ReportDetailScreen({ route, navigation }) {
   const { reportId } = route.params;
+  const t = useT();
   const [report, setReport] = useState(null);
   const [measurements, setMeasurements] = useState([]);
   const [narrativeSummary, setNarrativeSummary] = useState(null);
@@ -89,8 +112,8 @@ export default function ReportDetailScreen({ route, navigation }) {
   }, [reportId]);
 
   useEffect(() => {
-    navigation.setOptions({ title: report?.original_filename || 'Report' });
-  }, [navigation, report?.original_filename]);
+    navigation.setOptions({ title: report?.original_filename || t('nav.report') });
+  }, [navigation, report?.original_filename, t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -125,7 +148,7 @@ export default function ReportDetailScreen({ route, navigation }) {
       try {
         await updateMeasurement(reportId, measurementId, edits);
       } catch (err) {
-        showAlert('Could not save edit', err.message);
+        showAlert(t('reportDetail.couldNotSaveEdit'), err.message);
       }
     }, EDIT_DEBOUNCE_MS);
   }
@@ -138,7 +161,7 @@ export default function ReportDetailScreen({ route, navigation }) {
       // patching local state with the bare row the PATCH response returns.
       await load();
     } catch (err) {
-      showAlert('Could not update mapping', err.message);
+      showAlert(t('reportDetail.couldNotUpdateMapping'), err.message);
     }
   }
 
@@ -147,7 +170,7 @@ export default function ReportDetailScreen({ route, navigation }) {
       const data = await resolveDuplicateMeasurement(reportId, measurementId, action);
       setMeasurements((prev) => prev.map((m) => (m.id === measurementId ? data.measurement : m)));
     } catch (err) {
-      showAlert('Could not update duplicate', err.message);
+      showAlert(t('reportDetail.couldNotUpdateDuplicate'), err.message);
     }
   }
 
@@ -157,7 +180,7 @@ export default function ReportDetailScreen({ route, navigation }) {
       const data = await confirmReport(reportId);
       setReport(data.report);
     } catch (err) {
-      showAlert('Could not confirm report', err.message);
+      showAlert(t('reportDetail.couldNotConfirm'), err.message);
     } finally {
       setBusy(false);
     }
@@ -169,7 +192,7 @@ export default function ReportDetailScreen({ route, navigation }) {
       const url = await fetchReportFileUrl(reportId);
       await Linking.openURL(url);
     } catch (err) {
-      showAlert('Could not open original file', err.message);
+      showAlert(t('reportDetail.couldNotOpenFile'), err.message);
     } finally {
       setOpeningFile(false);
     }
@@ -181,7 +204,7 @@ export default function ReportDetailScreen({ route, navigation }) {
       await retryReport(reportId);
       await load();
     } catch (err) {
-      showAlert('Could not retry processing', err.message);
+      showAlert(t('reportDetail.couldNotRetry'), err.message);
     } finally {
       setBusy(false);
     }
@@ -192,18 +215,18 @@ export default function ReportDetailScreen({ route, navigation }) {
       await updateReportDate(reportId, value);
       await load();
     } catch (err) {
-      showAlert('Could not update date', err.message);
+      showAlert(t('reportDetail.couldNotUpdateDate'), err.message);
     }
   }
 
   function handleDelete() {
     showAlert(
-      'Delete this report?',
-      `This removes "${report.original_filename}" and every result extracted from it. This can't be undone.`,
+      t('reportDetail.deleteConfirmTitle'),
+      t('reportDetail.deleteConfirmMessage', { name: report.original_filename }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Delete',
+          text: t('common.delete'),
           style: 'destructive',
           onPress: async () => {
             try {
@@ -217,7 +240,7 @@ export default function ReportDetailScreen({ route, navigation }) {
                 navigation.navigate('Tabs', { screen: 'TimelineTab' });
               }
             } catch (err) {
-              showAlert('Could not delete report', err.message);
+              showAlert(t('reportDetail.couldNotDelete'), err.message);
             }
           },
         },
@@ -228,7 +251,7 @@ export default function ReportDetailScreen({ route, navigation }) {
   if (!report) {
     return (
       <SafeAreaView style={styles.container}>
-        <Text style={[typography.bodySecondary, styles.centeredText]}>Loading report…</Text>
+        <Text style={[typography.bodySecondary, styles.centeredText]}>{t('reportDetail.loading')}</Text>
       </SafeAreaView>
     );
   }
@@ -240,15 +263,21 @@ export default function ReportDetailScreen({ route, navigation }) {
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.headerRow}>
-          <EffectiveDateRow report={report} onSave={handleDateSave} />
-          <StatusBadge status={report.ingestion_status} />
+          <EffectiveDateRow report={report} onSave={handleDateSave} t={t} />
+          <View style={styles.headerActions}>
+            <SpeakButton
+              text={buildReportSpeech(report, measurements, narrativeSummary, t)}
+              label={t('reportDetail.readAloud')}
+            />
+            <StatusBadge status={report.ingestion_status} />
+          </View>
         </View>
 
         <PrimaryButton
           title={
             report.original_filename
-              ? `View original: ${truncateFilename(report.original_filename)}`
-              : 'View original file'
+              ? t('reportDetail.viewOriginal', { name: truncateFilename(report.original_filename) })
+              : t('reportDetail.viewOriginalFile')
           }
           variant="secondary"
           onPress={handleViewOriginal}
@@ -263,7 +292,7 @@ export default function ReportDetailScreen({ route, navigation }) {
 
         {report.alerts && (
           <View style={styles.alertBox}>
-            <Text style={[typography.heading, styles.alertHeading]}>Alerts</Text>
+            <Text style={[typography.heading, styles.alertHeading]}>{t('reportDetail.alerts')}</Text>
             {report.alerts.split('\n').map((alert, i) => (
               <Text key={i} style={[typography.body, styles.alertText]}>
                 {alert}
@@ -273,9 +302,7 @@ export default function ReportDetailScreen({ route, navigation }) {
         )}
 
         {isProcessing && (
-          <Text style={[typography.bodySecondary, styles.processingNote]}>
-            We're processing this report. This screen updates automatically.
-          </Text>
+          <Text style={[typography.bodySecondary, styles.processingNote]}>{t('reportDetail.processingNote')}</Text>
         )}
 
         {report.processing_error && (
@@ -286,7 +313,7 @@ export default function ReportDetailScreen({ route, navigation }) {
 
         {(narrativeSummary?.summary_text || report.generated_summary) && (
           <View style={styles.summaryBox}>
-            <Text style={typography.heading}>Summary</Text>
+            <Text style={typography.heading}>{t('reportDetail.summary')}</Text>
             <Text style={[typography.bodySecondary, styles.summaryText]}>
               {narrativeSummary?.summary_text || report.generated_summary}
             </Text>
@@ -295,7 +322,7 @@ export default function ReportDetailScreen({ route, navigation }) {
 
         {report.notes && (
           <View style={styles.notesBox}>
-            <Text style={typography.heading}>Notes</Text>
+            <Text style={typography.heading}>{t('reportDetail.notes')}</Text>
             {report.notes.split('\n').map((note, i) => (
               <Text key={i} style={[typography.bodySecondary, styles.notesText]}>
                 {note}
@@ -306,17 +333,14 @@ export default function ReportDetailScreen({ route, navigation }) {
 
         {measurements.some((m) => m.duplicate_status === 'suspected') && (
           <View style={styles.duplicateBanner}>
-            <Text style={[typography.body, styles.duplicateBannerText]}>
-              Some values look like they may already be recorded from an earlier confirmed report — check the
-              highlighted rows below. Unresolved ones are skipped automatically when you confirm.
-            </Text>
+            <Text style={[typography.body, styles.duplicateBannerText]}>{t('reportDetail.duplicateWarning')}</Text>
           </View>
         )}
 
         {measurements.length > 0 && (
           <View style={styles.section}>
             <Text style={[typography.heading, styles.sectionHeading]}>
-              Extracted parameters {isEditable ? '(tap a field to correct it)' : ''}
+              {t('reportDetail.extractedParameters')} {isEditable ? t('reportDetail.tapToCorrect') : ''}
             </Text>
             {measurements.map((measurement) => (
               <MeasurementRow
@@ -331,13 +355,11 @@ export default function ReportDetailScreen({ route, navigation }) {
           </View>
         )}
 
-        {isEditable && (
-          <PrimaryButton title="Confirm report" onPress={handleConfirm} loading={busy} />
-        )}
+        {isEditable && <PrimaryButton title={t('reportDetail.confirmReport')} onPress={handleConfirm} loading={busy} />}
 
         {(report.ingestion_status === 'Failed' || isEditable) && (
           <PrimaryButton
-            title="Re-process this file"
+            title={t('reportDetail.reprocessFile')}
             variant="secondary"
             onPress={handleRetry}
             loading={busy}
@@ -345,7 +367,7 @@ export default function ReportDetailScreen({ route, navigation }) {
         )}
 
         <TouchableOpacity onPress={handleDelete} style={styles.deleteButton}>
-          <Text style={styles.deleteLabel}>Delete report</Text>
+          <Text style={styles.deleteLabel}>{t('reportDetail.deleteReport')}</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -365,6 +387,11 @@ const styles = StyleSheet.create({
   centeredText: {
     textAlign: 'center',
     marginTop: spacing.xl,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   headerRow: {
     flexDirection: 'row',
