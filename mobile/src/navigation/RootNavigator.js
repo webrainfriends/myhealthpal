@@ -16,6 +16,8 @@ import MedicationDetailScreen from '../screens/MedicationDetailScreen';
 import MedicationScanReviewScreen from '../screens/MedicationScanReviewScreen';
 import MedicationCreateScreen from '../screens/MedicationCreateScreen';
 import ActivityScreen from '../screens/ActivityScreen';
+import SettingsScreen from '../screens/SettingsScreen';
+import RecipePreferencesScreen from '../screens/RecipePreferencesScreen';
 import LoginScreen from '../screens/LoginScreen';
 import { useAuth } from '../auth/AuthContext';
 import { colors } from '../theme/theme';
@@ -59,6 +61,8 @@ const linking = {
       MedicationDetail: 'medications/:medicationId',
       MedicationScanReview: 'medications/scans/:scanId',
       Activity: 'activity',
+      Settings: 'settings',
+      RecipePreferences: 'settings/recipe-preferences',
     },
   },
 };
@@ -144,6 +148,12 @@ export default function RootNavigator() {
         />
         <Stack.Screen name="MedicationCreate" component={MedicationCreateScreen} options={{ title: 'Add medication' }} />
         <Stack.Screen name="Activity" component={ActivityScreen} options={{ title: 'Activity' }} />
+        <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
+        <Stack.Screen
+          name="RecipePreferences"
+          component={RecipePreferencesScreen}
+          options={{ title: 'Recipe recommendations' }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );
