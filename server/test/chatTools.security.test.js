@@ -12,6 +12,7 @@ const { executeTool } = require('../src/chat/tools');
 let userAId;
 let userBId;
 let userBReportId;
+let userBMedicationId;
 
 test.before(async () => {
   const userA = await pool.query(
@@ -30,6 +31,12 @@ test.before(async () => {
     [userBId]
   );
   userBReportId = report.rows[0].id;
+
+  const medication = await pool.query(
+    `INSERT INTO medications (user_id, name, status, is_confirmed) VALUES ($1, 'Secret Med', 'active', true) RETURNING id`,
+    [userBId]
+  );
+  userBMedicationId = medication.rows[0].id;
 });
 
 test.after(async () => {
@@ -64,4 +71,29 @@ test('an injected userId-shaped argument is ignored — context always wins', as
 test('get_latest_report is scoped per-user and finds nothing for a user with no reports', async () => {
   const result = await executeTool('get_latest_report', {}, { userId: userAId });
   assert.equal(result.data.found, false);
+});
+
+test('list_medications never returns another user\'s medications', async () => {
+  const asAttacker = await executeTool('list_medications', {}, { userId: userAId });
+  assert.equal(asAttacker.data.medications.some((m) => m.id === userBMedicationId), false);
+
+  const asOwner = await executeTool('list_medications', {}, { userId: userBId });
+  assert.ok(asOwner.data.medications.some((m) => m.id === userBMedicationId));
+});
+
+test('get_medication_detail refuses to return another user\'s medication', async () => {
+  const asAttacker = await executeTool('get_medication_detail', { medicationId: userBMedicationId }, { userId: userAId });
+  assert.equal(asAttacker.data.found, false);
+  assert.deepEqual(asAttacker.evidence, []);
+
+  const asOwner = await executeTool('get_medication_detail', { medicationId: userBMedicationId }, { userId: userBId });
+  assert.equal(asOwner.data.medication.id, userBMedicationId);
+});
+
+test('list_medication_alerts never returns another user\'s alerts', async () => {
+  const asAttacker = await executeTool('list_medication_alerts', {}, { userId: userAId });
+  assert.equal(
+    asAttacker.data.alerts.some((a) => a.medication_id === userBMedicationId),
+    false
+  );
 });

@@ -17,13 +17,25 @@ import { createChatSession, fetchChatMessages, sendChatMessage } from '../api/cl
 function EvidenceChips({ evidence, navigation }) {
   if (!evidence || evidence.length === 0) return null;
   const reportIds = [...new Set(evidence.filter((e) => e.type === 'report').map((e) => e.id))];
-  if (reportIds.length === 0) return null;
+  const medications = [
+    ...new Map(evidence.filter((e) => e.type === 'medication').map((e) => [e.id, e])).values(),
+  ];
+  if (reportIds.length === 0 && medications.length === 0) return null;
 
   return (
     <View style={styles.evidenceRow}>
       {reportIds.map((id) => (
         <TouchableOpacity key={id} style={styles.evidenceChip} onPress={() => navigation.navigate('ReportDetail', { reportId: id })}>
           <Text style={styles.evidenceChipText}>View source</Text>
+        </TouchableOpacity>
+      ))}
+      {medications.map((m) => (
+        <TouchableOpacity
+          key={m.id}
+          style={styles.evidenceChip}
+          onPress={() => navigation.navigate('MedicationDetail', { medicationId: m.id })}
+        >
+          <Text style={styles.evidenceChipText}>{m.label ? `View ${m.label}` : 'View medication'}</Text>
         </TouchableOpacity>
       ))}
     </View>
@@ -99,7 +111,8 @@ export default function ChatScreen({ navigation }) {
           ListHeaderComponent={<Text style={[typography.title, styles.title]}>Ask MyHealthPal</Text>}
           ListEmptyComponent={
             <Text style={[typography.bodySecondary, styles.empty]}>
-              Ask about your reports, e.g. "Summarize my latest report" or "Show my HbA1c trend".
+              Ask about your reports, trends, or medications — e.g. "Summarize my latest report", "Show my HbA1c trend", or
+              "When does my Metformin run out?".
             </Text>
           }
           renderItem={({ item }) => <MessageBubble message={item} navigation={navigation} />}
