@@ -1,5 +1,7 @@
 const pool = require('../db/pool');
 const registry = require('../extraction/registry');
+const { findKnowledgeEntry } = require('../medications/medicationLinkingService');
+const { buildMedicationForecast } = require('../medications/medicationForecastService');
 
 // Every tool's `execute(args, context)` receives `context.userId` injected
 // by the orchestrator from the authenticated request — never from the
@@ -350,6 +352,102 @@ const listActiveInsights = {
   },
 };
 
+const listMedications = {
+  name: 'list_medications',
+  description:
+    "List the user's tracked medications/prescriptions (from scanned or manually entered records), optionally filtered by " +
+    'status. Each entry includes dose, form, frequency, what it was prescribed for, course dates, and expiry - call ' +
+    'get_medication_detail with an id from here for its linked lab parameters and improvement forecast.',
+  inputSchema: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      status: { type: 'string', enum: ['active', 'completed', 'discontinued', 'all'], description: 'Defaults to "all".' },
+    },
+  },
+  async execute(args, { userId }) {
+    const status = args.status && args.status !== 'all' ? args.status : null;
+    const { rows } = await pool.query(
+      `SELECT id, name, generic_name, brand_name, form, dosage_amount, dosage_unit, frequency_per_day, times_of_day,
+              instructions, prescribed_for, prescribing_doctor, start_date, end_date, duration_days, expiry_date,
+              status, is_confirmed, needs_review
+       FROM medications
+       WHERE user_id = $1 AND ($2::text IS NULL OR status = $2)
+       ORDER BY status = 'active' DESC, created_at DESC
+       LIMIT 50`,
+      [userId, status]
+    );
+    return { data: { medications: rows }, evidence: evidenceFor('medication', rows, 'id', 'name') };
+  },
+};
+
+const getMedicationDetail = {
+  name: 'get_medication_detail',
+  description:
+    "Get full detail for one of the user's medications by its id: what it's for, dose-adequacy vs. a typical daily dose, " +
+    'and every lab parameter it\'s linked to with a standards-based (WHO/ICMR/FDA - never a lab report\'s own printed ' +
+    "range) in-range status, the user's latest confirmed result for it, and a forecast of when improvement is expected " +
+    'given how long the medication has been taken.',
+  inputSchema: {
+    type: 'object',
+    additionalProperties: false,
+    properties: { medicationId: { type: 'string' } },
+    required: ['medicationId'],
+  },
+  async execute(args, { userId }) {
+    const { rows } = await pool.query('SELECT * FROM medications WHERE id = $1 AND user_id = $2', [
+      args.medicationId,
+      userId,
+    ]);
+    if (rows.length === 0) return { data: { found: false }, evidence: [] };
+    const medication = rows[0];
+
+    const knowledgeEntry = findKnowledgeEntry(medication);
+    const forecast = await buildMedicationForecast(medication, knowledgeEntry);
+
+    return {
+      data: {
+        medication,
+        knowledge: knowledgeEntry
+          ? { category: knowledgeEntry.category, usage: knowledgeEntry.usage, typicalDailyDose: knowledgeEntry.typicalDailyDose }
+          : null,
+        doseAssessment: forecast.doseAssessment,
+        standardsScorePercent: forecast.standardsScorePercent,
+        linkedParameters: forecast.parameterForecasts,
+      },
+      evidence: [
+        { type: 'medication', id: medication.id, label: medication.name },
+        ...forecast.parameterForecasts
+          .filter((p) => p.latestMeasurement)
+          .map((p) => ({ type: 'parameter', id: p.parameterCode, label: p.parameterDisplayName })),
+      ],
+    };
+  },
+};
+
+const listMedicationAlerts = {
+  name: 'list_medication_alerts',
+  description:
+    "List the user's current active medication alerts: expiring/expired medication, an ending/completed course, or an " +
+    'estimated refill running low.',
+  inputSchema: { type: 'object', additionalProperties: false, properties: {} },
+  async execute(args, { userId }) {
+    const { rows } = await pool.query(
+      `SELECT ma.id, ma.alert_type, ma.severity, ma.title, ma.message, ma.due_date, m.name AS medication_name, m.id AS medication_id
+       FROM medication_alerts ma
+       JOIN medications m ON m.id = ma.medication_id
+       WHERE ma.user_id = $1 AND ma.lifecycle_state = 'active'
+       ORDER BY ma.severity = 'important' DESC, ma.severity = 'attention' DESC, ma.due_date ASC NULLS LAST
+       LIMIT 20`,
+      [userId]
+    );
+    return {
+      data: { alerts: rows },
+      evidence: rows.map((r) => ({ type: 'medication', id: r.medication_id, label: r.medication_name })),
+    };
+  },
+};
+
 const TOOLS = [
   getLatestReport,
   getReportById,
@@ -360,6 +458,9 @@ const TOOLS = [
   searchReports,
   explainInsight,
   listActiveInsights,
+  listMedications,
+  getMedicationDetail,
+  listMedicationAlerts,
 ];
 
 function getToolDefinitions() {
