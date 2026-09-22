@@ -3,9 +3,10 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ParameterPickerModal from '../components/ParameterPickerModal';
 import OrganHealthCard from '../components/OrganHealthCard';
+import ActivityCard from '../components/ActivityCard';
 import SummaryCard from '../components/SummaryCard';
 import { cardShadow, colors, healthStatusColors, radii, spacing, typography } from '../theme/theme';
-import { fetchDashboardSnapshot, fetchOrganHealth, pinParameter, unpinParameter } from '../api/client';
+import { fetchActivitySummary, fetchDashboardSnapshot, fetchOrganHealth, pinParameter, unpinParameter } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { showAlert } from '../utils/alert';
 
@@ -69,13 +70,19 @@ export default function DashboardScreen({ navigation }) {
   const { user, signOut } = useAuth();
   const [snapshot, setSnapshot] = useState(null);
   const [organs, setOrgans] = useState(null);
+  const [activity, setActivity] = useState(null);
   const [pickerVisible, setPickerVisible] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [data, organData] = await Promise.all([fetchDashboardSnapshot(), fetchOrganHealth()]);
+      const [data, organData, activityData] = await Promise.all([
+        fetchDashboardSnapshot(),
+        fetchOrganHealth(),
+        fetchActivitySummary(1),
+      ]);
       setSnapshot(data);
       setOrgans(organData.organs);
+      setActivity(activityData.today);
     } catch (err) {
       console.warn('Failed to load dashboard', err.message);
     }
@@ -129,6 +136,12 @@ export default function DashboardScreen({ navigation }) {
             </Text>
           </TouchableOpacity>
         </View>
+
+        {activity && (
+          <View style={styles.sectionSpacing}>
+            <ActivityCard today={activity} onPress={() => navigation.navigate('Activity')} />
+          </View>
+        )}
 
         <Text style={[typography.heading, styles.sectionSpacing]}>Your body, at a glance</Text>
         <Text style={[typography.caption, styles.sectionSubtitle]}>
