@@ -7,7 +7,7 @@ function formatDate(value) {
   return new Date(value).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-export default function TimelineItemCard({ item, onPress }) {
+export default function TimelineItemCard({ item, onPress, onDelete }) {
   const dateLabel = item.effective_date ? formatDate(item.effective_date) : 'Date needs review';
 
   return (
@@ -16,7 +16,21 @@ export default function TimelineItemCard({ item, onPress }) {
         <Text style={[typography.heading, item.date_status === 'Needs Review' && styles.dateNeedsReview]}>
           {dateLabel}
         </Text>
-        <StatusBadge status={item.ingestion_status} />
+        <View style={styles.headerRight}>
+          <StatusBadge status={item.ingestion_status} />
+          {onDelete && (
+            <TouchableOpacity
+              onPress={(e) => {
+                e.stopPropagation?.();
+                onDelete();
+              }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={styles.deleteButton}
+            >
+              <Text style={styles.deleteLabel}>✕</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
       <Text style={typography.bodySecondary} numberOfLines={1}>
         {item.original_filename}
@@ -56,6 +70,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: spacing.sm,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  deleteButton: {
+    padding: 2,
+  },
+  deleteLabel: {
+    color: colors.textTertiary,
+    fontSize: 15,
+    fontWeight: '600',
   },
   dateNeedsReview: {
     color: colors.warning,

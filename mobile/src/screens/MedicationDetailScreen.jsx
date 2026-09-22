@@ -178,7 +178,19 @@ export default function MedicationDetailScreen({ route, navigation }) {
         onPress: async () => {
           try {
             await deleteMedication(medicationId);
-            navigation.goBack();
+            // goBack() silently does nothing when this screen has no prior
+            // in-app history to return to (a deep link, a bookmark, or a
+            // browser refresh while already on this screen all land here
+            // with an empty stack) - the delete still succeeds on the
+            // server, but the screen would be left showing the now-deleted
+            // medication with no visible sign anything happened, looking
+            // exactly like the button did nothing. Always land somewhere
+            // real instead.
+            if (navigation.canGoBack()) {
+              navigation.goBack();
+            } else {
+              navigation.navigate('Tabs', { screen: 'MedicationsTab' });
+            }
           } catch (err) {
             showAlert('Could not delete medication', err.message);
           }

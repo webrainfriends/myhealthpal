@@ -26,7 +26,8 @@ function Ring({ cx, cy, radius, strokeWidth, percent, fg, track }) {
           strokeDashoffset={dashoffset}
           strokeLinecap="round"
           rotation={-90}
-          origin={`${cx}, ${cy}`}
+          originX={cx}
+          originY={cy}
         />
       )}
     </>

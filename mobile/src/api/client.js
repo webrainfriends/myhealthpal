@@ -161,6 +161,12 @@ export async function confirmReport(reportId) {
   return handleResponse(response);
 }
 
+export async function deleteReport(reportId) {
+  const response = await apiFetch(`/api/reports/${reportId}`, { method: 'DELETE' });
+  if (!response.ok) return handleResponse(response);
+  return null;
+}
+
 export async function searchHealthParameters(query) {
   const response = await apiFetch(`/api/health-parameters?search=${encodeURIComponent(query || '')}`);
   return handleResponse(response);

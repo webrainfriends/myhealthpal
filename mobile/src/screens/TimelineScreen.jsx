@@ -3,7 +3,8 @@ import { FlatList, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, Vi
 import { SafeAreaView } from 'react-native-safe-area-context';
 import TimelineItemCard from '../components/TimelineItemCard';
 import { colors, radii, spacing, typography } from '../theme/theme';
-import { fetchTimeline } from '../api/client';
+import { deleteReport, fetchTimeline } from '../api/client';
+import { showAlert } from '../utils/alert';
 
 const CATEGORIES = ['hematology', 'metabolic', 'lipids', 'electrolytes', 'kidney', 'liver', 'thyroid', 'vitamins'];
 
@@ -37,6 +38,32 @@ export default function TimelineScreen({ navigation }) {
     const unsubscribe = navigation.addListener('focus', load);
     return unsubscribe;
   }, [navigation, load]);
+
+  function handleDelete(item) {
+    showAlert(
+      'Delete this report?',
+      `This removes "${item.original_filename}" and every result extracted from it. This can't be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            // Optimistic removal - this screen owns the list, so there's no
+            // stale-data risk the way a "goBack with no history" navigation
+            // has on other screens; a failure below restores it via load().
+            setItems((prev) => prev.filter((i) => i.id !== item.id));
+            try {
+              await deleteReport(item.id);
+            } catch (err) {
+              showAlert('Could not delete report', err.message);
+              load();
+            }
+          },
+        },
+      ]
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -73,7 +100,11 @@ export default function TimelineScreen({ navigation }) {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         renderItem={({ item }) => (
-          <TimelineItemCard item={item} onPress={() => navigation.navigate('ReportDetail', { reportId: item.id })} />
+          <TimelineItemCard
+            item={item}
+            onPress={() => navigation.navigate('ReportDetail', { reportId: item.id })}
+            onDelete={() => handleDelete(item)}
+          />
         )}
         ListEmptyComponent={
           !loading && (
