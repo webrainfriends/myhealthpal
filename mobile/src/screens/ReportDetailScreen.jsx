@@ -290,12 +290,17 @@ export default function ReportDetailScreen({ route, navigation }) {
           </View>
         )}
 
-        {report.ingestion_status === 'Failed' && (
-          <PrimaryButton title="Retry processing" onPress={handleRetry} loading={busy} />
-        )}
-
         {isEditable && (
           <PrimaryButton title="Confirm report" onPress={handleConfirm} loading={busy} />
+        )}
+
+        {(report.ingestion_status === 'Failed' || isEditable) && (
+          <PrimaryButton
+            title="Re-process this file"
+            variant="secondary"
+            onPress={handleRetry}
+            loading={busy}
+          />
         )}
       </ScrollView>
     </SafeAreaView>
