@@ -24,6 +24,7 @@ test('every currently-carded category maps to its expected organ group', () => {
     hematology: 'blood',
     kidney: 'kidney',
     electrolytes: 'kidney',
+    urine: 'kidney',
     liver: 'liver_pancreas',
     pancreas: 'liver_pancreas',
     metabolic: 'metabolism',
@@ -113,6 +114,35 @@ test('buildOrganSummaries uses the standard-range fallback so a diabetes card wi
   assert.equal(diabetes.attentionCount, 1);
   assert.notEqual(diabetes.scorePercent, null);
   assert.notEqual(diabetes.status, 'no_data');
+});
+
+test('determineResultStatus matches a qualitative urinalysis result against its known-normal wording', () => {
+  assert.equal(determineResultStatus({ code: 'urine_clarity', qualitativeValue: 'Clear' }), 'normal');
+  assert.equal(determineResultStatus({ code: 'urine_clarity', qualitativeValue: 'Turbid' }), 'abnormal');
+  // Different labs word the same "nothing detected" result differently -
+  // "Nil" and "Negative" are both accepted for the same qualitative test.
+  assert.equal(determineResultStatus({ code: 'urine_protein', qualitativeValue: 'Nil' }), 'normal');
+  assert.equal(determineResultStatus({ code: 'urine_protein', qualitativeValue: 'Negative' }), 'normal');
+  assert.equal(determineResultStatus({ code: 'urine_protein', qualitativeValue: 'Positive' }), 'abnormal');
+  // A parameter with no qualitative-normal entry (e.g. a numeric-only code)
+  // is unaffected and still falls through to 'unknown'.
+  assert.equal(determineResultStatus({ code: 'glucose', qualitativeValue: 'Nil' }), 'unknown');
+});
+
+test('kidney card folds in urine complete analysis results, scored via known-normal qualitative wording', () => {
+  const rows = [
+    { code: 'creatinine', displayName: 'Creatinine', category: 'kidney', statusFlag: 'Normal', numericValue: 1 },
+    { code: 'urine_clarity', displayName: 'Urine Clarity', category: 'urine', qualitativeValue: 'Clear' },
+    { code: 'urine_protein', displayName: 'Protein, Urine', category: 'urine', qualitativeValue: 'Positive' },
+  ];
+  const kidney = buildOrganSummaries(rows).find((s) => s.key === 'kidney');
+  assert.equal(kidney.trackedCount, 3);
+  assert.equal(kidney.normalCount, 2);
+  assert.equal(kidney.attentionCount, 1);
+  assert.deepEqual(
+    kidney.parameters.map((p) => p.code).sort(),
+    ['creatinine', 'urine_clarity', 'urine_protein']
+  );
 });
 
 test('buildOrganSummaries scores an organ by % of determinable results that are normal, ignoring unknowns', () => {

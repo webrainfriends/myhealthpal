@@ -146,11 +146,20 @@ async function extract(document, context = {}) {
   const client = new Anthropic({ apiKey: config.anthropicApiKey });
   const response = await client.messages.create({
     model: config.anthropicModel,
-    // A long multi-page report can legitimately have 60-100+ result rows;
-    // 4096 output tokens was enough to silently truncate the tool call
-    // (and Anthropic's tool-use JSON, unlike plain text, can't be
-    // salvaged once cut off mid-argument) on reports with a lot of detail.
-    max_tokens: 16384,
+    // A long multi-page report can legitimately have 60-100+ result rows,
+    // and this call echoes each one's reference_range "exactly as printed"
+    // - some of which (HbA1c's multi-tier diagnostic band, NCEP lipid
+    // tiers, Vitamin D's five sufficiency bands, ...) are themselves
+    // several lines long. 4096 output tokens was enough to silently
+    // truncate the tool call on reports with a lot of detail (Anthropic's
+    // tool-use JSON, unlike plain text, can't be salvaged once cut off
+    // mid-argument - whatever hadn't been emitted yet, commonly whatever
+    // was near the end of the document, was just gone); 16384 has since
+    // shown the same failure mode on a dense 9-page, ~55-parameter panel.
+    // This runs as a background ingestion job, never blocking a live HTTP
+    // response, so there's no UX cost to a generous ceiling - only a
+    // truncated extraction has one.
+    max_tokens: 32000,
     system: SYSTEM_PROMPT,
     tools: [EXTRACTION_TOOL],
     tool_choice: { type: 'tool', name: EXTRACTION_TOOL.name },

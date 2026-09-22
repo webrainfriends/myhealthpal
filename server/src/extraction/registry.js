@@ -58,7 +58,9 @@ function addParenVariants(str, candidates) {
 }
 
 function candidateNamesFor(rawName) {
-  const original = String(rawName || '').trim();
+  // A trailing "." (e.g. "BETA CELL FUNCTION.") is print/formatting
+  // decoration from the source, never part of the test's own name.
+  const original = String(rawName || '').trim().replace(/\.+$/, '').trim();
   if (!original) return [];
 
   const candidates = new Set();
