@@ -36,10 +36,21 @@ const ORGAN_GROUPS = [
   { key: 'vitamins', label: 'Vitamins', icon: '💊', categories: ['vitamins'] },
 ];
 
-const NORMAL_FLAGS = new Set(['normal', 'n']);
-// Flags that explicitly mean "not evaluated against a range" rather than
-// "abnormal" - never counted against the score, same as no flag at all.
-const NEUTRAL_FLAGS = new Set(['', 'see note', 'na', 'n/a']);
+const NORMAL_FLAGS = new Set(['normal', 'n', 'wnl', 'within normal limits', 'unremarkable', 'within range']);
+const ABNORMAL_FLAGS = new Set([
+  'high',
+  'h',
+  'low',
+  'l',
+  'abnormal',
+  'a',
+  'critical',
+  'critically high',
+  'critically low',
+  'panic',
+  'positive',
+  'reactive',
+]);
 
 // Anchored to the whole (trimmed) string, with only non-digit characters
 // (e.g. a trailing unit) allowed after the range - a plain "13.0-17.0" or
@@ -93,9 +104,17 @@ const QUALITATIVE_NORMAL_VALUES = {
 // against, used here only as a fallback.
 function determineResultStatus(row, standardRange) {
   const flag = String(row.statusFlag || '').trim().toLowerCase();
-  if (flag && !NEUTRAL_FLAGS.has(flag)) {
-    return NORMAL_FLAGS.has(flag) ? 'normal' : 'abnormal';
-  }
+  // Trust status_flag only when it's a clearly recognized normal/abnormal
+  // token. Real extractions produce plenty of flag text that means neither
+  // - a placeholder dash a lab prints for "no flag", "See Note", a stray
+  // trailing period, a token this list just doesn't happen to know yet.
+  // Treating anything unrecognized as "abnormal" (the previous behavior)
+  // is exactly the guess this function's own contract says never to make -
+  // it silently marked in-range results as out-of-range. An unrecognized
+  // flag now falls through to actually comparing the value against the
+  // range instead, the same as printing no flag at all.
+  if (NORMAL_FLAGS.has(flag)) return 'normal';
+  if (ABNORMAL_FLAGS.has(flag)) return 'abnormal';
 
   const value = row.normalizedValue ?? row.numericValue;
   const range = parseRange(row.referenceRangeRaw);
@@ -156,16 +175,27 @@ function buildOrganSummaries(rows, standardRangesByCode = new Map()) {
 
   return ORGAN_GROUPS.map((group) => {
     const groupRows = group.categories.flatMap((category) => rowsByCategory.get(category) || []);
-    const parameters = groupRows.map((row) => ({
-      code: row.code,
-      displayName: row.displayName,
-      value: row.qualitativeValue || row.rawValue,
-      unit: row.rawUnit || null,
-      statusFlag: row.statusFlag || null,
-      resultStatus: determineResultStatus(row, standardRangesByCode.get(row.code)),
-      effectiveDate: row.effectiveDate || null,
-      reportId: row.reportId || null,
-    }));
+    const parameters = groupRows.map((row) => {
+      const standardRange = standardRangesByCode.get(row.code);
+      return {
+        code: row.code,
+        displayName: row.displayName,
+        value: row.qualitativeValue || row.rawValue,
+        unit: row.rawUnit || null,
+        statusFlag: row.statusFlag || null,
+        // Both surfaced (not just whichever determineResultStatus ends up
+        // using) so the client can show the client a "why" for the status -
+        // the printed range when there is one, else the general standard
+        // range used as the fallback.
+        referenceRangeRaw: row.referenceRangeRaw || null,
+        standardRange: standardRange
+          ? { low: standardRange.range_low, high: standardRange.range_high, source: standardRange.source }
+          : null,
+        resultStatus: determineResultStatus(row, standardRange),
+        effectiveDate: row.effectiveDate || null,
+        reportId: row.reportId || null,
+      };
+    });
 
     const determinable = parameters.filter((p) => p.resultStatus !== 'unknown');
     const normalCount = determinable.filter((p) => p.resultStatus === 'normal').length;

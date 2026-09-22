@@ -70,6 +70,34 @@ test('determineResultStatus falls back to the printed reference range when there
   assert.equal(determineResultStatus({ normalizedValue: 5.6, referenceRangeRaw: '3.5-5.1' }), 'abnormal');
 });
 
+test('determineResultStatus falls through to the value/range check on an unrecognized status_flag, instead of guessing abnormal', () => {
+  // Regression test: a placeholder dash, "See Note", a trailing period, or
+  // any other flag text this app doesn't recognize used to be treated the
+  // same as an explicit "High"/"Low" - silently marking an in-range result
+  // as out-of-range. It must now behave exactly like no flag at all.
+  const inRange = { statusFlag: '-', numericValue: 20, referenceRangeRaw: '5-35' };
+  assert.equal(determineResultStatus(inRange), 'normal');
+
+  const alsoInRange = { statusFlag: 'See Note', numericValue: 4.02, referenceRangeRaw: '3.5-5.2' };
+  assert.equal(determineResultStatus(alsoInRange), 'normal');
+
+  const punctuationNormal = { statusFlag: 'Normal.', numericValue: 22, referenceRangeRaw: '5-40' };
+  assert.equal(determineResultStatus(punctuationNormal), 'normal');
+
+  // An unrecognized flag on a genuinely out-of-range value still correctly
+  // reads as abnormal - falling through to the range check, not the flag,
+  // still catches it.
+  const genuinelyAbnormal = { statusFlag: 'xyz', numericValue: 135, referenceRangeRaw: '53-128' };
+  assert.equal(determineResultStatus(genuinelyAbnormal), 'abnormal');
+});
+
+test('determineResultStatus recognizes common normal/abnormal flag synonyms beyond Normal/High/Low', () => {
+  assert.equal(determineResultStatus({ statusFlag: 'WNL', numericValue: 999, referenceRangeRaw: '1-5' }), 'normal');
+  assert.equal(determineResultStatus({ statusFlag: 'Unremarkable', numericValue: 999, referenceRangeRaw: '1-5' }), 'normal');
+  assert.equal(determineResultStatus({ statusFlag: 'Critical', numericValue: 3, referenceRangeRaw: '1-5' }), 'abnormal');
+  assert.equal(determineResultStatus({ statusFlag: 'Positive', numericValue: 3, referenceRangeRaw: '1-5' }), 'abnormal');
+});
+
 test('determineResultStatus is "unknown" (never guessed) with neither a flag nor a parseable range', () => {
   assert.equal(determineResultStatus({ qualitativeValue: 'Not Detected' }), 'unknown');
   assert.equal(determineResultStatus({ numericValue: 13.7, referenceRangeRaw: null }), 'unknown');
