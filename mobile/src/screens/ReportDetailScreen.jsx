@@ -237,7 +237,7 @@ export default function ReportDetailScreen({ route, navigation }) {
               if (navigation.canGoBack()) {
                 navigation.goBack();
               } else {
-                navigation.navigate('Tabs', { screen: 'TimelineTab' });
+                navigation.navigate('Timeline');
               }
             } catch (err) {
               showAlert(t('reportDetail.couldNotDelete'), err.message);
