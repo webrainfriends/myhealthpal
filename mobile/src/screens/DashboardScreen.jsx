@@ -96,6 +96,7 @@ function TrackedMetricCard({ metric, onPress, onUnpin, t }) {
 
 export default function DashboardScreen({ navigation }) {
   const { user, signOut } = useAuth();
+  const t = useT();
   const [loading, setLoading] = useState(true);
   const [snapshot, setSnapshot] = useState({ trackedMetrics: [], needsAttention: [], insights: [] });
   const [organs, setOrgans] = useState(null);
