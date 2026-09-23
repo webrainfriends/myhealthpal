@@ -68,9 +68,8 @@ export default function TimelineScreen({ navigation }) {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
       <View style={styles.header}>
-        <Text style={typography.title}>{t('timeline.title')}</Text>
         <TextInput
           style={styles.search}
           placeholder={t('timeline.searchPlaceholder')}

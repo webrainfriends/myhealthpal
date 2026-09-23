@@ -3,9 +3,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { cardShadow, colors, radii, spacing, typography } from '../theme/theme';
 import { useT } from '../i18n/I18nContext';
 
-function SettingsRow({ title, subtitle, onPress }) {
+function MoreRow({ icon, title, subtitle, onPress }) {
   return (
     <TouchableOpacity style={[styles.row, cardShadow]} onPress={onPress} activeOpacity={0.7}>
+      <Text style={styles.icon}>{icon}</Text>
       <View style={styles.rowText}>
         <Text style={typography.body}>{title}</Text>
         <Text style={typography.caption}>{subtitle}</Text>
@@ -15,30 +16,29 @@ function SettingsRow({ title, subtitle, onPress }) {
   );
 }
 
-export default function SettingsScreen({ navigation }) {
+export default function MoreScreen({ navigation }) {
   const t = useT();
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
-        <SettingsRow
-          title="Recipe recommendations"
-          subtitle="Diet, cuisine, and weight-goal preferences used to suggest recipes"
-          onPress={() => navigation.navigate('RecipePreferences')}
+        <Text style={[typography.title, styles.title]}>{t('nav.more')}</Text>
+        <MoreRow
+          icon="🗂️"
+          title={t('nav.timeline')}
+          subtitle="Every report you've uploaded, newest first"
+          onPress={() => navigation.navigate('Timeline')}
         />
-        <SettingsRow
-          title={t('settings.connectedTitle')}
-          subtitle={t('settings.connectedSubtitle')}
-          onPress={() => navigation.navigate('GmailIntegration')}
+        <MoreRow
+          icon="🍳"
+          title="AI recipe ideas"
+          subtitle="Browse a personalized, auto-generated recipe feed"
+          onPress={() => navigation.navigate('Recipes')}
         />
-        <SettingsRow
-          title={t('settings.languageTitle')}
-          subtitle={t('settings.languageSubtitle')}
-          onPress={() => navigation.navigate('LanguagePreference')}
-        />
-        <SettingsRow
-          title={t('settings.voiceTitle')}
-          subtitle={t('settings.voiceSubtitle')}
-          onPress={() => navigation.navigate('VoiceAccessibility')}
+        <MoreRow
+          icon="⚙️"
+          title={t('nav.settings')}
+          subtitle="Recipe preferences, connected sources, language, voice"
+          onPress={() => navigation.navigate('Settings')}
         />
       </ScrollView>
     </SafeAreaView>
@@ -54,15 +54,22 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: spacing.sm,
   },
+  title: {
+    marginBottom: spacing.sm,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: spacing.md,
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
     padding: spacing.md,
   },
+  icon: {
+    fontSize: 22,
+  },
   rowText: {
+    flex: 1,
     gap: 2,
   },
   chevron: {

@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import DashboardScreen from '../screens/DashboardScreen';
 import TimelineScreen from '../screens/TimelineScreen';
+import MoreScreen from '../screens/MoreScreen';
 import UploadScreen from '../screens/UploadScreen';
 import ReportDetailScreen from '../screens/ReportDetailScreen';
 import ParameterTrendScreen from '../screens/ParameterTrendScreen';
@@ -56,12 +57,13 @@ const linking = {
       Tabs: {
         screens: {
           DashboardTab: '',
-          TimelineTab: 'timeline',
           ChatTab: 'ask',
           UploadTab: 'upload',
           MedicationsTab: 'medications',
+          MoreTab: 'more',
         },
       },
+      Timeline: 'timeline',
       ReportDetail: 'report/:reportId',
       ParameterTrend: 'trend/:code',
       OrganDetail: 'organ/:organKey',
@@ -120,7 +122,6 @@ function Tabs() {
       }}
     >
       <Tab.Screen name="DashboardTab" component={DashboardScreen} options={{ title: t('nav.dashboard'), headerShown: false }} />
-      <Tab.Screen name="TimelineTab" component={TimelineScreen} options={{ title: t('nav.timeline'), headerShown: false }} />
       <Tab.Screen
         name="MedicationsTab"
         component={MedicationsScreen}
@@ -128,6 +129,7 @@ function Tabs() {
       />
       <Tab.Screen name="ChatTab" component={ChatScreen} options={{ title: t('nav.ask'), headerShown: false }} />
       <Tab.Screen name="UploadTab" component={UploadScreen} options={{ title: t('nav.upload'), headerShown: false }} />
+      <Tab.Screen name="MoreTab" component={MoreScreen} options={{ title: t('nav.more'), headerShown: false }} />
     </Tab.Navigator>
   );
 }
@@ -158,6 +160,7 @@ export default function RootNavigator() {
         }}
       >
         <Stack.Screen name="Tabs" component={Tabs} options={{ headerShown: false }} />
+        <Stack.Screen name="Timeline" component={TimelineScreen} options={{ title: t('nav.timeline') }} />
         <Stack.Screen name="ReportDetail" component={ReportDetailScreen} options={{ title: t('nav.report') }} />
         <Stack.Screen name="ParameterTrend" component={ParameterTrendScreen} options={{ title: t('nav.trend') }} />
         <Stack.Screen name="OrganDetail" component={OrganDetailScreen} options={{ title: t('nav.organHealth') }} />
