@@ -480,6 +480,18 @@ export async function generateDietRecipe(fields) {
   return handleResponse(response);
 }
 
+// Auto-generated, paginated recipe feed for the standalone Recipes screen.
+// excludeTitles carries every title already shown so far so a "Load more"
+// call doesn't repeat them.
+export async function fetchDietRecipeFeed({ mealType, excludeTitles = [], limit = 10 } = {}) {
+  const response = await apiFetch('/api/diet/recipes/feed', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ meal_type: mealType || undefined, exclude_titles: excludeTitles, limit }),
+  });
+  return handleResponse(response);
+}
+
 export async function fetchGmailStatus() {
   const response = await apiFetch('/api/integrations/gmail/status');
   return handleResponse(response);
@@ -528,6 +540,20 @@ export async function saveRecipePreferences(dietTypes, cuisines) {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ dietTypes, cuisines }),
+  });
+  return handleResponse(response);
+}
+
+export async function fetchWeightGoal() {
+  const response = await apiFetch('/api/weight-goal');
+  return handleResponse(response);
+}
+
+export async function saveWeightGoal({ currentWeightKg, targetWeightKg, targetDate }) {
+  const response = await apiFetch('/api/weight-goal', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ currentWeightKg, targetWeightKg, targetDate }),
   });
   return handleResponse(response);
 }
