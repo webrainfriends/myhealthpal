@@ -4,9 +4,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import InsightCard from '../components/InsightCard';
 import { colors, spacing, typography } from '../theme/theme';
 import { dismissInsight, fetchInsights, sendInsightFeedback } from '../api/client';
+import { useT } from '../i18n/I18nContext';
 import { showAlert } from '../utils/alert';
 
 export default function InsightsScreen({ navigation }) {
+  const t = useT();
   const [insights, setInsights] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -31,7 +33,7 @@ export default function InsightsScreen({ navigation }) {
     try {
       await dismissInsight(id);
     } catch (err) {
-      showAlert('Could not dismiss insight', err.message);
+      showAlert(t('insights.couldNotDismiss'), err.message);
       load();
     }
   }
@@ -40,7 +42,7 @@ export default function InsightsScreen({ navigation }) {
     try {
       await sendInsightFeedback(id, feedback);
     } catch (err) {
-      showAlert('Could not send feedback', err.message);
+      showAlert(t('insights.couldNotSendFeedback'), err.message);
     }
   }
 
@@ -57,7 +59,7 @@ export default function InsightsScreen({ navigation }) {
         data={insights}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.content}
-        ListHeaderComponent={<Text style={[typography.title, styles.title]}>AI insights</Text>}
+        ListHeaderComponent={<Text style={[typography.title, styles.title]}>{t('insights.title')}</Text>}
         renderItem={({ item }) => (
           <InsightCard
             insight={item}
@@ -67,11 +69,7 @@ export default function InsightsScreen({ navigation }) {
           />
         )}
         ListEmptyComponent={
-          !loading && (
-            <Text style={[typography.bodySecondary, styles.empty]}>
-              Nothing to highlight yet. Insights appear here as you confirm reports over time.
-            </Text>
-          )
+          !loading && <Text style={[typography.bodySecondary, styles.empty]}>{t('insights.empty')}</Text>
         }
       />
     </SafeAreaView>

@@ -1,6 +1,7 @@
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { cardShadow, colors, radii, spacing, typography } from '../theme/theme';
+import { useT } from '../i18n/I18nContext';
 
 function SettingsRow({ title, subtitle, onPress }) {
   return (
@@ -15,6 +16,7 @@ function SettingsRow({ title, subtitle, onPress }) {
 }
 
 export default function SettingsScreen({ navigation }) {
+  const t = useT();
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -29,14 +31,19 @@ export default function SettingsScreen({ navigation }) {
           onPress={() => navigation.navigate('RecipePreferences')}
         />
         <SettingsRow
-          title="Connected health sources"
-          subtitle="Connect Gmail to import lab reports and medical documents"
+          title={t('settings.connectedTitle')}
+          subtitle={t('settings.connectedSubtitle')}
           onPress={() => navigation.navigate('GmailIntegration')}
         />
         <SettingsRow
-          title="AI explanation language"
-          subtitle="Language for insight, report, and chat explanations"
+          title={t('settings.languageTitle')}
+          subtitle={t('settings.languageSubtitle')}
           onPress={() => navigation.navigate('LanguagePreference')}
+        />
+        <SettingsRow
+          title={t('settings.voiceTitle')}
+          subtitle={t('settings.voiceSubtitle')}
+          onPress={() => navigation.navigate('VoiceAccessibility')}
         />
       </ScrollView>
     </SafeAreaView>

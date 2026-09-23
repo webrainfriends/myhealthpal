@@ -1,15 +1,22 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { cardShadow, colors, mealTypeColors, radii, spacing, typography } from '../theme/theme';
+import { useT } from '../i18n/I18nContext';
 
-const MEAL_LABELS = { breakfast: 'Breakfast', lunch: 'Lunch', snack: 'Snack', dinner: 'Dinner', supper: 'Supper' };
+const MEAL_LABEL_KEYS = {
+  breakfast: 'diet.mealBreakfast',
+  lunch: 'diet.mealLunch',
+  snack: 'diet.mealSnack',
+  dinner: 'diet.mealDinner',
+  supper: 'diet.mealSupper',
+};
 
-function quantityLine(entry) {
+function quantityLine(entry, t) {
   const parts = [];
   if (entry.quantity_amount != null && entry.quantity_unit) {
     parts.push(`${entry.quantity_amount} ${entry.quantity_unit}`);
   }
-  if (entry.calories != null) parts.push(`${Math.round(entry.calories)} cal`);
-  return parts.join(' · ') || (entry.needs_quantity ? 'Quantity needed' : 'Amount not recorded');
+  if (entry.calories != null) parts.push(`${Math.round(entry.calories)}${t('diet.calSuffix')}`);
+  return parts.join(' · ') || t(entry.needs_quantity ? 'diet.quantityNeeded' : 'diet.amountNotRecorded');
 }
 
 function formatTime(consumedAt) {
@@ -17,6 +24,7 @@ function formatTime(consumedAt) {
 }
 
 export default function FoodEntryCard({ entry, onPress }) {
+  const t = useT();
   const mealPalette = mealTypeColors[entry.meal_type] || mealTypeColors.snack;
 
   return (
@@ -26,23 +34,25 @@ export default function FoodEntryCard({ entry, onPress }) {
           {entry.name}
         </Text>
         <View style={[styles.mealPill, { backgroundColor: mealPalette.bg }]}>
-          <Text style={[styles.mealPillText, { color: mealPalette.fg }]}>{MEAL_LABELS[entry.meal_type]}</Text>
+          <Text style={[styles.mealPillText, { color: mealPalette.fg }]}>
+            {t(MEAL_LABEL_KEYS[entry.meal_type] || MEAL_LABEL_KEYS.snack)}
+          </Text>
         </View>
       </View>
 
-      <Text style={typography.bodySecondary}>{quantityLine(entry)}</Text>
+      <Text style={typography.bodySecondary}>{quantityLine(entry, t)}</Text>
       <Text style={typography.caption}>{formatTime(entry.consumed_at)}</Text>
 
       <View style={styles.badgeRow}>
         {entry.ai_verified && (
           <View style={[styles.miniPill, { backgroundColor: colors.primaryMuted }]}>
-            <Text style={[styles.miniPillText, { color: colors.primary }]}>✨ AI estimate</Text>
+            <Text style={[styles.miniPillText, { color: colors.primary }]}>✨ {t('status.AI estimate')}</Text>
           </View>
         )}
         {(entry.needs_quantity || entry.needs_review) && (
           <View style={[styles.miniPill, { backgroundColor: colors.warningMuted }]}>
             <Text style={[styles.miniPillText, { color: colors.warning }]}>
-              {entry.needs_quantity ? 'Needs quantity' : 'Needs review'}
+              {t(entry.needs_quantity ? 'diet.needsQuantity' : 'measurement.needsReview')}
             </Text>
           </View>
         )}

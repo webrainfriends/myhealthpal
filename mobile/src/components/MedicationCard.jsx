@@ -1,21 +1,28 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { alertSeverityColors, cardShadow, colors, medicationStatusColors, radii, spacing, typography } from '../theme/theme';
+import { useT } from '../i18n/I18nContext';
 
-const STATUS_LABELS = { active: 'Active', completed: 'Completed', discontinued: 'Discontinued' };
-
-function doseLine(medication) {
+function doseLine(medication, t) {
   const parts = [];
   if (medication.dosage_amount) parts.push(`${medication.dosage_amount}${medication.dosage_unit || ''}`);
   if (medication.form) parts.push(medication.form);
   if (medication.frequency_per_day) {
-    parts.push(`${medication.frequency_per_day}x/day`);
+    parts.push(t('medicationDetail.timesPerDay', { count: medication.frequency_per_day }));
   }
-  return parts.join(' · ') || 'Dose not recorded';
+  return parts.join(' · ') || t('medicationDetail.notRecorded');
 }
 
+const STATUS_KEYS = {
+  active: 'medicationDetail.statusActive',
+  completed: 'medicationDetail.statusCompleted',
+  discontinued: 'medicationDetail.statusDiscontinued',
+};
+
 export default function MedicationCard({ medication, alert, onPress }) {
+  const t = useT();
   const statusPalette = medicationStatusColors[medication.status] || medicationStatusColors.active;
   const alertPalette = alert ? alertSeverityColors[alert.severity] || alertSeverityColors.info : null;
+  const statusLabel = t(STATUS_KEYS[medication.status] || STATUS_KEYS.active);
 
   return (
     <TouchableOpacity style={[styles.card, cardShadow]} onPress={onPress} activeOpacity={0.8}>
@@ -24,20 +31,20 @@ export default function MedicationCard({ medication, alert, onPress }) {
           {medication.name}
         </Text>
         <View style={[styles.statusPill, { backgroundColor: statusPalette.bg }]}>
-          <Text style={[styles.statusPillText, { color: statusPalette.fg }]}>{STATUS_LABELS[medication.status]}</Text>
+          <Text style={[styles.statusPillText, { color: statusPalette.fg }]}>{statusLabel}</Text>
         </View>
       </View>
 
-      <Text style={typography.bodySecondary}>{doseLine(medication)}</Text>
+      <Text style={typography.bodySecondary}>{doseLine(medication, t)}</Text>
       {medication.prescribed_for && (
         <Text style={typography.caption} numberOfLines={1}>
-          For {medication.prescribed_for}
+          {t('medicationDetail.forLabel', { value: medication.prescribed_for })}
         </Text>
       )}
 
       {medication.needs_review && (
         <View style={[styles.miniPill, { backgroundColor: colors.warningMuted }]}>
-          <Text style={[styles.miniPillText, { color: colors.warning }]}>Needs review</Text>
+          <Text style={[styles.miniPillText, { color: colors.warning }]}>{t('measurement.needsReview')}</Text>
         </View>
       )}
 

@@ -1,15 +1,20 @@
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { colors, healthStatusColors, radii, spacing, typography } from '../theme/theme';
+import { useT } from '../i18n/I18nContext';
 
-const RESULT_STATUS_LABEL = { normal: 'Normal', abnormal: 'Out of range', unknown: 'Not evaluated' };
+const RESULT_STATUS_KEYS = {
+  normal: 'organDetail.resultNormal',
+  abnormal: 'organDetail.resultAbnormal',
+  unknown: 'organDetail.resultUnevaluated',
+};
 
 // The printed range when the report had one, else the app's own standards
 // table (see organHealthService.js) - whichever the score actually used.
-function rangeText(parameter) {
+function rangeText(parameter, t) {
   if (parameter.referenceRangeRaw) return parameter.referenceRangeRaw;
   const std = parameter.standardRange;
   if (std && std.low !== null && std.low !== undefined && std.high !== null && std.high !== undefined) {
-    return `${std.low}–${std.high} (general ${std.source.toUpperCase()} reference)`;
+    return t('resultModal.generalReference', { low: std.low, high: std.high, source: std.source.toUpperCase() });
   }
   return null;
 }
@@ -32,15 +37,15 @@ function parsedRangeFor(parameter) {
   return null;
 }
 
-function directionText(parameter) {
+function directionText(parameter, t) {
   const value = Number.parseFloat(parameter.value);
   const range = parsedRangeFor(parameter);
   if (parameter.resultStatus !== 'abnormal' || !Number.isFinite(value) || !range) return null;
   if (Number.isFinite(range.low) && value < range.low) {
-    return `${(range.low - value).toFixed(1)} below the typical low of ${range.low}`;
+    return t('resultModal.belowLow', { delta: (range.low - value).toFixed(1), low: range.low });
   }
   if (Number.isFinite(range.high) && value > range.high) {
-    return `${(value - range.high).toFixed(1)} above the typical high of ${range.high}`;
+    return t('resultModal.aboveHigh', { delta: (value - range.high).toFixed(1), high: range.high });
   }
   return null;
 }
@@ -53,12 +58,13 @@ function directionText(parameter) {
 // show: the value, the range it was judged against, and by how much it's
 // off - the same "why" a clinician would want, without guessing at cause.
 export default function ResultSummaryModal({ parameter, onClose, onViewTrend }) {
+  const t = useT();
   const visible = Boolean(parameter);
   if (!visible) return null;
 
   const palette = healthStatusColors[parameter.resultStatus === 'normal' ? 'good' : 'attention'] || healthStatusColors.no_data;
-  const range = rangeText(parameter);
-  const direction = directionText(parameter);
+  const range = rangeText(parameter, t);
+  const direction = directionText(parameter, t);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -70,7 +76,7 @@ export default function ResultSummaryModal({ parameter, onClose, onViewTrend }) 
             </Text>
             <View style={[styles.pill, { backgroundColor: palette.bg }]}>
               <Text style={[styles.pillText, { color: palette.fg }]}>
-                {RESULT_STATUS_LABEL[parameter.resultStatus] || 'Not evaluated'}
+                {t(RESULT_STATUS_KEYS[parameter.resultStatus] || RESULT_STATUS_KEYS.unknown)}
               </Text>
             </View>
           </View>
@@ -79,22 +85,20 @@ export default function ResultSummaryModal({ parameter, onClose, onViewTrend }) 
             {parameter.value ?? '—'} <Text style={styles.unit}>{parameter.unit || ''}</Text>
           </Text>
 
-          {range && <Text style={typography.bodySecondary}>Reference range: {range}</Text>}
+          {range && <Text style={typography.bodySecondary}>{t('resultModal.referenceRange', { range })}</Text>}
           {direction && <Text style={[typography.bodySecondary, { color: palette.fg }]}>{direction}</Text>}
-          {!range && <Text style={typography.bodySecondary}>No reference range available for this result yet.</Text>}
+          {!range && <Text style={typography.bodySecondary}>{t('resultModal.noRange')}</Text>}
 
-          <Text style={styles.disclaimer}>
-            This is a summary of your own data, not a diagnosis - always discuss results with your doctor.
-          </Text>
+          <Text style={styles.disclaimer}>{t('resultModal.disclaimer')}</Text>
 
           <View style={styles.actionsRow}>
             {onViewTrend && (
               <TouchableOpacity style={styles.secondaryButton} onPress={onViewTrend}>
-                <Text style={styles.secondaryButtonLabel}>View trend</Text>
+                <Text style={styles.secondaryButtonLabel}>{t('resultModal.viewTrend')}</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity style={styles.primaryButton} onPress={onClose}>
-              <Text style={styles.primaryButtonLabel}>Close</Text>
+              <Text style={styles.primaryButtonLabel}>{t('common.close')}</Text>
             </TouchableOpacity>
           </View>
         </View>

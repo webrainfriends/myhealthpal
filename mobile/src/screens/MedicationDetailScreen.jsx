@@ -4,23 +4,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import ChipSelect from '../components/ChipSelect';
 import MedicationForm from '../components/MedicationForm';
 import PrimaryButton from '../components/PrimaryButton';
+import SpeakButton from '../components/SpeakButton';
 import { cardShadow, colors, healthStatusColors, radii, spacing, typography } from '../theme/theme';
 import { deleteMedication, fetchMedication, updateMedication } from '../api/client';
+import { useT } from '../i18n/I18nContext';
 import { showAlert } from '../utils/alert';
 import { formatCalendarDate } from '../utils/date';
-
-const STATUS_OPTIONS = [
-  { value: 'active', label: 'Active' },
-  { value: 'completed', label: 'Completed' },
-  { value: 'discontinued', label: 'Discontinued' },
-];
-
-const STANDARD_STATUS_LABEL = {
-  in_range: 'Within standard range',
-  below_range: 'Below standard range',
-  above_range: 'Above standard range',
-  unknown: 'No lab result yet',
-};
 
 const FORECAST_LABEL_STYLE = {
   too_early: healthStatusColors.no_data,
@@ -38,6 +27,24 @@ function scoreToStatus(percent) {
 
 function formatDate(value) {
   return formatCalendarDate(value, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+// Builds the sentence SpeakButton reads for the whole medication: dosage,
+// what it's for, common side effects and warnings, and how each linked lab
+// result is expected to respond - the same information a sighted user reads
+// off this screen's sections below, said aloud instead.
+function buildMedicationSpeech(medication, knowledge, forecast, t) {
+  const parts = [medication.name];
+  const dose = [medication.dosage_amount && `${medication.dosage_amount}${medication.dosage_unit || ''}`, medication.form]
+    .filter(Boolean)
+    .join(' ');
+  if (dose) parts.push(dose);
+  if (medication.frequency_per_day) parts.push(t('medicationDetail.timesPerDay', { count: medication.frequency_per_day }));
+  if (medication.instructions) parts.push(medication.instructions);
+  if (knowledge?.usage) parts.push(knowledge.usage);
+  if (knowledge?.commonSideEffects?.length) parts.push(`${t('medicationDetail.sideEffects')}: ${knowledge.commonSideEffects.join(', ')}.`);
+  if (knowledge?.warnings?.length) parts.push(`${t('medicationDetail.warnings')}: ${knowledge.warnings.join(', ')}.`);
+  return parts.join('. ');
 }
 
 function BulletList({ items, textStyle }) {
@@ -62,7 +69,25 @@ function ScoreBar({ percent, palette }) {
   );
 }
 
-function ParameterForecastRow({ item }) {
+const STANDARD_STATUS_KEYS = {
+  in_range: 'medicationDetail.standardInRange',
+  below_range: 'medicationDetail.standardBelowRange',
+  above_range: 'medicationDetail.standardAboveRange',
+  unknown: 'medicationDetail.standardUnknown',
+};
+
+// item.forecastLabel (from the server's medicationForecastService.js) is a
+// fixed English string, not AI-generated text the language preference
+// already threads through - item.forecastStage is the same forecast as a
+// stable enum, so it's translated here from that instead of shown as-is.
+const FORECAST_LABEL_KEYS = {
+  too_early: 'medicationDetail.forecastTooEarly',
+  improvement_expected_now: 'medicationDetail.forecastImprovementExpected',
+  reassess_with_labs: 'medicationDetail.forecastReassess',
+  unknown: 'medicationDetail.forecastUnknown',
+};
+
+function ParameterForecastRow({ item, t }) {
   const rangePalette = healthStatusColors[item.inStandardRange === false ? 'attention' : item.inStandardRange ? 'good' : 'no_data'];
   const forecastPalette = FORECAST_LABEL_STYLE[item.forecastStage] || healthStatusColors.no_data;
 
@@ -73,28 +98,37 @@ function ParameterForecastRow({ item }) {
           {item.parameterDisplayName}
         </Text>
         <View style={[styles.pill, { backgroundColor: rangePalette.bg }]}>
-          <Text style={[styles.pillText, { color: rangePalette.fg }]}>{STANDARD_STATUS_LABEL[item.standardStatus]}</Text>
+          <Text style={[styles.pillText, { color: rangePalette.fg }]}>{t(STANDARD_STATUS_KEYS[item.standardStatus])}</Text>
         </View>
       </View>
 
       {item.latestMeasurement ? (
         <Text style={typography.caption}>
-          Latest: {item.latestMeasurement.value} {item.latestMeasurement.unit || ''} on{' '}
-          {formatDate(item.latestMeasurement.effectiveDate)}
+          {t('medicationDetail.latestValue', {
+            value: item.latestMeasurement.value,
+            unit: item.latestMeasurement.unit || '',
+            date: formatDate(item.latestMeasurement.effectiveDate),
+          })}
         </Text>
       ) : (
-        <Text style={typography.caption}>No confirmed lab result for this parameter yet</Text>
+        <Text style={typography.caption}>{t('medicationDetail.noResultYet')}</Text>
       )}
 
       {item.standardRange && (
         <Text style={typography.caption}>
-          Standard range ({item.standardRange.source.toUpperCase()}): {item.standardRange.low}–{item.standardRange.high}{' '}
-          {item.standardRange.unit}
+          {t('medicationDetail.standardRange', {
+            source: item.standardRange.source.toUpperCase(),
+            low: item.standardRange.low,
+            high: item.standardRange.high,
+            unit: item.standardRange.unit,
+          })}
         </Text>
       )}
 
       <View style={[styles.pill, styles.forecastPill, { backgroundColor: forecastPalette.bg }]}>
-        <Text style={[styles.pillText, { color: forecastPalette.fg }]}>{item.forecastLabel}</Text>
+        <Text style={[styles.pillText, { color: forecastPalette.fg }]}>
+          {t(FORECAST_LABEL_KEYS[item.forecastStage] || FORECAST_LABEL_KEYS.unknown)}
+        </Text>
       </View>
       {item.rationale && <Text style={styles.rationale}>{item.rationale}</Text>}
     </View>
@@ -103,6 +137,12 @@ function ParameterForecastRow({ item }) {
 
 export default function MedicationDetailScreen({ route, navigation }) {
   const { medicationId } = route.params;
+  const t = useT();
+  const STATUS_OPTIONS = [
+    { value: 'active', label: t('medicationDetail.statusActive') },
+    { value: 'completed', label: t('medicationDetail.statusCompleted') },
+    { value: 'discontinued', label: t('medicationDetail.statusDiscontinued') },
+  ];
   const [medication, setMedication] = useState(null);
   const [knowledge, setKnowledge] = useState(null);
   const [forecast, setForecast] = useState(null);
@@ -153,7 +193,7 @@ export default function MedicationDetailScreen({ route, navigation }) {
       setEditing(false);
       await load();
     } catch (err) {
-      showAlert('Could not save changes', err.message);
+      showAlert(t('medicationDetail.couldNotSave'), err.message);
     } finally {
       setBusy(false);
     }
@@ -165,44 +205,48 @@ export default function MedicationDetailScreen({ route, navigation }) {
       await updateMedication(medicationId, { status });
       await load();
     } catch (err) {
-      showAlert('Could not update status', err.message);
+      showAlert(t('medicationDetail.couldNotUpdateStatus'), err.message);
     }
   }
 
   function handleDelete() {
-    showAlert('Delete medication?', `This removes ${medication.name} and its tracking history.`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteMedication(medicationId);
-            // goBack() silently does nothing when this screen has no prior
-            // in-app history to return to (a deep link, a bookmark, or a
-            // browser refresh while already on this screen all land here
-            // with an empty stack) - the delete still succeeds on the
-            // server, but the screen would be left showing the now-deleted
-            // medication with no visible sign anything happened, looking
-            // exactly like the button did nothing. Always land somewhere
-            // real instead.
-            if (navigation.canGoBack()) {
-              navigation.goBack();
-            } else {
-              navigation.navigate('Tabs', { screen: 'MedicationsTab' });
+    showAlert(
+      t('medicationDetail.deleteConfirmTitle'),
+      t('medicationDetail.deleteConfirmMessage', { name: medication.name }),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('common.delete'),
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteMedication(medicationId);
+              // goBack() silently does nothing when this screen has no prior
+              // in-app history to return to (a deep link, a bookmark, or a
+              // browser refresh while already on this screen all land here
+              // with an empty stack) - the delete still succeeds on the
+              // server, but the screen would be left showing the now-deleted
+              // medication with no visible sign anything happened, looking
+              // exactly like the button did nothing. Always land somewhere
+              // real instead.
+              if (navigation.canGoBack()) {
+                navigation.goBack();
+              } else {
+                navigation.navigate('Tabs', { screen: 'MedicationsTab' });
+              }
+            } catch (err) {
+              showAlert(t('medicationDetail.couldNotDelete'), err.message);
             }
-          } catch (err) {
-            showAlert('Could not delete medication', err.message);
-          }
+          },
         },
-      },
-    ]);
+      ]
+    );
   }
 
   if (!medication || !forecast) {
     return (
       <SafeAreaView style={styles.container}>
-        <Text style={[typography.bodySecondary, styles.centeredText]}>Loading…</Text>
+        <Text style={[typography.bodySecondary, styles.centeredText]}>{t('medicationDetail.loading')}</Text>
       </SafeAreaView>
     );
   }
@@ -217,35 +261,32 @@ export default function MedicationDetailScreen({ route, navigation }) {
             <View style={[styles.heroCard, cardShadow]}>
               <View style={styles.heroTopRow}>
                 <Text style={typography.title}>{medication.name}</Text>
+                <SpeakButton
+                  text={buildMedicationSpeech(medication, knowledge, forecast, t)}
+                  label={t('medicationDetail.readAloud')}
+                />
                 <Text style={[styles.heroScore, { color: scorePalette.fg }]}>
                   {forecast.standardsScorePercent === null ? '—' : `${forecast.standardsScorePercent}%`}
                 </Text>
               </View>
               <ScoreBar percent={forecast.standardsScorePercent} palette={scorePalette} />
-              <Text style={styles.disclaimer}>
-                Score = share of this medication's linked lab results currently within a general WHO / ICMR / FDA-aligned
-                clinical reference range - not the range printed on any one lab report. General reference only, not a
-                diagnosis - always follow your doctor's guidance.
-              </Text>
+              <Text style={styles.disclaimer}>{t('medicationDetail.scoreDisclaimer')}</Text>
             </View>
 
             {(medication.ingredients_raw || knowledge?.activeIngredient) && (
               <View style={styles.section}>
-                <Text style={[typography.heading, styles.sectionHeading]}>Ingredients</Text>
+                <Text style={[typography.heading, styles.sectionHeading]}>{t('medicationDetail.ingredients')}</Text>
                 {medication.ingredients_raw && (
                   <Text style={typography.body}>{medication.ingredients_raw}</Text>
                 )}
                 {knowledge?.activeIngredient && (
                   <Text style={typography.bodySecondary}>
-                    {medication.ingredients_raw ? 'Active ingredient: ' : ''}
+                    {medication.ingredients_raw ? t('medicationDetail.activeIngredientPrefix') : ''}
                     {knowledge.activeIngredient}
                   </Text>
                 )}
                 {!medication.ingredients_raw && (
-                  <Text style={styles.disclaimer}>
-                    Not read from a scanned label - this is the drug's general active ingredient, not necessarily this
-                    exact product's full composition.
-                  </Text>
+                  <Text style={styles.disclaimer}>{t('medicationDetail.notFromLabel')}</Text>
                 )}
               </View>
             )}
@@ -259,7 +300,7 @@ export default function MedicationDetailScreen({ route, navigation }) {
 
             {knowledge?.commonSideEffects?.length > 0 && (
               <View style={styles.section}>
-                <Text style={[typography.heading, styles.sectionHeading]}>Common side effects</Text>
+                <Text style={[typography.heading, styles.sectionHeading]}>{t('medicationDetail.sideEffects')}</Text>
                 <BulletList items={knowledge.commonSideEffects} />
               </View>
             )}
@@ -267,87 +308,100 @@ export default function MedicationDetailScreen({ route, navigation }) {
             {knowledge?.warnings?.length > 0 && (
               <View style={[styles.section, styles.warningBox]}>
                 <Text style={[typography.heading, styles.sectionHeading, styles.warningHeading]}>
-                  Alerts &amp; safety warnings
+                  {t('medicationDetail.warnings')}
                 </Text>
                 <BulletList items={knowledge.warnings} textStyle={styles.warningText} />
               </View>
             )}
 
             {(knowledge?.commonSideEffects?.length > 0 || knowledge?.warnings?.length > 0) && (
-              <Text style={styles.disclaimer}>
-                General drug reference information, not personalized medical advice - always check the product label and
-                your doctor or pharmacist.
-              </Text>
+              <Text style={styles.disclaimer}>{t('medicationDetail.drugDisclaimer')}</Text>
             )}
 
             <View style={styles.section}>
-              <Text style={[typography.heading, styles.sectionHeading]}>Dosage schedule</Text>
+              <Text style={[typography.heading, styles.sectionHeading]}>{t('medicationDetail.dosageSchedule')}</Text>
               <Text style={typography.body}>
                 {[medication.dosage_amount && `${medication.dosage_amount}${medication.dosage_unit || ''}`, medication.form]
                   .filter(Boolean)
-                  .join(' · ') || 'Not recorded'}
+                  .join(' · ') || t('medicationDetail.notRecorded')}
               </Text>
               {medication.frequency_per_day && (
-                <Text style={typography.bodySecondary}>{medication.frequency_per_day}x per day</Text>
+                <Text style={typography.bodySecondary}>
+                  {t('medicationDetail.timesPerDay', { count: medication.frequency_per_day })}
+                </Text>
               )}
               {medication.instructions && <Text style={typography.bodySecondary}>{medication.instructions}</Text>}
               {forecast.doseAssessment && (
                 <View style={[styles.pill, styles.doseNote, { backgroundColor: colors.surfaceMuted }]}>
                   <Text style={[styles.pillText, { color: colors.textSecondary }]}>
-                    Daily dose {forecast.doseAssessment.dailyDose}
-                    {forecast.doseAssessment.unit} is{' '}
-                    {forecast.doseAssessment.level === 'within_typical'
-                      ? 'within the typical range'
-                      : forecast.doseAssessment.level === 'below_typical'
-                        ? 'below the typical range'
-                        : 'above the typical range'}{' '}
-                    ({forecast.doseAssessment.typicalMin}-{forecast.doseAssessment.typicalMax}
-                    {forecast.doseAssessment.unit}/day)
+                    {t('medicationDetail.dailyDoseNote', {
+                      dose: forecast.doseAssessment.dailyDose,
+                      unit: forecast.doseAssessment.unit,
+                      level: t(
+                        forecast.doseAssessment.level === 'within_typical'
+                          ? 'medicationDetail.doseWithin'
+                          : forecast.doseAssessment.level === 'below_typical'
+                            ? 'medicationDetail.doseBelow'
+                            : 'medicationDetail.doseAbove'
+                      ),
+                      min: forecast.doseAssessment.typicalMin,
+                      max: forecast.doseAssessment.typicalMax,
+                    })}
                   </Text>
                 </View>
               )}
             </View>
 
             <View style={styles.section}>
-              <Text style={[typography.heading, styles.sectionHeading]}>Course &amp; supply</Text>
-              {medication.prescribed_for && <Text style={typography.bodySecondary}>For: {medication.prescribed_for}</Text>}
+              <Text style={[typography.heading, styles.sectionHeading]}>{t('medicationDetail.courseSupply')}</Text>
+              {medication.prescribed_for && (
+                <Text style={typography.bodySecondary}>
+                  {t('medicationDetail.forLabel', { value: medication.prescribed_for })}
+                </Text>
+              )}
               {medication.prescribing_doctor && (
-                <Text style={typography.bodySecondary}>Prescribed by: {medication.prescribing_doctor}</Text>
+                <Text style={typography.bodySecondary}>
+                  {t('medicationDetail.prescribedBy', { value: medication.prescribing_doctor })}
+                </Text>
               )}
               {medication.start_date && (
                 <Text style={typography.bodySecondary}>
-                  Started {formatDate(medication.start_date)}
-                  {medication.end_date ? ` · course ends ${formatDate(medication.end_date)}` : ''}
+                  {t('medicationDetail.started', { date: formatDate(medication.start_date) })}
+                  {medication.end_date ? t('medicationDetail.courseEnds', { date: formatDate(medication.end_date) }) : ''}
                 </Text>
               )}
               {medication.expiry_date && (
-                <Text style={typography.bodySecondary}>Expires {formatDate(medication.expiry_date)}</Text>
+                <Text style={typography.bodySecondary}>
+                  {t('medicationDetail.expires', { date: formatDate(medication.expiry_date) })}
+                </Text>
               )}
               {forecast.elapsedDays !== null && (
-                <Text style={typography.caption}>{forecast.elapsedDays} days since starting</Text>
-              )}
-            </View>
-
-            <View style={styles.section}>
-              <Text style={[typography.heading, styles.sectionHeading]}>Linked lab parameters</Text>
-              {forecast.parameterForecasts.length === 0 ? (
-                <Text style={typography.bodySecondary}>
-                  This medication isn't linked to any tracked lab parameter yet.
+                <Text style={typography.caption}>
+                  {t('medicationDetail.daysSinceStarting', { count: forecast.elapsedDays })}
                 </Text>
-              ) : (
-                forecast.parameterForecasts.map((item) => <ParameterForecastRow key={item.healthParameterId} item={item} />)
               )}
             </View>
 
             <View style={styles.section}>
-              <Text style={[typography.heading, styles.sectionHeading]}>Status</Text>
+              <Text style={[typography.heading, styles.sectionHeading]}>{t('medicationDetail.linkedParameters')}</Text>
+              {forecast.parameterForecasts.length === 0 ? (
+                <Text style={typography.bodySecondary}>{t('medicationDetail.noLinkedParameters')}</Text>
+              ) : (
+                forecast.parameterForecasts.map((item) => (
+                  <ParameterForecastRow key={item.healthParameterId} item={item} t={t} />
+                ))
+              )}
+            </View>
+
+            <View style={styles.section}>
+              <Text style={[typography.heading, styles.sectionHeading]}>{t('medicationDetail.status')}</Text>
               <ChipSelect options={STATUS_OPTIONS} value={medication.status} onChange={handleStatusChange} allowClear={false} />
             </View>
 
             <View style={styles.actionsRow}>
-              <PrimaryButton title="Edit" variant="secondary" onPress={() => setEditing(true)} />
+              <PrimaryButton title={t('common.edit')} variant="secondary" onPress={() => setEditing(true)} />
               <TouchableOpacity onPress={handleDelete} style={styles.deleteButton}>
-                <Text style={styles.deleteLabel}>Delete</Text>
+                <Text style={styles.deleteLabel}>{t('common.delete')}</Text>
               </TouchableOpacity>
             </View>
           </>
@@ -355,8 +409,15 @@ export default function MedicationDetailScreen({ route, navigation }) {
           <View style={styles.section}>
             <MedicationForm value={draft} onChange={setDraft} />
             <View style={styles.actionsRow}>
-              <PrimaryButton title="Save" onPress={handleSave} loading={busy} />
-              <PrimaryButton title="Cancel" variant="secondary" onPress={() => { setDraft(medication); setEditing(false); }} />
+              <PrimaryButton title={t('common.save')} onPress={handleSave} loading={busy} />
+              <PrimaryButton
+                title={t('common.cancel')}
+                variant="secondary"
+                onPress={() => {
+                  setDraft(medication);
+                  setEditing(false);
+                }}
+              />
             </View>
           </View>
         )}

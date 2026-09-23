@@ -5,6 +5,7 @@ import ParameterPickerModal from '../components/ParameterPickerModal';
 import OrganHealthCard from '../components/OrganHealthCard';
 import ActivityCard from '../components/ActivityCard';
 import DietCard from '../components/DietCard';
+import SpeakButton from '../components/SpeakButton';
 import SummaryCard from '../components/SummaryCard';
 import { cardShadow, colors, healthStatusColors, radii, spacing, typography } from '../theme/theme';
 import {
@@ -17,28 +18,45 @@ import {
   unpinParameter,
 } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
+import { useT } from '../i18n/I18nContext';
 import { showAlert } from '../utils/alert';
 import { formatCalendarDate } from '../utils/date';
 
-function formatDate(value) {
-  if (!value) return 'unknown date';
+function formatDate(value, t) {
+  if (!value) return t('common.unknownDate');
   return formatCalendarDate(value, { month: 'short', day: 'numeric' });
 }
 
-function greetingForNow() {
+function greetingForNow(t) {
   const hour = new Date().getHours();
-  if (hour < 12) return 'Good morning';
-  if (hour < 18) return 'Good afternoon';
-  return 'Good evening';
+  if (hour < 12) return t('dashboard.greetingMorning');
+  if (hour < 18) return t('dashboard.greetingAfternoon');
+  return t('dashboard.greetingEvening');
 }
 
-function firstName(user) {
-  if (!user || user.authProvider === 'guest') return 'there';
-  const source = user.displayName || user.email || 'there';
+function firstName(user, t) {
+  if (!user || user.authProvider === 'guest') return t('dashboard.guestName');
+  const source = user.displayName || user.email || t('dashboard.guestName');
   return source.split(/[\s@]/)[0];
 }
 
-function TrackedMetricCard({ metric, onPress, onUnpin }) {
+// Builds the sentence SpeakButton reads for the whole dashboard: organ
+// scores, insight/attention counts, and each tracked metric's latest
+// value - the same summary a sighted user scans down this screen to see.
+function buildDashboardSpeech(snapshot, organs, t) {
+  const parts = [];
+  for (const organ of organs || []) {
+    parts.push(`${organ.label}: ${organ.scorePercent === null ? t('common.dash') : `${organ.scorePercent}%`}.`);
+  }
+  parts.push(`${t('dashboard.aiInsights')}: ${snapshot.insights.length}. ${t('dashboard.needsAttention')}: ${snapshot.needsAttention.length}.`);
+  for (const metric of snapshot.trackedMetrics || []) {
+    const value = metric.raw_value !== null && metric.raw_value !== undefined ? `${metric.qualitative_value || metric.raw_value} ${metric.raw_unit || ''}` : t('dashboard.noConfirmedResults');
+    parts.push(`${metric.display_name}: ${value}.`);
+  }
+  return parts.join(' ');
+}
+
+function TrackedMetricCard({ metric, onPress, onUnpin, t }) {
   const hasLatest = metric.raw_value !== null && metric.raw_value !== undefined;
   const current = metric.normalized_value;
   const previous = metric.previous_normalized_value;
@@ -46,7 +64,7 @@ function TrackedMetricCard({ metric, onPress, onUnpin }) {
   if (current !== null && current !== undefined && previous !== null && previous !== undefined) {
     const delta = current - previous;
     if (Math.abs(delta) > 1e-9) change = delta > 0 ? `▲ ${Math.abs(delta).toFixed(1)}` : `▼ ${Math.abs(delta).toFixed(1)}`;
-    else change = 'No change';
+    else change = t('dashboard.noChange');
   }
 
   return (
@@ -65,12 +83,12 @@ function TrackedMetricCard({ metric, onPress, onUnpin }) {
             {metric.qualitative_value || metric.raw_value} <Text style={styles.metricUnit}>{metric.raw_unit || ''}</Text>
           </Text>
           <Text style={typography.caption}>
-            {formatDate(metric.effective_date)} · {metric.original_filename}
+            {formatDate(metric.effective_date, t)} · {metric.original_filename}
           </Text>
-          {change && <Text style={typography.bodySecondary}>{change} vs. previous</Text>}
+          {change && <Text style={typography.bodySecondary}>{change} {t('dashboard.vsPrevious')}</Text>}
         </>
       ) : (
-        <Text style={typography.bodySecondary}>No confirmed results yet.</Text>
+        <Text style={typography.bodySecondary}>{t('dashboard.noConfirmedResults')}</Text>
       )}
     </TouchableOpacity>
   );
@@ -125,7 +143,7 @@ export default function DashboardScreen({ navigation }) {
       await pinParameter(parameterId);
       await load();
     } catch (err) {
-      showAlert('Could not pin metric', err.message);
+      showAlert(t('dashboard.couldNotPin'), err.message);
     }
   }
 
@@ -134,14 +152,14 @@ export default function DashboardScreen({ navigation }) {
       await unpinParameter(parameterId);
       await load();
     } catch (err) {
-      showAlert('Could not unpin metric', err.message);
+      showAlert(t('dashboard.couldNotUnpin'), err.message);
     }
   }
 
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <Text style={[typography.bodySecondary, styles.centeredText]}>Loading dashboard…</Text>
+        <Text style={[typography.bodySecondary, styles.centeredText]}>{t('dashboard.loadingDashboard')}</Text>
       </SafeAreaView>
     );
   }
@@ -150,22 +168,26 @@ export default function DashboardScreen({ navigation }) {
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.accountRow}>
-          <View>
-            <Text style={typography.title}>
-              {greetingForNow()}, {firstName(user)}
-            </Text>
-            <Text style={typography.bodySecondary}>Here's how your body is doing today.</Text>
+          <View style={styles.greetingBlock}>
+            <View style={styles.greetingRow}>
+              <Text style={typography.title}>
+                {greetingForNow(t)}, {firstName(user, t)}
+              </Text>
+              <SpeakButton text={buildDashboardSpeech(snapshot, organs, t)} label={t('dashboard.readSummary')} />
+            </View>
+            <Text style={typography.bodySecondary}>{t('dashboard.subtitle')}</Text>
           </View>
           <View style={styles.accountActions}>
             <TouchableOpacity
               onPress={() => navigation.navigate('Settings')}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Text style={styles.accountLabel}>Settings</Text>
+              <Text style={styles.accountLabel}>{t('common.settings')}</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={signOut} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Text style={styles.accountLabel}>
-                {user?.authProvider === 'guest' ? 'Guest' : user?.email || 'Account'} · Sign out
+                {user?.authProvider === 'guest' ? t('common.guest') : user?.email || t('common.account')} ·{' '}
+                {t('common.signOut')}
               </Text>
             </TouchableOpacity>
           </View>
@@ -191,10 +213,8 @@ export default function DashboardScreen({ navigation }) {
           </View>
         )}
 
-        <Text style={[typography.heading, styles.sectionSpacing]}>Your body, at a glance</Text>
-        <Text style={[typography.caption, styles.sectionSubtitle]}>
-          Tap an organ to see the tests behind its score.
-        </Text>
+        <Text style={[typography.heading, styles.sectionSpacing]}>{t('dashboard.yourBodyAtAGlance')}</Text>
+        <Text style={[typography.caption, styles.sectionSubtitle]}>{t('dashboard.tapOrganHint')}</Text>
         {organs && (
           <View style={styles.metricGrid}>
             {organs.map((organ) => (
@@ -209,10 +229,8 @@ export default function DashboardScreen({ navigation }) {
 
         {customCards && customCards.length > 0 && (
           <>
-            <Text style={[typography.heading, styles.sectionSpacing]}>🧠 More from your reports</Text>
-            <Text style={[typography.caption, styles.sectionSubtitle]}>
-              Results your reports included that don't fit a standard card yet, grouped automatically.
-            </Text>
+            <Text style={[typography.heading, styles.sectionSpacing]}>{t('dashboard.moreFromReports')}</Text>
+            <Text style={[typography.caption, styles.sectionSubtitle]}>{t('dashboard.moreFromReportsHint')}</Text>
             <View style={styles.metricGrid}>
               {customCards.map((card) => (
                 <OrganHealthCard
@@ -229,37 +247,36 @@ export default function DashboardScreen({ navigation }) {
           <SummaryCard
             icon="🤖"
             count={snapshot.insights.length}
-            label="AI insights"
-            subtitle={snapshot.insights.length === 0 ? 'Nothing new' : 'Tap to view'}
+            label={t('dashboard.aiInsights')}
+            subtitle={snapshot.insights.length === 0 ? t('dashboard.nothingNew') : t('dashboard.tapToView')}
             palette={snapshot.insights.length === 0 ? healthStatusColors.no_data : healthStatusColors.watch}
             onPress={() => navigation.navigate('Insights')}
           />
           <SummaryCard
             icon="⚠️"
             count={snapshot.needsAttention.length}
-            label="Needs attention"
-            subtitle={snapshot.needsAttention.length === 0 ? 'All clear' : 'Tap to view'}
+            label={t('dashboard.needsAttention')}
+            subtitle={snapshot.needsAttention.length === 0 ? t('dashboard.allClear') : t('dashboard.tapToView')}
             palette={snapshot.needsAttention.length === 0 ? healthStatusColors.good : healthStatusColors.attention}
             onPress={() => navigation.navigate('NeedsAttention')}
           />
         </View>
 
         <View style={styles.sectionHeaderRow}>
-          <Text style={typography.heading}>My tracked metrics</Text>
+          <Text style={typography.heading}>{t('dashboard.myTrackedMetrics')}</Text>
           <TouchableOpacity onPress={() => setPickerVisible(true)}>
-            <Text style={styles.addLabel}>+ Add</Text>
+            <Text style={styles.addLabel}>{t('dashboard.addMetric')}</Text>
           </TouchableOpacity>
         </View>
         {snapshot.trackedMetrics.length === 0 ? (
-          <Text style={[typography.bodySecondary, styles.emptySection]}>
-            Nothing pinned yet. Tap "+ Add" to track a metric like Hemoglobin or Glucose.
-          </Text>
+          <Text style={[typography.bodySecondary, styles.emptySection]}>{t('dashboard.nothingPinned')}</Text>
         ) : (
           <View style={styles.metricGrid}>
             {snapshot.trackedMetrics.map((metric) => (
               <TrackedMetricCard
                 key={metric.health_parameter_id}
                 metric={metric}
+                t={t}
                 onPress={() =>
                   navigation.navigate('ParameterTrend', { code: metric.parameter_code, displayName: metric.display_name })
                 }
@@ -274,7 +291,7 @@ export default function DashboardScreen({ navigation }) {
         visible={pickerVisible}
         onClose={() => setPickerVisible(false)}
         onSelect={handlePin}
-        title="Track a metric"
+        title={t('dashboard.trackAMetric')}
       />
     </SafeAreaView>
   );
@@ -298,6 +315,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
+  greetingBlock: {
+    flex: 1,
+    gap: 2,
+  },
+  greetingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: spacing.sm,
   },
   accountActions: {

@@ -26,7 +26,9 @@ import RecipePreferencesScreen from '../screens/RecipePreferencesScreen';
 import GmailIntegrationScreen from '../screens/GmailIntegrationScreen';
 import LoginScreen from '../screens/LoginScreen';
 import LanguagePreferenceScreen from '../screens/LanguagePreferenceScreen';
+import VoiceAccessibilityScreen from '../screens/VoiceAccessibilityScreen';
 import { useAuth } from '../auth/AuthContext';
+import { useT } from '../i18n/I18nContext';
 import { colors } from '../theme/theme';
 
 const navigationTheme = {
@@ -76,11 +78,14 @@ const linking = {
       Settings: 'settings',
       RecipePreferences: 'settings/recipe-preferences',
       GmailIntegration: 'settings/gmail',
+      LanguagePreference: 'settings/language',
+      VoiceAccessibility: 'settings/voice',
     },
   },
 };
 
 function Tabs() {
+  const t = useT();
   return (
     <Tab.Navigator
       screenOptions={{
@@ -114,17 +119,22 @@ function Tabs() {
         ),
       }}
     >
-      <Tab.Screen name="DashboardTab" component={DashboardScreen} options={{ title: 'Dashboard', headerShown: false }} />
-      <Tab.Screen name="TimelineTab" component={TimelineScreen} options={{ title: 'Timeline', headerShown: false }} />
-      <Tab.Screen name="MedicationsTab" component={MedicationsScreen} options={{ title: 'Medications', headerShown: false }} />
-      <Tab.Screen name="ChatTab" component={ChatScreen} options={{ title: 'Ask', headerShown: false }} />
-      <Tab.Screen name="UploadTab" component={UploadScreen} options={{ title: 'Upload', headerShown: false }} />
+      <Tab.Screen name="DashboardTab" component={DashboardScreen} options={{ title: t('nav.dashboard'), headerShown: false }} />
+      <Tab.Screen name="TimelineTab" component={TimelineScreen} options={{ title: t('nav.timeline'), headerShown: false }} />
+      <Tab.Screen
+        name="MedicationsTab"
+        component={MedicationsScreen}
+        options={{ title: t('nav.medications'), headerShown: false }}
+      />
+      <Tab.Screen name="ChatTab" component={ChatScreen} options={{ title: t('nav.ask'), headerShown: false }} />
+      <Tab.Screen name="UploadTab" component={UploadScreen} options={{ title: t('nav.upload'), headerShown: false }} />
     </Tab.Navigator>
   );
 }
 
 export default function RootNavigator() {
   const { user, loading } = useAuth();
+  const t = useT();
 
   if (loading) {
     return (
@@ -148,25 +158,29 @@ export default function RootNavigator() {
         }}
       >
         <Stack.Screen name="Tabs" component={Tabs} options={{ headerShown: false }} />
-        <Stack.Screen name="ReportDetail" component={ReportDetailScreen} options={{ title: 'Report' }} />
-        <Stack.Screen name="ParameterTrend" component={ParameterTrendScreen} options={{ title: 'Trend' }} />
-        <Stack.Screen name="OrganDetail" component={OrganDetailScreen} options={{ title: 'Organ health' }} />
-        <Stack.Screen name="Insights" component={InsightsScreen} options={{ title: 'AI insights' }} />
-        <Stack.Screen name="NeedsAttention" component={NeedsAttentionScreen} options={{ title: 'Needs attention' }} />
-        <Stack.Screen name="MedicationDetail" component={MedicationDetailScreen} options={{ title: 'Medication' }} />
+        <Stack.Screen name="ReportDetail" component={ReportDetailScreen} options={{ title: t('nav.report') }} />
+        <Stack.Screen name="ParameterTrend" component={ParameterTrendScreen} options={{ title: t('nav.trend') }} />
+        <Stack.Screen name="OrganDetail" component={OrganDetailScreen} options={{ title: t('nav.organHealth') }} />
+        <Stack.Screen name="Insights" component={InsightsScreen} options={{ title: t('nav.insights') }} />
+        <Stack.Screen name="NeedsAttention" component={NeedsAttentionScreen} options={{ title: t('nav.needsAttention') }} />
+        <Stack.Screen name="MedicationDetail" component={MedicationDetailScreen} options={{ title: t('nav.medication') }} />
         <Stack.Screen
           name="MedicationScanReview"
           component={MedicationScanReviewScreen}
-          options={{ title: 'Review scan' }}
+          options={{ title: t('nav.reviewScan') }}
         />
-        <Stack.Screen name="MedicationCreate" component={MedicationCreateScreen} options={{ title: 'Add medication' }} />
-        <Stack.Screen name="Activity" component={ActivityScreen} options={{ title: 'Activity' }} />
-        <Stack.Screen name="Diet" component={DietScreen} options={{ title: 'Diet' }} />
-        <Stack.Screen name="DietScanReview" component={DietScanReviewScreen} options={{ title: 'Review scan' }} />
+        <Stack.Screen
+          name="MedicationCreate"
+          component={MedicationCreateScreen}
+          options={{ title: t('nav.addMedication') }}
+        />
+        <Stack.Screen name="Activity" component={ActivityScreen} options={{ title: t('nav.activity') }} />
+        <Stack.Screen name="Diet" component={DietScreen} options={{ title: t('nav.diet') }} />
+        <Stack.Screen name="DietScanReview" component={DietScanReviewScreen} options={{ title: t('nav.reviewScan') }} />
         <Stack.Screen
           name="DietEntryForm"
           component={DietEntryFormScreen}
-          options={({ route }) => ({ title: route.params?.entryId ? 'Edit item' : 'Add item' })}
+          options={({ route }) => ({ title: route.params?.entryId ? t('nav.editItem') : t('nav.addItem') })}
         />
         <Stack.Screen name="DietStats" component={DietStatsScreen} options={{ title: 'Diet stats' }} />
         <Stack.Screen name="Recipes" component={RecipesScreen} options={{ title: 'AI recipe ideas' }} />
@@ -174,12 +188,22 @@ export default function RootNavigator() {
         <Stack.Screen
           name="RecipePreferences"
           component={RecipePreferencesScreen}
-          options={{ title: 'Recipe recommendations' }}
+          options={{ title: t('nav.recipePreferences') }}
         />
         <Stack.Screen
           name="GmailIntegration"
           component={GmailIntegrationScreen}
-          options={{ title: 'Connected health sources' }}
+          options={{ title: t('nav.connectedSources') }}
+        />
+        <Stack.Screen
+          name="LanguagePreference"
+          component={LanguagePreferenceScreen}
+          options={{ title: t('nav.language') }}
+        />
+        <Stack.Screen
+          name="VoiceAccessibility"
+          component={VoiceAccessibilityScreen}
+          options={{ title: t('nav.voiceAccessibility') }}
         />
       </Stack.Navigator>
     </NavigationContainer>
