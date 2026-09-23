@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MultiChipSelect from '../components/MultiChipSelect';
 import PrimaryButton from '../components/PrimaryButton';
 import { colors, radii, spacing, typography } from '../theme/theme';
-import { fetchRecipePreferences, saveRecipePreferences } from '../api/client';
+import { fetchRecipePreferences, fetchWeightGoal, saveRecipePreferences, saveWeightGoal } from '../api/client';
 import { showAlert } from '../utils/alert';
 
 // Kept in sync with the CHECK constraint in migration 012 and the allow
@@ -32,14 +32,20 @@ const CUISINE_OPTIONS = [
 export default function RecipePreferencesScreen() {
   const [dietTypes, setDietTypes] = useState([]);
   const [cuisines, setCuisines] = useState([]);
+  const [currentWeightKg, setCurrentWeightKg] = useState('');
+  const [targetWeightKg, setTargetWeightKg] = useState('');
+  const [targetDate, setTargetDate] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const data = await fetchRecipePreferences();
-      setDietTypes(data.dietTypes);
-      setCuisines(data.cuisines);
+      const [preferences, weightGoal] = await Promise.all([fetchRecipePreferences(), fetchWeightGoal()]);
+      setDietTypes(preferences.dietTypes);
+      setCuisines(preferences.cuisines);
+      setCurrentWeightKg(weightGoal.currentWeightKg != null ? String(weightGoal.currentWeightKg) : '');
+      setTargetWeightKg(weightGoal.targetWeightKg != null ? String(weightGoal.targetWeightKg) : '');
+      setTargetDate(weightGoal.targetDate || '');
     } catch (err) {
       showAlert('Could not load preferences', err.message);
     } finally {
@@ -54,7 +60,14 @@ export default function RecipePreferencesScreen() {
   async function handleSave() {
     setBusy(true);
     try {
-      await saveRecipePreferences(dietTypes, cuisines);
+      await Promise.all([
+        saveRecipePreferences(dietTypes, cuisines),
+        saveWeightGoal({
+          currentWeightKg: currentWeightKg.trim() ? Number(currentWeightKg) : null,
+          targetWeightKg: targetWeightKg.trim() ? Number(targetWeightKg) : null,
+          targetDate: targetDate.trim() || null,
+        }),
+      ]);
       showAlert('Saved', 'Your recipe preferences have been updated.');
     } catch (err) {
       showAlert('Could not save preferences', err.message);
@@ -92,6 +105,45 @@ export default function RecipePreferencesScreen() {
           <MultiChipSelect label="Cuisine" options={CUISINE_OPTIONS} value={cuisines} onChange={setCuisines} />
         </View>
 
+        <View style={[styles.card, styles.section]}>
+          <Text style={typography.heading}>Weight goal</Text>
+          <Text style={typography.bodySecondary}>
+            Optional - used to favor recipes with a sensible calorie level for your goal.
+          </Text>
+          <View style={styles.field}>
+            <Text style={styles.label}>Current weight (kg)</Text>
+            <TextInput
+              style={styles.input}
+              value={currentWeightKg}
+              onChangeText={setCurrentWeightKg}
+              placeholder="e.g. 82"
+              placeholderTextColor={colors.textTertiary}
+              keyboardType="decimal-pad"
+            />
+          </View>
+          <View style={styles.field}>
+            <Text style={styles.label}>Target weight (kg)</Text>
+            <TextInput
+              style={styles.input}
+              value={targetWeightKg}
+              onChangeText={setTargetWeightKg}
+              placeholder="e.g. 75"
+              placeholderTextColor={colors.textTertiary}
+              keyboardType="decimal-pad"
+            />
+          </View>
+          <View style={styles.field}>
+            <Text style={styles.label}>Target date (optional)</Text>
+            <TextInput
+              style={styles.input}
+              value={targetDate}
+              onChangeText={setTargetDate}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={colors.textTertiary}
+            />
+          </View>
+        </View>
+
         <PrimaryButton title="Save preferences" onPress={handleSave} loading={busy} />
       </ScrollView>
     </SafeAreaView>
@@ -119,5 +171,23 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: spacing.sm,
+  },
+  field: {
+    gap: 4,
+  },
+  label: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 8,
+    fontSize: 15,
+    backgroundColor: colors.surface,
+    color: colors.textPrimary,
   },
 });

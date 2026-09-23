@@ -165,8 +165,8 @@ export default function DietScreen({ navigation }) {
           <TouchableOpacity onPress={() => navigation.navigate('DietEntryForm')}>
             <Text style={styles.altAction}>Or add an item manually</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate('DietRecipe')}>
-            <Text style={styles.altAction}>Or generate a recipe idea with AI</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('Recipes')}>
+            <Text style={styles.altAction}>Or pick from AI recipe ideas →</Text>
           </TouchableOpacity>
         </View>
 
