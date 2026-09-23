@@ -20,6 +20,9 @@ const SUPPORTED_LANGUAGES = [
   { code: 'zh', name: 'Chinese (Simplified)' },
   { code: 'ja', name: 'Japanese' },
   { code: 'ru', name: 'Russian' },
+  { code: 'ta', name: 'Tamil' },
+  { code: 'te', name: 'Telugu' },
+  { code: 'ms', name: 'Malay' },
 ];
 
 const SUPPORTED_CODES = new Set(SUPPORTED_LANGUAGES.map((l) => l.code));

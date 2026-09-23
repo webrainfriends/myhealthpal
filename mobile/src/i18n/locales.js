@@ -16,6 +16,9 @@ export const LANGUAGES = [
   { code: 'zh', name: 'Chinese (Simplified)', nativeName: '简体中文', speechLocale: 'zh-CN', rtl: false },
   { code: 'ja', name: 'Japanese', nativeName: '日本語', speechLocale: 'ja-JP', rtl: false },
   { code: 'ru', name: 'Russian', nativeName: 'Русский', speechLocale: 'ru-RU', rtl: false },
+  { code: 'ta', name: 'Tamil', nativeName: 'தமிழ்', speechLocale: 'ta-IN', rtl: false },
+  { code: 'te', name: 'Telugu', nativeName: 'తెలుగు', speechLocale: 'te-IN', rtl: false },
+  { code: 'ms', name: 'Malay', nativeName: 'Bahasa Melayu', speechLocale: 'ms-MY', rtl: false },
 ];
 
 export const DEFAULT_LANGUAGE = 'en';
