@@ -156,38 +156,51 @@ function slugifyGroupLabel(label) {
 }
 
 // One card per AI/heuristic-grouped label (see customCardService.js) for
-// every confirmed result a lab report contained that the Health Parameter
-// Registry has no canonical match for at all (health_parameter_id IS NULL -
-// unlike /organs, which can only ever show a registry-mapped result). Exists
-// so a report's full set of results is always represented somewhere on the
-// Dashboard, never silently dropped just because nothing recognized the
-// test name.
+// every result a lab report contained that the Health Parameter Registry has
+// no canonical match for at all (health_parameter_id IS NULL - unlike
+// /organs, which can only ever show a registry-mapped result). Scoped by
+// report status exactly like /organs (Needs Review or Completed, not
+// requiring per-measurement is_confirmed) - a result the user hasn't
+// explicitly confirmed yet already shows on an organ card the moment
+// extraction finishes, so gating this on confirmation would leave an
+// unmapped result invisible for as long as the report sits in Needs
+// Review, defeating the entire point: a report's full set of results is
+// always represented somewhere on the Dashboard, never silently dropped
+// just because nothing recognized the test name.
+// Exported for dashboard.test.js: the latest unmapped result per distinct
+// raw test name for a user, scoped by report status exactly like /organs
+// (see the route comment above for why this deliberately does NOT also
+// require hm.is_confirmed).
+async function fetchLatestUnmappedMeasurements(userId) {
+  const { rows } = await pool.query(
+    `WITH ranked AS (
+       SELECT hm.raw_test_name, hm.raw_value, hm.raw_unit, hm.qualitative_value, hm.status_flag,
+              hm.reference_range_raw, hm.numeric_value, hm.normalized_value, r.effective_date, r.id AS report_id,
+              row_number() OVER (
+                PARTITION BY lower(hm.raw_test_name)
+                ORDER BY COALESCE(r.effective_date, r.created_at::date) DESC, hm.created_at DESC
+              ) AS rank
+       FROM health_measurements hm
+       JOIN reports r ON r.id = hm.report_id
+       WHERE r.user_id = $1
+         AND hm.health_parameter_id IS NULL
+         AND ${EXCLUDE_DUPLICATES_SQL}
+         AND r.ingestion_status IN ('Needs Review', 'Completed')
+     )
+     SELECT raw_test_name, raw_value, raw_unit, qualitative_value, status_flag,
+            reference_range_raw, numeric_value, normalized_value, effective_date, report_id
+     FROM ranked
+     WHERE rank = 1`,
+    [userId]
+  );
+  return rows;
+}
+
 router.get('/custom-cards', async (req, res, next) => {
   try {
     const userId = currentUserId(req);
 
-    const { rows } = await pool.query(
-      `WITH ranked AS (
-         SELECT hm.raw_test_name, hm.raw_value, hm.raw_unit, hm.qualitative_value, hm.status_flag,
-                hm.reference_range_raw, hm.numeric_value, hm.normalized_value, r.effective_date, r.id AS report_id,
-                row_number() OVER (
-                  PARTITION BY lower(hm.raw_test_name)
-                  ORDER BY COALESCE(r.effective_date, r.created_at::date) DESC, hm.created_at DESC
-                ) AS rank
-         FROM health_measurements hm
-         JOIN reports r ON r.id = hm.report_id
-         WHERE r.user_id = $1
-           AND hm.health_parameter_id IS NULL
-           AND hm.is_confirmed = true
-           AND ${EXCLUDE_DUPLICATES_SQL}
-           AND r.ingestion_status IN ('Needs Review', 'Completed')
-       )
-       SELECT raw_test_name, raw_value, raw_unit, qualitative_value, status_flag,
-              reference_range_raw, numeric_value, normalized_value, effective_date, report_id
-       FROM ranked
-       WHERE rank = 1`,
-      [userId]
-    );
+    const rows = await fetchLatestUnmappedMeasurements(userId);
 
     const groupByKey = await groupTestNames(
       rows.map((row) => row.raw_test_name),
@@ -310,3 +323,6 @@ router.get('/parameters/:code/trend', async (req, res, next) => {
 });
 
 module.exports = router;
+// Exposed for dashboard.test.js only - module.exports is still the router
+// itself, used identically by app.js.
+module.exports.fetchLatestUnmappedMeasurements = fetchLatestUnmappedMeasurements;
