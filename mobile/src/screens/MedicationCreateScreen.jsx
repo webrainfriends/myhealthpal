@@ -13,6 +13,7 @@ const EMPTY = {
   dosage_amount: null,
   dosage_unit: null,
   form: null,
+  medicine_system: 'allopathic',
   ingredients_raw: null,
   frequency_per_day: null,
   instructions: null,

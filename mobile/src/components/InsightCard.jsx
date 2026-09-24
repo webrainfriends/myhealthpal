@@ -1,4 +1,4 @@
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { colors, radii, spacing, typography } from '../theme/theme';
 import { useT } from '../i18n/I18nContext';
 import SpeakButton from './SpeakButton';
@@ -30,6 +30,16 @@ export default function InsightCard({ insight, onPress, onDismiss, onFeedback })
         )}
       </View>
       <Text style={typography.bodySecondary}>{insight.explanation}</Text>
+      {insight.citation?.url && (
+        <TouchableOpacity
+          onPress={() => Linking.openURL(insight.citation.url)}
+          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+        >
+          <Text style={styles.citationLink}>
+            {t('insights.viewSource', { name: insight.citation.name || insight.citation.url })}
+          </Text>
+        </TouchableOpacity>
+      )}
       <View style={styles.footerRow}>
         <Text style={typography.caption}>
           {reportCount} {reportCount === 1 ? t('insights.source') : t('insights.sources')} ·{' '}
@@ -73,6 +83,12 @@ const styles = StyleSheet.create({
   dismissLabel: {
     color: colors.textTertiary,
     fontSize: 14,
+  },
+  citationLink: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primary,
+    textDecorationLine: 'underline',
   },
   footerRow: {
     flexDirection: 'row',

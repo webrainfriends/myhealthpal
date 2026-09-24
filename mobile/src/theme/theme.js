@@ -54,6 +54,17 @@ export const medicationStatusColors = {
   discontinued: { fg: colors.textTertiary, bg: colors.surfaceMuted },
 };
 
+// A medication's system of medicine - a label, not a good/bad status (like
+// mealTypeColors below), so every entry uses a neutral tone from the
+// existing palette.
+export const medicineSystemColors = {
+  allopathic: { fg: colors.primary, bg: colors.primaryMuted },
+  ayurvedic: { fg: colors.success, bg: colors.successMuted },
+  homeopathic: { fg: '#0E9FB4', bg: '#E1F7FA' },
+  unani: { fg: colors.accent, bg: colors.accentMuted },
+  siddha: { fg: colors.warning, bg: colors.warningMuted },
+};
+
 // Medication alert severity -> color, shared by the alert banner and
 // medication detail screen.
 export const alertSeverityColors = {
@@ -142,6 +153,7 @@ const theme = {
   statusColors,
   healthStatusColors,
   medicationStatusColors,
+  medicineSystemColors,
   mealTypeColors,
   alertSeverityColors,
   activityRingColors,

@@ -175,6 +175,7 @@ export const TRANSLATIONS = {
       couldNotDismiss: 'Could not dismiss insight',
       couldNotSendFeedback: 'Could not send feedback',
       readAloud: 'Read this insight aloud',
+      viewSource: 'View source: {{name}}',
     },
     retest: {
       title: '📅 Health due dates',
@@ -324,6 +325,14 @@ export const TRANSLATIONS = {
       forecastReassess: 'Past the expected window - worth rechecking with a lab test',
       forecastUnknown: 'Not enough information to forecast',
       readAloud: 'Read this medication aloud',
+      systemAllopathic: 'Allopathic',
+      systemAyurvedic: 'Ayurvedic',
+      systemHomeopathic: 'Homeopathic',
+      systemUnani: 'Unani',
+      systemSiddha: 'Siddha',
+      sourceExact: 'Source for this information:',
+      sourceLookup: "This description isn't from one specific page - verify it with an authoritative source:",
+      viewSource: 'View source: {{name}}',
     },
     diet: {
       title: 'Diet',
