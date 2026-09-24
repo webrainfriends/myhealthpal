@@ -12,11 +12,13 @@
 // "Metabolism & Intestines" rather than given its own card - this changes
 // only which card a thyroid result counts toward, never the category value
 // stored on the parameter itself (still 'thyroid', still filterable
-// elsewhere). "Brain" and "Bones" have no registry category yet (this app
-// has no cognitive/bone-density parameters) - an empty categories array is
-// deliberate, not a placeholder to fill in: buildOrganSummaries already
-// reports a categories:[] group as 'no_data' rather than fabricating a
-// score, exactly like any other group with zero tracked results.
+// elsewhere). "Brain" and "Bones" have no registry category (this app has
+// no cognitive/bone-density parameters), so instead of whole categories
+// they claim specific tests by code - the blood tests a doctor actually
+// checks for those organs (B12/TSH/HbA1c for brain, vitamin D/calcium/
+// phosphorus/ALP for bone), each with a one-line reason it's relevant. A
+// test claimed this way still counts on its own home card too: a low B12
+// is a Vitamins result AND a Brain-relevant one, the way a doctor reads it.
 // Urinalysis (the 'urine' category) is folded into the Kidney card the same
 // way - a urine complete analysis is clinically part of a renal workup, and
 // it keeps the dashboard's card list exactly as already decided rather than
@@ -84,6 +86,18 @@ const ORGAN_GROUPS = [
     label: 'Brain',
     icon: '🧠',
     categories: [],
+    // No registry category measures the brain itself, but these blood tests
+    // are the ones a doctor checks for treatable causes of memory, mood and
+    // nerve symptoms - so the card correlates them here (each still also
+    // counts on its own home card, e.g. B12 on Vitamins).
+    codes: {
+      vitamin_b12: 'Low B12 can cause memory problems, low mood, and tingling or numbness in hands and feet.',
+      vitamin_d: 'Low vitamin D is linked with low mood and fatigue.',
+      tsh: 'An under- or overactive thyroid can cause slowed thinking, poor concentration, anxiety or low mood.',
+      homocysteine: 'High homocysteine is linked with a higher risk of stroke and memory decline.',
+      hba1c: 'Long-term high blood sugar damages small blood vessels and nerves, including in the brain.',
+      glucose_fasting: 'Blood sugar that runs too high or too low affects concentration and energy.',
+    },
     suggestedTests: ['Vitamin B12', 'Vitamin D', 'TSH (thyroid)', 'Folate', 'Homocysteine', 'Fasting Glucose / HbA1c'],
     note:
       'These are common blood tests doctors use to rule out treatable causes of memory/concentration symptoms (a B12, thyroid, or blood-sugar problem, for example) - ask a doctor which ones fit your situation. Cognitive screening (e.g. MMSE/MoCA) and neuroimaging (MRI/CT) evaluate the brain directly but aren’t lab tests, so they will never appear on this card even once ordered - ask your doctor about those separately.',
@@ -93,6 +107,12 @@ const ORGAN_GROUPS = [
     label: 'Bones',
     icon: '🦴',
     categories: [],
+    codes: {
+      vitamin_d: 'Vitamin D is needed to absorb calcium - low levels weaken bones over time.',
+      calcium: 'Calcium is the main mineral in bone; blood levels are kept tightly controlled, so an abnormal value is worth discussing.',
+      phosphorus: 'Phosphorus works with calcium to build and harden bone.',
+      alp: 'Alkaline phosphatase rises when bone is being broken down or rebuilt quickly (it also comes from the liver).',
+    },
     suggestedTests: ['Vitamin D', 'Calcium', 'Phosphorus', 'Alkaline Phosphatase', 'Parathyroid Hormone (PTH)'],
     note:
       'These blood tests reflect bone-related minerals and hormones - ask a doctor which fit your situation. A DEXA bone density scan is the standard test for bone strength itself but isn’t a lab test, so it will never appear on this card even once ordered - ask your doctor about that separately.',
@@ -103,6 +123,46 @@ const ORGAN_GROUPS = [
     icon: '💊',
     categories: ['vitamins'],
     suggestedTests: ['Vitamin D', 'Vitamin B12', 'Folate', 'Ferritin/Iron'],
+  },
+  // The groups below cover registry categories no organ card above claims,
+  // so a recognized (registry-mapped) result in them - a PSA, a cortisol, an
+  // IgE - is never silently dropped from the dashboard. Unlike the organ
+  // cards they're `hideWhenEmpty`: an empty "Tumor Markers" card on
+  // everyone's dashboard would read as a suggestion to go get screened.
+  // `customLabels` are the group labels customCardService gives an
+  // unmapped result of the same kind (e.g. a CA-125 the registry doesn't
+  // know yet) - routes/dashboard.js folds those into this card too, so the
+  // same kind of test never ends up split across two cards.
+  {
+    key: 'tumor_markers',
+    label: 'Tumor Markers',
+    icon: '🎗️',
+    categories: ['tumor_markers'],
+    customLabels: ['Tumor Markers'],
+    hideWhenEmpty: true,
+    codes: {
+      psa_total: 'PSA comes from the prostate. It can rise with an enlarged prostate, infection, recent ejaculation or cycling - not only with cancer.',
+      cea: 'CEA is mostly used to follow bowel and some other cancers after diagnosis. Smoking and inflammation can also raise it.',
+    },
+    suggestedTests: ['PSA (men)', 'CEA', 'CA-125 (women)', 'AFP', 'CA 19-9'],
+    note:
+      'A tumor marker on its own can’t show or rule out cancer: levels can rise for many harmless reasons, and can be normal when cancer is present. Doctors read them together with an exam and scans - mostly to follow a known condition over time, where the trend matters more than a single value. Discuss any result here with your doctor.',
+  },
+  {
+    key: 'hormones',
+    label: 'Hormones',
+    icon: '⚗️',
+    categories: ['hormones'],
+    customLabels: ['Hormones'],
+    hideWhenEmpty: true,
+  },
+  {
+    key: 'immunity',
+    label: 'Immunity & Infections',
+    icon: '🛡️',
+    categories: ['immunology', 'infectious_disease'],
+    customLabels: ['Allergy & Immune'],
+    hideWhenEmpty: true,
   },
 ];
 
@@ -325,8 +385,16 @@ function buildCardSummaries(rows, groups, standardRangesByCode = new Map()) {
     rowsByCategory.set(row.category, list);
   }
 
+  const rowsByCode = new Map(rows.filter((row) => row.code).map((row) => [row.code, row]));
+
   return groups.map((group) => {
-    const groupRows = group.categories.flatMap((category) => rowsByCategory.get(category) || []);
+    const categoryRows = group.categories.flatMap((category) => rowsByCategory.get(category) || []);
+    // A group can also claim specific tests by code, on top of (or instead
+    // of) whole categories - see ORGAN_GROUPS' Brain/Bones entries.
+    const codeRows = Object.keys(group.codes || {})
+      .map((code) => rowsByCode.get(code))
+      .filter((row) => row && !categoryRows.includes(row));
+    const groupRows = [...categoryRows, ...codeRows];
     const parameters = groupRows.map((row) => {
       const standardRange = standardRangesByCode.get(row.code);
       const evaluation = evaluateResult(row, standardRange);
@@ -353,6 +421,10 @@ function buildCardSummaries(rows, groups, standardRangesByCode = new Map()) {
         severity: evaluation.severity,
         effectiveDate: row.effectiveDate || null,
         reportId: row.reportId || null,
+        // Why this test is on this card, in plain words - how a doctor
+        // would connect it to the organ ("Low B12 can cause memory
+        // problems..."). Only for tests a group claims by code.
+        relevance: group.codes?.[row.code] || null,
       };
     });
 
@@ -426,8 +498,22 @@ function buildCardSummaries(rows, groups, standardRangesByCode = new Map()) {
 // none) is a Map<parameterCode, reference_ranges row> - see
 // referenceRangeService.getAllReferenceRangesByCode - used as a fallback
 // when a row's own report didn't print a usable flag/range.
+// A `hideWhenEmpty` group (see ORGAN_GROUPS) is left out entirely when the
+// user has nothing tracked in it.
 function buildOrganSummaries(rows, standardRangesByCode = new Map()) {
-  return buildCardSummaries(rows, ORGAN_GROUPS, standardRangesByCode);
+  return buildCardSummaries(rows, ORGAN_GROUPS, standardRangesByCode).filter(
+    (card, index) => !ORGAN_GROUPS[index].hideWhenEmpty || card.trackedCount > 0
+  );
+}
+
+// Map<lowercased custom-card label, organ group key> - which customCardService
+// labels an organ card absorbs (see ORGAN_GROUPS' customLabels).
+const ORGAN_KEY_BY_CUSTOM_LABEL = new Map(
+  ORGAN_GROUPS.flatMap((group) => (group.customLabels || []).map((label) => [label.toLowerCase(), group.key]))
+);
+
+function organKeyForCustomLabel(label) {
+  return ORGAN_KEY_BY_CUSTOM_LABEL.get(String(label || '').trim().toLowerCase()) || null;
 }
 
 module.exports = {
@@ -436,5 +522,6 @@ module.exports = {
   buildCardSummaries,
   determineResultStatus,
   evaluateResult,
+  organKeyForCustomLabel,
   parseRange,
 };

@@ -6,6 +6,7 @@ const {
   buildCardSummaries,
   determineResultStatus,
   evaluateResult,
+  organKeyForCustomLabel,
 } = require('../src/services/organHealthService');
 
 test('no registry category is claimed by more than one organ group', () => {
@@ -18,11 +19,6 @@ test('no registry category is claimed by more than one organ group', () => {
 });
 
 test('every currently-carded category maps to its expected organ group', () => {
-  // Some registry categories (infectious_disease, hormones, immunology,
-  // tumor_markers) are deliberately uncarded - present in the data and
-  // still reachable via reports/timeline/chat, just with no dashboard
-  // card of their own. This only checks the categories that ARE meant to
-  // have a card.
   const EXPECTED = {
     diabetes: 'diabetes',
     lipids: 'heart',
@@ -36,6 +32,10 @@ test('every currently-carded category maps to its expected organ group', () => {
     metabolic: 'metabolism',
     thyroid: 'metabolism',
     vitamins: 'vitamins',
+    tumor_markers: 'tumor_markers',
+    hormones: 'hormones',
+    immunology: 'immunity',
+    infectious_disease: 'immunity',
   };
   for (const [category, expectedKey] of Object.entries(EXPECTED)) {
     const group = ORGAN_GROUPS.find((g) => g.categories.includes(category));
@@ -51,16 +51,68 @@ test('activity has no organ group at all (tracked separately, never scored again
   );
 });
 
-test('brain and bones have no registry category yet and always report no_data', () => {
-  for (const key of ['brain', 'bones']) {
-    const group = ORGAN_GROUPS.find((g) => g.key === key);
-    assert.deepEqual(group.categories, []);
-  }
+test('brain and bones report no_data with nothing tracked', () => {
   const summaries = buildOrganSummaries([]);
   for (const key of ['brain', 'bones']) {
     const organ = summaries.find((s) => s.key === key);
     assert.equal(organ.status, 'no_data');
   }
+});
+
+test('every registry category that appears in the seed data has a card, so no mapped result is ever dropped', () => {
+  const PARAMETERS = require('../db/registry-seed-data');
+  const carded = new Set(ORGAN_GROUPS.flatMap((g) => g.categories));
+  for (const parameter of PARAMETERS) {
+    assert.ok(carded.has(parameter.category), `${parameter.code} (${parameter.category}) has no card`);
+  }
+});
+
+test('brain correlates the blood tests doctors check for it, each with a reason, while they stay on their home card too', () => {
+  const rows = [
+    { code: 'vitamin_b12', displayName: 'Vitamin B12', category: 'vitamins', numericValue: 150, referenceRangeRaw: '211-911' },
+    { code: 'tsh', displayName: 'TSH', category: 'thyroid', numericValue: 2.1, referenceRangeRaw: '0.4-4.5' },
+    { code: 'ldl', displayName: 'LDL Cholesterol', category: 'lipids', numericValue: 90, referenceRangeRaw: '0-100' },
+  ];
+  const summaries = buildOrganSummaries(rows);
+  const brain = summaries.find((s) => s.key === 'brain');
+  assert.deepEqual(brain.parameters.map((p) => p.code), ['vitamin_b12', 'tsh']);
+  assert.match(brain.parameters[0].relevance, /memory/);
+  assert.equal(brain.status, 'attention'); // B12 29% below its lower limit
+  // Still counted on its own card as well.
+  assert.equal(summaries.find((s) => s.key === 'vitamins').trackedCount, 1);
+  assert.equal(summaries.find((s) => s.key === 'metabolism').trackedCount, 1);
+  // A category-claimed result has no per-test relevance line.
+  assert.equal(summaries.find((s) => s.key === 'vitamins').parameters[0].relevance, null);
+});
+
+test('bones correlates vitamin D, calcium, phosphorus and ALP', () => {
+  const rows = [
+    { code: 'vitamin_d', displayName: 'Vitamin D', category: 'vitamins', numericValue: 14, referenceRangeRaw: '30-100' },
+    { code: 'calcium', displayName: 'Calcium', category: 'kidney', numericValue: 9.4, referenceRangeRaw: '8.5-10.5' },
+  ];
+  const bones = buildOrganSummaries(rows).find((s) => s.key === 'bones');
+  assert.equal(bones.trackedCount, 2);
+  assert.deepEqual(bones.outOfRange.map((p) => p.code), ['vitamin_d']);
+});
+
+test('tumor markers get their own card only when tracked, with a caution note', () => {
+  assert.equal(buildOrganSummaries([]).find((s) => s.key === 'tumor_markers'), undefined);
+  const rows = [
+    { code: 'psa_total', displayName: 'Total PSA', category: 'tumor_markers', numericValue: 1.2, referenceRangeRaw: '0-4' },
+    { code: 'cea', displayName: 'Carcinoembryonic Antigen (CEA)', category: 'tumor_markers', numericValue: 6.1, referenceRangeRaw: '0-5' },
+  ];
+  const card = buildOrganSummaries(rows).find((s) => s.key === 'tumor_markers');
+  assert.equal(card.trackedCount, 2);
+  assert.deepEqual(card.outOfRange.map((p) => p.code), ['cea']);
+  assert.match(card.note, /can’t show or rule out cancer/);
+  assert.match(card.parameters.find((p) => p.code === 'psa_total').relevance, /prostate/);
+});
+
+test('organKeyForCustomLabel folds matching custom-card labels into the organ card, case-insensitively', () => {
+  assert.equal(organKeyForCustomLabel('Tumor Markers'), 'tumor_markers');
+  assert.equal(organKeyForCustomLabel(' tumor markers '), 'tumor_markers');
+  assert.equal(organKeyForCustomLabel('Allergy & Immune'), 'immunity');
+  assert.equal(organKeyForCustomLabel('Proteins'), null);
 });
 
 test('every organ card - even an empty one like Brain - names what tests would feed it', () => {
