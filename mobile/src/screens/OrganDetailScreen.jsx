@@ -7,7 +7,7 @@ import { cardShadow, colors, healthStatusColors, radii, spacing, typography } fr
 import { fetchCustomCards, fetchOrganHealth } from '../api/client';
 import { useT } from '../i18n/I18nContext';
 import { formatCalendarDate } from '../utils/date';
-import { cardCounts, outOfRangeList } from '../utils/organReadout';
+import { cardCounts, cardHeadline, flagLabel, notCheckedNote, outOfRangeList } from '../utils/organReadout';
 
 const RESULT_STATUS_KEYS = {
   normal: 'organDetail.resultNormal',
@@ -20,26 +20,26 @@ function formatDate(value) {
   return formatCalendarDate(value, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-// "High" / "Low" rather than a bare "Out of range" when the direction is
-// known - it's the first thing anyone asks about a flagged result.
+// For an out-of-range result, the same wording the card and summary use
+// ("Well above range", "Slightly high") rather than a bare "Out of range".
 function resultLabel(parameter, t) {
-  if (parameter.resultStatus === 'abnormal' && parameter.direction === 'high') return t('organDetail.resultHigh');
-  if (parameter.resultStatus === 'abnormal' && parameter.direction === 'low') return t('organDetail.resultLow');
+  if (parameter.resultStatus === 'abnormal') return flagLabel(parameter, t);
   return t(RESULT_STATUS_KEYS[parameter.resultStatus] || RESULT_STATUS_KEYS.unknown);
 }
 
-// The doctor-style summary under the hero: how many results are normal,
-// which ones aren't (and which way), and a plain reminder that this counts
-// test results - it is not a measure of how well the organ itself works.
+// The doctor-style summary under the hero: the same headline the dashboard
+// card shows, then which results are out of range (and which way), and how
+// many tracked results couldn't be checked at all.
 function organSummary(organ, t) {
-  const { evaluated, normal } = cardCounts(organ);
-  if (evaluated === 0) return null;
-  const organName = organ.label.toLowerCase();
+  const headline = cardHeadline(organ, t);
+  if (!headline) return null;
   const list = outOfRangeList(organ, t);
   return [
-    t('organDetail.countDescription', { normal, total: evaluated, organ: organName }),
-    list ? t('organDetail.outOfRangeList', { list }) : t('organDetail.allInRange'),
-  ].join(' ');
+    list ? t('organDetail.outOfRangeList', { list }) : null,
+    notCheckedNote(organ, t),
+  ]
+    .filter(Boolean)
+    .join(' ');
 }
 
 // Builds the sentence SpeakButton reads for the whole organ card: each
@@ -50,7 +50,8 @@ function buildOrganSpeech(organ, t) {
     const value = p.value !== null && p.value !== undefined ? `${p.value} ${p.unit || ''}` : '';
     return `${p.displayName}: ${value}, ${resultLabel(p, t)}.`;
   });
-  return [organSummary(organ, t), ...parts].filter(Boolean).join(' ');
+  const headline = cardHeadline(organ, t);
+  return [headline ? `${headline}.` : null, organSummary(organ, t), ...parts].filter(Boolean).join(' ');
 }
 
 function ParameterRow({ parameter, onPress, onAlertPress, t }) {
@@ -148,8 +149,27 @@ export default function OrganDetailScreen({ route, navigation }) {
   }
 
   const palette = healthStatusColors[organ.status] || healthStatusColors.no_data;
-  const { evaluated, normal } = cardCounts(organ);
+  const { evaluated, outOfRange } = cardCounts(organ);
+  const headline = cardHeadline(organ, t);
   const summary = organSummary(organ, t);
+  const suggestedBox = organ.suggestedTests?.length > 0 && (
+    <View style={[styles.suggestedBox, cardShadow]}>
+      <Text style={typography.heading}>
+        {t(organ.trackedCount > 0 ? 'organDetail.otherPanelTests' : 'organDetail.testsFeedCard')}
+      </Text>
+      <Text style={typography.bodySecondary}>
+        {t(organ.trackedCount > 0 ? 'organDetail.otherPanelTestsHint' : 'organDetail.testsFeedCardHint')}
+      </Text>
+      <View style={styles.suggestedChipRow}>
+        {organ.suggestedTests.map((test) => (
+          <View key={test} style={styles.suggestedChip}>
+            <Text style={styles.suggestedChipText}>{test}</Text>
+          </View>
+        ))}
+      </View>
+      {organ.note && <Text style={styles.disclaimer}>{organ.note}</Text>}
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -160,10 +180,6 @@ export default function OrganDetailScreen({ route, navigation }) {
               <Text style={styles.icon}>{organ.icon}</Text>
             </View>
             <View style={styles.heroScoreBlock}>
-              <Text style={[styles.heroScore, { color: palette.fg }]}>
-                {evaluated === 0 ? '—' : `${normal}/${evaluated}`}
-              </Text>
-              {evaluated > 0 && <Text style={typography.caption}>{t('organDetail.heroCountLabel')}</Text>}
               <View style={[styles.statusPill, { backgroundColor: palette.bg }]}>
                 <Text style={[styles.statusPillText, { color: palette.fg }]}>
                   {t(STATUS_LABEL_KEYS[organ.status] || STATUS_LABEL_KEYS.no_data)}
@@ -172,31 +188,23 @@ export default function OrganDetailScreen({ route, navigation }) {
             </View>
             <SpeakButton text={buildOrganSpeech(organ, t)} label={t('organDetail.readAloud')} />
           </View>
+          {headline && (
+            <Text
+              style={[styles.heroHeadline, { color: outOfRange.length ? palette.fg : healthStatusColors.good.fg }]}
+            >
+              {headline}
+            </Text>
+          )}
           <Text style={typography.bodySecondary}>
             {organ.trackedCount === 0
               ? t('organDetail.noResultsYet', { organ: organ.label.toLowerCase() })
               : summary || t('organDetail.cardNotEvaluated', { count: organ.trackedCount, plural: organ.trackedCount === 1 ? '' : 's' })}
           </Text>
-          {evaluated > 0 && (
-            <Text style={typography.caption}>{t('organDetail.notOrganFunction', { organ: organ.label.toLowerCase() })}</Text>
-          )}
+          {evaluated > 0 && <Text style={typography.caption}>{t('organDetail.notOrganFunction')}</Text>}
           <Text style={styles.disclaimer}>{t('organDetail.disclaimer')}</Text>
         </View>
 
-        {organ.suggestedTests?.length > 0 && (
-          <View style={[styles.suggestedBox, cardShadow]}>
-            <Text style={typography.heading}>{t('organDetail.testsFeedCard')}</Text>
-            <Text style={typography.bodySecondary}>{t('organDetail.testsFeedCardHint')}</Text>
-            <View style={styles.suggestedChipRow}>
-              {organ.suggestedTests.map((test) => (
-                <View key={test} style={styles.suggestedChip}>
-                  <Text style={styles.suggestedChipText}>{test}</Text>
-                </View>
-              ))}
-            </View>
-            {organ.note && <Text style={styles.disclaimer}>{organ.note}</Text>}
-          </View>
-        )}
+        {organ.trackedCount === 0 && suggestedBox}
 
         <Text style={[typography.heading, styles.sectionSpacing]}>{t('organDetail.trackedTests')}</Text>
         {organ.parameters.length === 0 ? (
@@ -216,6 +224,8 @@ export default function OrganDetailScreen({ route, navigation }) {
             />
           ))
         )}
+
+        {organ.trackedCount > 0 && suggestedBox}
       </ScrollView>
 
       <ResultSummaryModal
@@ -272,8 +282,8 @@ const styles = StyleSheet.create({
   heroScoreBlock: {
     gap: 4,
   },
-  heroScore: {
-    fontSize: 34,
+  heroHeadline: {
+    fontSize: 20,
     fontWeight: '800',
   },
   statusPill: {

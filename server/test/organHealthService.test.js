@@ -323,3 +323,15 @@ test('kidney group merges the kidney and electrolytes categories', () => {
     ['creatinine', 'sodium']
   );
 });
+
+test('parameters list out-of-range results first, most concerning first, then normal, then unevaluated', () => {
+  const rows = [
+    { code: 'a', displayName: 'A Normal', category: 'diabetes', numericValue: 90, referenceRangeRaw: '70-99' },
+    { code: 'b', displayName: 'B Unknown', category: 'diabetes' },
+    { code: 'c', displayName: 'C Slightly High', category: 'diabetes', numericValue: 6.0, referenceRangeRaw: '4.0-5.6' },
+    { code: 'd', displayName: 'D Well High', category: 'diabetes', numericValue: 144, referenceRangeRaw: '70-99' },
+  ];
+  const diabetes = buildOrganSummaries(rows).find((s) => s.key === 'diabetes');
+  assert.deepEqual(diabetes.parameters.map((p) => p.code), ['d', 'c', 'a', 'b']);
+  assert.deepEqual(diabetes.outOfRange.map((p) => p.code), ['d', 'c']);
+});

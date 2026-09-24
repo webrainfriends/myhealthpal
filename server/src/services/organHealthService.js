@@ -298,6 +298,7 @@ function cardStatus(evaluatedCount, outOfRange) {
 }
 
 const SEVERITY_RANK = { critical: 0, marked: 1, mild: 2 };
+const RESULT_ORDER = { abnormal: 0, normal: 1, unknown: 2 };
 
 const STATUS_LABELS = {
   good: 'Good',
@@ -393,7 +394,17 @@ function buildCardSummaries(rows, groups, standardRangesByCode = new Map()) {
       // Out-of-range results, most concerning first - what a doctor would
       // actually name when reading the report back ("your LDL is high").
       outOfRange,
-      parameters: parameters.sort((a, b) => a.displayName.localeCompare(b.displayName)),
+      // Out-of-range results first (most concerning first, same order as
+      // outOfRange), then normal ones, then any that couldn't be evaluated -
+      // the order a doctor goes through a report, and the same order the
+      // dashboard card names them in.
+      parameters: parameters.sort(
+        (a, b) =>
+          RESULT_ORDER[a.resultStatus] - RESULT_ORDER[b.resultStatus] ||
+          (SEVERITY_RANK[a.severity] ?? 3) - (SEVERITY_RANK[b.severity] ?? 3) ||
+          (b.deviationPercent ?? -1) - (a.deviationPercent ?? -1) ||
+          a.displayName.localeCompare(b.displayName)
+      ),
       // What lab tests commonly feed this card - always present (not just
       // when empty) so a populated card can still answer "what else could I
       // track here". See ORGAN_GROUPS' comment for why this is curated
