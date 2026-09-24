@@ -387,3 +387,23 @@ test('parameters list out-of-range results first, most concerning first, then no
   assert.deepEqual(diabetes.parameters.map((p) => p.code), ['d', 'c', 'a', 'b']);
   assert.deepEqual(diabetes.outOfRange.map((p) => p.code), ['d', 'c']);
 });
+
+test('blood sugar uses diagnostic cut-offs, not the generic % rule, for "slightly" vs "well" above range', () => {
+  const hba1c = (v) => evaluateResult({ code: 'hba1c', numericValue: v, referenceRangeRaw: '4.0-5.6' }).severity;
+  assert.equal(hba1c(6.0), 'mild'); // pre-diabetes band
+  assert.equal(hba1c(6.8), 'marked'); // diabetic range, though only ~21% over 5.6
+  const ppbs = (v) => evaluateResult({ code: 'glucose_post_prandial', numericValue: v, referenceRangeRaw: '70-140' }).severity;
+  assert.equal(ppbs(180), 'mild'); // 29% over, but below the 200 diabetic cut-off
+  assert.equal(ppbs(210), 'marked');
+});
+
+test('a card total counts every tracked test, and an unevaluable one never inflates or hides the out-of-range count', () => {
+  const rows = [
+    { code: 'glucose_fasting', displayName: 'Glucose (Fasting)', category: 'diabetes', numericValue: 144, referenceRangeRaw: '70-100' },
+    { code: 'beta_cell_function', displayName: 'Beta Cell Function', category: 'diabetes', numericValue: 108.7 },
+  ];
+  const d = buildOrganSummaries(rows).find((s) => s.key === 'diabetes');
+  assert.equal(d.trackedCount, 2);
+  assert.equal(d.evaluatedCount, 1);
+  assert.equal(d.outOfRange.length, 1);
+});
