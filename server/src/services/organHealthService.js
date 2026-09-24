@@ -238,6 +238,20 @@ const CRITICAL_FLAGS = new Set(['critical', 'critically high', 'critically low',
 // actually act on. Only a readout-framing threshold, not a clinical cut-off.
 const MARKED_DEVIATION_PERCENT = 25;
 
+// Where a test has an agreed diagnostic cut-off, that - not the generic %
+// rule above - decides "slightly" vs "well" past range. Blood sugar is
+// tightly regulated, so a % rule badly understates it: HbA1c 6.8% is only
+// ~21% over the 5.6% upper limit, yet it's in the diabetic range, which no
+// doctor would call "slightly high". Values between the normal limit and
+// the cut-off (the pre-diabetes band) stay 'mild'. ADA/WHO criteria.
+const MARKED_HIGH_AT = {
+  hba1c: 6.5, // %  - diabetes
+  glucose_fasting: 126, // mg/dL - diabetes
+  glucose_post_prandial: 200, // mg/dL (2-hour) - diabetes
+  glucose: 200, // mg/dL random - diabetes
+  glucose_mean: 140, // mg/dL - eAG equivalent of HbA1c 6.5%
+};
+
 function numericValueOf(row) {
   const value = row.normalizedValue ?? row.numericValue;
   return value === null || value === undefined || !Number.isFinite(Number(value)) ? null : Number(value);
@@ -335,8 +349,11 @@ function evaluateResult(row, standardRange) {
   const deviationPercent =
     direction && limits ? deviationPast(direction === 'high' ? limits.high : limits.low, value, direction) : null;
   let severity = 'mild';
+  const markedAt = MARKED_HIGH_AT[row.code];
   if (CRITICAL_FLAGS.has(flag)) severity = 'critical';
-  else if (deviationPercent !== null && deviationPercent >= MARKED_DEVIATION_PERCENT) severity = 'marked';
+  else if (markedAt !== undefined && direction === 'high' && value !== null) {
+    if (value >= markedAt) severity = 'marked';
+  } else if (deviationPercent !== null && deviationPercent >= MARKED_DEVIATION_PERCENT) severity = 'marked';
 
   return { status, direction, deviationPercent, severity };
 }

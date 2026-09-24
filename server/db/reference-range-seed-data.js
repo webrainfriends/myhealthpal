@@ -385,4 +385,22 @@ module.exports = [
       },
     ],
   },
+  {
+    // Estimated average glucose (eAG) is computed from HbA1c (eAG mg/dL =
+    // 28.7 x HbA1c - 46.7), so its normal band is simply the one that
+    // matches a normal HbA1c (4.0-5.6%). Without this, labs that print it
+    // with no range of their own left it permanently "not checked".
+    parameterCode: 'glucose_mean',
+    unit: 'mg/dL',
+    ranges: [
+      {
+        source: 'who',
+        conditionLabel: 'general',
+        low: 68,
+        high: 114,
+        citation:
+          'ADA/WHO: estimated average glucose corresponding to a non-diabetic HbA1c of 4.0-5.6% (eAG = 28.7 x HbA1c - 46.7); 117-137 mg/dL corresponds to the pre-diabetes HbA1c range of 5.7-6.4%.',
+      },
+    ],
+  },
 ];

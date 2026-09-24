@@ -48,17 +48,23 @@ export function cardCounts(organ) {
   return { evaluated, normal: organ.normalCount || 0, outOfRange, notChecked };
 }
 
-// The one-line headline for a card: "All 5 tests normal" / "2 of 5 tests
-// outside normal range", or null when nothing has been evaluated yet. Used
-// verbatim by both the dashboard card and the detail screen's hero, so
-// tapping a card never re-states the same numbers a different way.
+// The one-line headline for a card: "All 5 tests normal" / "5 of 8 tests
+// outside normal range", or null when nothing has been evaluated yet. The
+// total is every tracked test - the same number of tests the detail screen
+// lists - so a card never says "5 of 5" over a list of 8. Tests that
+// couldn't be checked are named separately (notCheckedNote). Used verbatim
+// by both the dashboard card and the detail screen's hero, so tapping a
+// card never re-states the same numbers a different way.
 export function cardHeadline(organ, t) {
-  const { evaluated, outOfRange } = cardCounts(organ);
+  const { evaluated, normal, outOfRange, notChecked } = cardCounts(organ);
   if (evaluated === 0) return null;
+  const total = evaluated + notChecked;
   if (outOfRange.length === 0) {
-    return t('organDetail.cardAllNormal', { count: evaluated, plural: evaluated === 1 ? '' : 's' });
+    return notChecked === 0
+      ? t('organDetail.cardAllNormal', { count: total, plural: total === 1 ? '' : 's' })
+      : t('organDetail.cardSomeNormal', { count: normal, total });
   }
-  return t('organDetail.cardOutOfRange', { count: outOfRange.length, total: evaluated });
+  return t('organDetail.cardOutOfRange', { count: outOfRange.length, total });
 }
 
 // "LDL Cholesterol (well above range), HDL Cholesterol (slightly low)"
@@ -68,11 +74,20 @@ export function outOfRangeList(organ, t) {
     .join(', ');
 }
 
-// "+1 tracked test not checked (no range to compare against)", or null.
+// "3 not checked (no reference range): Beta Cell Function, ...", or null.
+// Names them, since these are exactly the tests someone looks for when the
+// counts don't add up to what they remember being on the report.
 export function notCheckedNote(organ, t) {
   const { notChecked } = cardCounts(organ);
   if (notChecked === 0) return null;
-  return t('organDetail.notCheckedNote', { count: notChecked, plural: notChecked === 1 ? '' : 's' });
+  const names = (organ.parameters || []).filter((p) => p.resultStatus === 'unknown').map((p) => p.displayName);
+  return t('organDetail.notCheckedNote', { count: notChecked, list: names.join(', ') || '—' });
+}
+
+// The card's short form: "3 not checked (no reference range)".
+export function cardNotCheckedNote(organ, t) {
+  const { notChecked } = cardCounts(organ);
+  return notChecked === 0 ? null : t('organDetail.cardNotChecked', { count: notChecked });
 }
 
 // Spoken summary of one card, used by the dashboard's read-aloud.
