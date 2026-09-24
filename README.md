@@ -1,4 +1,4 @@
-# MyHealthPal
+# EyeMyHealth
 
 A light-themed React Native (Expo) app on top of an Express + PostgreSQL API,
 covering:

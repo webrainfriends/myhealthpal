@@ -150,7 +150,7 @@ export default function LoginScreen() {
           <View style={styles.hero}>
             <FloatingMascot />
             <Text style={styles.wordmark}>
-              MyHealth<Text style={styles.wordmarkAccent}>Pal</Text>
+              <Text style={styles.wordmarkAccent}>Eye</Text>MyHealth
             </Text>
             <Text style={styles.tagline}>{t('login.tagline')}</Text>
             <View style={styles.featureRow}>
