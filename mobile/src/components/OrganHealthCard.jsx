@@ -1,7 +1,7 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { cardShadow, colors, healthStatusColors, radii, spacing, typography } from '../theme/theme';
 import { useT } from '../i18n/I18nContext';
-import { cardCounts, cardHeadline, describeFlag, directionArrow } from '../utils/organReadout';
+import { cardCounts, cardHeadline, describeFlag, directionArrow, notCheckedNote } from '../utils/organReadout';
 
 const STATUS_LABEL_KEYS = {
   good: 'organDetail.statusGood',
@@ -86,6 +86,7 @@ export default function OrganHealthCard({ organ, onPress }) {
         </Text>
       ))}
       {moreCount > 0 && <Text style={typography.caption}>{t('organDetail.moreCount', { count: moreCount })}</Text>}
+      {evaluated > 0 && notCheckedNote(organ, t) && <Text style={typography.caption}>{notCheckedNote(organ, t)}</Text>}
 
       {organ.trackedCount === 0 ? (
         <Text style={typography.caption} numberOfLines={1}>

@@ -32,16 +32,26 @@ export function directionArrow(result) {
   return '!';
 }
 
+// The same flag as a standalone label ("Well above range", "Slightly
+// low") for a per-test pill - capitalized, since it isn't mid-sentence.
+export function flagLabel(result, t) {
+  const text = describeFlag(result, t);
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 // Older/cached payloads may predate evaluatedCount/outOfRange - derive them
 // from the counts every payload has always carried.
 export function cardCounts(organ) {
   const outOfRange = organ.outOfRange || [];
   const evaluated = organ.evaluatedCount ?? (organ.normalCount || 0) + (organ.attentionCount || 0);
-  return { evaluated, normal: organ.normalCount || 0, outOfRange };
+  const notChecked = Math.max(0, (organ.trackedCount || 0) - evaluated);
+  return { evaluated, normal: organ.normalCount || 0, outOfRange, notChecked };
 }
 
 // The one-line headline for a card: "All 5 tests normal" / "2 of 5 tests
-// outside normal range", or null when nothing has been evaluated yet.
+// outside normal range", or null when nothing has been evaluated yet. Used
+// verbatim by both the dashboard card and the detail screen's hero, so
+// tapping a card never re-states the same numbers a different way.
 export function cardHeadline(organ, t) {
   const { evaluated, outOfRange } = cardCounts(organ);
   if (evaluated === 0) return null;
@@ -56,6 +66,13 @@ export function outOfRangeList(organ, t) {
   return cardCounts(organ)
     .outOfRange.map((result) => `${result.displayName} (${describeFlag(result, t)})`)
     .join(', ');
+}
+
+// "+1 tracked test not checked (no range to compare against)", or null.
+export function notCheckedNote(organ, t) {
+  const { notChecked } = cardCounts(organ);
+  if (notChecked === 0) return null;
+  return t('organDetail.notCheckedNote', { count: notChecked, plural: notChecked === 1 ? '' : 's' });
 }
 
 // Spoken summary of one card, used by the dashboard's read-aloud.
