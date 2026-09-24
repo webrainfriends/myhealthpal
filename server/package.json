@@ -11,6 +11,7 @@
     "seed": "node db/seed.js",
     "fixtures": "node scripts/generate-fixtures.js",
     "ai-usage-report": "node scripts/ai-usage-report.js",
+    "retest-reminders": "node scripts/send-retest-reminders.js",
     "test": "node --test"
   },
   "dependencies": {

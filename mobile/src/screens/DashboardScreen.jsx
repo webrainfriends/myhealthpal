@@ -8,6 +8,7 @@ import ActivityCard from '../components/ActivityCard';
 import DietCard from '../components/DietCard';
 import SpeakButton from '../components/SpeakButton';
 import SummaryCard from '../components/SummaryCard';
+import RetestPlanCard from '../components/RetestPlanCard';
 import GradientFill from '../components/brand/GradientFill';
 import Mascot from '../components/brand/Mascot';
 import { brandShadow, cardShadow, colors, healthStatusColors, radii, spacing, typography } from '../theme/theme';
@@ -17,7 +18,9 @@ import {
   fetchDashboardSnapshot,
   fetchDietSummary,
   fetchOrganHealth,
+  fetchRetestPlans,
   pinParameter,
+  setRetestCheckin,
   unpinParameter,
 } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
@@ -107,6 +110,7 @@ export default function DashboardScreen({ navigation }) {
   const [customCards, setCustomCards] = useState(null);
   const [activity, setActivity] = useState(null);
   const [diet, setDiet] = useState(null);
+  const [retestPlans, setRetestPlans] = useState([]);
   const [pickerVisible, setPickerVisible] = useState(false);
 
   const load = useCallback(async () => {
@@ -116,7 +120,7 @@ export default function DashboardScreen({ navigation }) {
     // entire dashboard (organ grid, insights/attention counts, tracked
     // metrics, activity, diet - everything), not just its own card.
     // allSettled lets each section populate independently of the others.
-    const [snapshotResult, organResult, customCardResult, activityResult, dietResult] = await Promise.allSettled([
+    const [snapshotResult, organResult, customCardResult, activityResult, dietResult, retestResult] = await Promise.allSettled([
       fetchDashboardSnapshot(),
       fetchOrganHealth(),
       // Results a report contained that matched nothing in the Health
@@ -129,6 +133,7 @@ export default function DashboardScreen({ navigation }) {
       // rarely includes literally today.
       fetchActivitySummary(7),
       fetchDietSummary(1),
+      fetchRetestPlans(),
     ]);
 
     if (snapshotResult.status === 'fulfilled') setSnapshot(snapshotResult.value);
@@ -149,6 +154,9 @@ export default function DashboardScreen({ navigation }) {
     if (dietResult.status === 'fulfilled') setDiet(dietResult.value);
     else console.warn('Failed to load diet summary', dietResult.reason?.message);
 
+    if (retestResult.status === 'fulfilled') setRetestPlans(retestResult.value.plans);
+    else console.warn('Failed to load retest plans', retestResult.reason?.message);
+
     setLoading(false);
   }, []);
 
@@ -164,6 +172,15 @@ export default function DashboardScreen({ navigation }) {
       await load();
     } catch (err) {
       showAlert(t('dashboard.couldNotPin'), err.message);
+    }
+  }
+
+  async function handleToggleCheckin(plan) {
+    try {
+      const { plan: updated } = await setRetestCheckin(plan.id, !plan.checkedInThisWeek);
+      if (updated) setRetestPlans((current) => current.map((p) => (p.id === updated.id ? updated : p)));
+    } catch (err) {
+      showAlert(t('retest.couldNotUpdate'), err.message);
     }
   }
 
@@ -228,6 +245,28 @@ export default function DashboardScreen({ navigation }) {
             <Mascot size={92} />
           </View>
         </View>
+
+        {retestPlans.length > 0 && (
+          <>
+            <View style={[styles.sectionHeaderRow, styles.sectionSpacing]}>
+              <Text style={typography.heading}>{t('retest.title')}</Text>
+              <TouchableOpacity onPress={() => navigation.navigate('RetestRadar')}>
+                <Text style={styles.addLabel}>{t('retest.seeAll', { count: retestPlans.length })}</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.retestList}>
+              {retestPlans.slice(0, 2).map((plan) => (
+                <RetestPlanCard
+                  key={plan.id}
+                  plan={plan}
+                  t={t}
+                  onToggleCheckin={handleToggleCheckin}
+                  onPress={() => navigation.navigate('RetestRadar')}
+                />
+              ))}
+            </View>
+          </>
+        )}
 
         {activity && (
           <View style={styles.sectionSpacing}>
@@ -431,6 +470,10 @@ const styles = StyleSheet.create({
   },
   sectionSpacing: {
     marginTop: spacing.lg,
+  },
+  retestList: {
+    gap: spacing.sm,
+    marginTop: spacing.sm,
   },
   sectionSubtitle: {
     marginTop: 2,
