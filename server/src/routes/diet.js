@@ -501,7 +501,7 @@ router.post('/recipes/generate', async (req, res, next) => {
   }
 });
 
-// Auto-generated, paginated recipe feed for the standalone Recipes screen -
+// On-demand, paginated recipe feed for the standalone Recipes screen -
 // grounded in the same considerations as /recipes/generate plus recent
 // activity, weight goal, and saved diet/cuisine preferences (see
 // dietRecipeService.generateRecipeFeed). Not persisted; "Add to Diet" on
@@ -513,7 +513,10 @@ router.post('/recipes/feed', async (req, res, next) => {
     if (body.meal_type && !MEAL_TYPES.has(body.meal_type)) {
       return res.status(400).json({ error: 'meal_type is not a recognized meal.' });
     }
-    const count = Math.min(Math.max(Number.parseInt(body.limit, 10) || 10, 1), 10);
+    const count = Math.min(
+      Math.max(Number.parseInt(body.limit, 10) || dietRecipeService.FEED_MAX_COUNT, 1),
+      dietRecipeService.FEED_MAX_COUNT
+    );
     const excludeTitles = Array.isArray(body.exclude_titles)
       ? body.exclude_titles.filter((t) => typeof t === 'string').slice(0, 200)
       : [];

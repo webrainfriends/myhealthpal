@@ -262,9 +262,19 @@ const FEED_SYSTEM_PROMPT = [
   'of these signals apply to a given recipe, why_this_recipe should describe why it fits the meal type/preferences',
   'instead, with no health claims at all.',
   'Estimate the nutrition per serving using standard nutritional data, the same way you would when logging a food.',
+  'Keep each recipe concise: a one-sentence description, at most 10 ingredients, at most 8 short instruction steps,',
+  'and a why_this_recipe of one or two sentences.',
   'This is a recipe-generation task, not a diagnosis or treatment plan: never suggest a medication change and',
   'never claim a recipe treats or cures a condition.',
 ].join(' ');
+
+// Recipes per feed request. Each one is roughly 800-1,200 output tokens
+// (13 nutrient fields, ingredients, steps), so a small batch keeps the cost
+// of one "Generate" tap predictable. The per-recipe output budget has
+// headroom so a batch finishes instead of being cut off: a cut-off tool
+// call used to lose the *whole* batch while still being billed for it.
+const FEED_MAX_COUNT = 5;
+const FEED_OUTPUT_TOKENS_PER_RECIPE = 1500;
 
 const RECIPE_LIST_TOOL = {
   name: 'generate_recipes',
@@ -332,12 +342,27 @@ function buildFeedUserMessage({ mealType, count, considerations, activity, weigh
   return parts.join(' ');
 }
 
+// The usable recipes in a feed response. When the output was cut off at
+// max_tokens, the last recipe in the partially-parsed array is the one
+// being written at the cutoff - its ingredients, steps, or nutrition may be
+// missing even if it looks well-formed - so it is dropped. Anything without
+// a title, ingredients, and instructions is dropped too, rather than shown
+// as a recipe nobody could cook.
+function completeRecipesFrom(response) {
+  const toolUse = response?.content?.find((block) => block.type === 'tool_use');
+  let rawRecipes = Array.isArray(toolUse?.input?.recipes) ? toolUse.input.recipes : [];
+  if (response?.stop_reason === 'max_tokens') rawRecipes = rawRecipes.slice(0, -1);
+  return rawRecipes
+    .map(mapRecipeResult)
+    .filter((r) => r && r.title !== 'Untitled recipe' && r.ingredients.length > 0 && r.instructions.length > 0);
+}
+
 // Auto-generates a personalized batch of recipes with no meal type or free
 // text typed by the user - grounded the same way generateRecipe() is, plus
 // recent activity, weight goal, and saved diet-type/cuisine preferences.
 // excludeTitles lets the caller page through without repeats: the mobile
-// "Load 10 more" button passes every title already shown so far.
-async function generateRecipeFeed(userId, { mealType, count = 10, excludeTitles = [] } = {}) {
+// "Generate more" button passes every title already shown so far.
+async function generateRecipeFeed(userId, { mealType, count = FEED_MAX_COUNT, excludeTitles = [] } = {}) {
   if (!config.anthropicApiKey) {
     throw new Error('AI recipe generation requires ANTHROPIC_API_KEY to be set.');
   }
@@ -353,27 +378,29 @@ async function generateRecipeFeed(userId, { mealType, count = 10, excludeTitles 
   const activity = describeActivity(activityRows);
 
   const client = new Anthropic({ apiKey: config.anthropicApiKey });
-  const response = await client.messages.create({
-    model: config.anthropicModel,
-    max_tokens: Math.min(8192, 600 * count + 512),
-    system: FEED_SYSTEM_PROMPT,
-    tools: [RECIPE_LIST_TOOL],
-    tool_choice: { type: 'tool', name: RECIPE_LIST_TOOL.name },
-    messages: [
-      {
-        role: 'user',
-        content: buildFeedUserMessage({ mealType, count, considerations, activity, weightGoal, preferences, excludeTitles }),
-      },
-    ],
-  });
+  // Streamed rather than .create(): if the output does hit max_tokens, the
+  // SDK's stream still partially parses the cut-off tool input, so every
+  // recipe finished before the cutoff is kept (see completeRecipesFrom)
+  // instead of the whole paid-for batch coming back empty.
+  const response = await client.messages
+    .stream({
+      model: config.anthropicModel,
+      max_tokens: FEED_OUTPUT_TOKENS_PER_RECIPE * count + 512,
+      system: FEED_SYSTEM_PROMPT,
+      tools: [RECIPE_LIST_TOOL],
+      tool_choice: { type: 'tool', name: RECIPE_LIST_TOOL.name },
+      messages: [
+        {
+          role: 'user',
+          content: buildFeedUserMessage({ mealType, count, considerations, activity, weightGoal, preferences, excludeTitles }),
+        },
+      ],
+    })
+    .finalMessage();
   recordAiUsage(FEATURES.RECIPES, response);
 
-  const toolUse = response.content.find((block) => block.type === 'tool_use');
-  const rawRecipes = Array.isArray(toolUse?.input?.recipes) ? toolUse.input.recipes : [];
   const excludeTitlesLower = new Set(excludeTitles.map((t) => t.toLowerCase().trim()));
-  const recipes = rawRecipes
-    .map(mapRecipeResult)
-    .filter((r) => r && !excludeTitlesLower.has(r.title.toLowerCase().trim()));
+  const recipes = completeRecipesFrom(response).filter((r) => !excludeTitlesLower.has(r.title.toLowerCase().trim()));
 
   return {
     recipes,
@@ -390,6 +417,8 @@ async function generateRecipeFeed(userId, { mealType, count = 10, excludeTitles 
 module.exports = {
   generateRecipe,
   generateRecipeFeed,
+  completeRecipesFrom,
+  FEED_MAX_COUNT,
   mapRecipeResult,
   buildUserMessage,
   buildFeedUserMessage,

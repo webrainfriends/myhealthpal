@@ -1,13 +1,22 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ChipSelect from '../components/ChipSelect';
 import PrimaryButton from '../components/PrimaryButton';
 import { cardShadow, colors, radii, spacing, typography } from '../theme/theme';
 import { createFoodEntry, fetchDietRecipeFeed } from '../api/client';
+import { useAuth } from '../auth/AuthContext';
 import { showAlert } from '../utils/alert';
 
-const PAGE_SIZE = 10;
+// Matches the server's per-request cap (dietRecipeService FEED_MAX_COUNT).
+const PAGE_SIZE = 5;
+
+// The last generated batch, kept for the life of the app so leaving the
+// screen and coming back shows the recipes already paid for instead of an
+// empty screen (or, as before, silently generating a new batch). Tagged
+// with the user id: recipes are personalized from health data, so a
+// different account signing in on the same device must never see them.
+let lastFeed = null;
 
 const MEAL_TYPE_OPTIONS = [
   { value: 'breakfast', label: 'Breakfast' },
@@ -32,54 +41,62 @@ const ACTIVITY_LEVEL_LABELS = {
   'low activity': 'your activity level',
 };
 
-// A standalone, self-loading recipe feed - not a form embedded in the Diet
-// screen. It generates a personalized batch of AI recipes automatically on
-// open (no button press needed to see the first page), grounded in the
-// person's lab results that need attention, recent activity, weight goal,
-// and saved diet/cuisine preferences (see dietRecipeService.generateRecipeFeed
-// server-side). "Add to Diet" on a card is the same food_entries POST the
-// manual/scanned flows use.
+// A standalone recipe feed - not a form embedded in the Diet screen. Every
+// generation costs AI tokens, so nothing is generated until the person taps
+// "Generate recipes" (never on open, and never just from changing the meal
+// filter). Recipes are grounded in the person's lab results that need
+// attention, recent activity, weight goal, and saved diet/cuisine
+// preferences (see dietRecipeService.generateRecipeFeed server-side). "Add
+// to Diet" on a card is the same food_entries POST the manual/scanned flows
+// use.
 export default function RecipesScreen({ navigation }) {
-  const [mealType, setMealType] = useState(null);
-  const [recipes, setRecipes] = useState([]);
-  const [considerations, setConsiderations] = useState([]);
-  const [signals, setSignals] = useState(null);
-  const [hasMore, setHasMore] = useState(true);
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const saved = lastFeed && lastFeed.userId === user?.id ? lastFeed : null;
+  const [mealType, setMealType] = useState(saved?.mealType ?? null);
+  const [recipes, setRecipes] = useState(saved?.recipes ?? []);
+  const [considerations, setConsiderations] = useState(saved?.considerations ?? []);
+  const [signals, setSignals] = useState(saved?.signals ?? null);
+  const [hasMore, setHasMore] = useState(saved?.hasMore ?? false);
+  const [generated, setGenerated] = useState(Boolean(saved));
+  const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
   const [expandedTitle, setExpandedTitle] = useState(null);
   const [addingTitle, setAddingTitle] = useState(null);
 
-  const loadFirstPage = useCallback(async (type) => {
+  function remember(next) {
+    lastFeed = { userId: user?.id, mealType, recipes, considerations, signals, hasMore, ...next };
+  }
+
+  async function handleGenerate() {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchDietRecipeFeed({ mealType: type, limit: PAGE_SIZE });
+      const data = await fetchDietRecipeFeed({ mealType, limit: PAGE_SIZE });
+      const more = Boolean(data.hasMore) && data.recipes.length > 0;
       setRecipes(data.recipes);
       setConsiderations(data.considerations || []);
       setSignals(data.signals || null);
-      setHasMore(Boolean(data.hasMore) && data.recipes.length > 0);
+      setHasMore(more);
+      setGenerated(true);
+      remember({ recipes: data.recipes, considerations: data.considerations || [], signals: data.signals || null, hasMore: more });
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, []);
-
-  useEffect(() => {
-    loadFirstPage(mealType);
-    // Re-runs whenever the meal-type filter changes, starting a fresh feed.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mealType]);
+  }
 
   async function handleLoadMore() {
     setLoadingMore(true);
     try {
       const excludeTitles = recipes.map((r) => r.title);
       const data = await fetchDietRecipeFeed({ mealType, excludeTitles, limit: PAGE_SIZE });
-      setRecipes((prev) => [...prev, ...data.recipes]);
-      setHasMore(Boolean(data.hasMore) && data.recipes.length > 0);
+      const nextRecipes = [...recipes, ...data.recipes];
+      const more = Boolean(data.hasMore) && data.recipes.length > 0;
+      setRecipes(nextRecipes);
+      setHasMore(more);
+      remember({ recipes: nextRecipes, hasMore: more });
     } catch (err) {
       showAlert('Could not load more recipes', err.message);
     } finally {
@@ -115,20 +132,25 @@ export default function RecipesScreen({ navigation }) {
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={typography.title}>AI recipe ideas</Text>
         <Text style={[typography.bodySecondary, styles.subtitle]}>
-          Generated automatically for you{signalNotes.length > 0 ? `, based on ${signalNotes.join(', ')}, and your diet/cuisine preferences.` : '.'}
+          {signalNotes.length > 0
+            ? `Personalized for you, based on ${signalNotes.join(', ')}, and your diet/cuisine preferences.`
+            : 'Personalized for you, based on your health data and diet/cuisine preferences.'}
         </Text>
 
         <ChipSelect label="Meal (optional filter)" options={MEAL_TYPE_OPTIONS} value={mealType} onChange={setMealType} />
 
+        <PrimaryButton
+          title={generated ? `Generate ${PAGE_SIZE} new recipes` : `Generate ${PAGE_SIZE} recipes`}
+          onPress={handleGenerate}
+          loading={loading}
+          disabled={loading || loadingMore}
+        />
+        <Text style={[typography.caption, styles.costHint]}>Each generation uses AI tokens - see Settings › AI usage.</Text>
+
         {loading && <Text style={[typography.bodySecondary, styles.status]}>Generating recipes for you…</Text>}
-        {!loading && error && (
-          <View style={styles.errorBox}>
-            <Text style={typography.bodySecondary}>{error}</Text>
-            <PrimaryButton title="Try again" variant="secondary" onPress={() => loadFirstPage(mealType)} />
-          </View>
-        )}
-        {!loading && !error && recipes.length === 0 && (
-          <Text style={[typography.bodySecondary, styles.status]}>No recipes came back. Try again.</Text>
+        {!loading && error && <Text style={[typography.bodySecondary, styles.status]}>{error}</Text>}
+        {!loading && !error && generated && recipes.length === 0 && (
+          <Text style={[typography.bodySecondary, styles.status]}>No recipes came back this time. Please try again.</Text>
         )}
 
         {recipes.map((recipe) => {
@@ -204,7 +226,13 @@ export default function RecipesScreen({ navigation }) {
         })}
 
         {!loading && recipes.length > 0 && hasMore && (
-          <PrimaryButton title="Load 10 more" variant="secondary" onPress={handleLoadMore} loading={loadingMore} />
+          <PrimaryButton
+            title={`Load ${PAGE_SIZE} more`}
+            variant="secondary"
+            onPress={handleLoadMore}
+            loading={loadingMore}
+            disabled={loadingMore}
+          />
         )}
       </ScrollView>
     </SafeAreaView>
@@ -228,8 +256,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.lg,
   },
-  errorBox: {
-    gap: spacing.sm,
+  costHint: {
+    textAlign: 'center',
+    marginTop: -spacing.sm,
   },
   recipeCard: {
     backgroundColor: colors.surface,

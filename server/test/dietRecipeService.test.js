@@ -1,6 +1,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { mapRecipeResult, buildUserMessage, buildFeedUserMessage, describeActivity } = require('../src/diet/dietRecipeService');
+const { MessageStream } = require('@anthropic-ai/sdk/lib/MessageStream');
+const {
+  mapRecipeResult,
+  buildUserMessage,
+  buildFeedUserMessage,
+  describeActivity,
+  completeRecipesFrom,
+} = require('../src/diet/dietRecipeService');
 
 test('buildUserMessage includes meal type, preferences, and considerations when given', () => {
   const message = buildUserMessage({
@@ -120,4 +127,67 @@ test('buildFeedUserMessage states plainly when a signal is absent', () => {
   assert.match(message, /No recent activity data/);
   assert.match(message, /No weight goal is on file/);
   assert.doesNotMatch(message, /Do not repeat/);
+});
+
+const fullRecipe = (title) => ({
+  title,
+  meal_type: 'lunch',
+  description: 'A dish.',
+  servings: 2,
+  ingredients: [{ item: 'rice', amount: '1 cup' }],
+  instructions: ['Cook it.'],
+  why_this_recipe: 'Fits lunch.',
+  calories: 400,
+});
+
+// Replays a tool-use response through the SDK's own stream parser, the
+// same path generateRecipeFeed uses, cut off mid-way through the JSON.
+async function streamedToolResponse(json, stopReason) {
+  const events = [
+    { type: 'message_start', message: { id: 'm', type: 'message', role: 'assistant', model: 'claude-sonnet-5', content: [], stop_reason: null, usage: { input_tokens: 10, output_tokens: 0 } } },
+    { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 't', name: 'generate_recipes', input: {} } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: json } },
+    { type: 'content_block_stop', index: 0 },
+    { type: 'message_delta', delta: { stop_reason: stopReason }, usage: { output_tokens: 100 } },
+    { type: 'message_stop' },
+  ];
+  const body = new ReadableStream({
+    start(controller) {
+      for (const event of events) controller.enqueue(new TextEncoder().encode(`${JSON.stringify(event)}\n`));
+      controller.close();
+    },
+  });
+  return MessageStream.fromReadableStream(body).finalMessage();
+}
+
+test('completeRecipesFrom keeps the finished recipes from an output cut off at max_tokens', async () => {
+  const complete = JSON.stringify({ recipes: [fullRecipe('Dal'), fullRecipe('Upma'), fullRecipe('Poha')] });
+  // Cut in the middle of the third recipe's instructions.
+  const truncated = complete.slice(0, complete.lastIndexOf('Cook it.') + 4);
+  const response = await streamedToolResponse(truncated, 'max_tokens');
+
+  const recipes = completeRecipesFrom(response);
+  assert.deepEqual(recipes.map((r) => r.title), ['Dal', 'Upma']);
+});
+
+test('completeRecipesFrom keeps every recipe when the output finished normally', async () => {
+  const response = await streamedToolResponse(
+    JSON.stringify({ recipes: [fullRecipe('Dal'), fullRecipe('Upma')] }),
+    'tool_use'
+  );
+  assert.deepEqual(completeRecipesFrom(response).map((r) => r.title), ['Dal', 'Upma']);
+});
+
+test('completeRecipesFrom drops recipes with no ingredients or instructions', () => {
+  const response = {
+    stop_reason: 'tool_use',
+    content: [
+      {
+        type: 'tool_use',
+        input: { recipes: [fullRecipe('Dal'), { ...fullRecipe('Empty'), ingredients: [] }, { ...fullRecipe('NoSteps'), instructions: [] }] },
+      },
+    ],
+  };
+  assert.deepEqual(completeRecipesFrom(response).map((r) => r.title), ['Dal']);
+  assert.deepEqual(completeRecipesFrom({ content: [] }), []);
 });
