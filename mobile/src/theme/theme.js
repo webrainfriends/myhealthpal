@@ -1,4 +1,4 @@
-// Theme tokens for MyHealthPal. Every screen and component pulls
+// Theme tokens for EyeMyHealth. Every screen and component pulls
 // colors/spacing from here so the app reads as one consistent system: a
 // bright, energetic violet-to-pink brand over soft lavender surfaces, with
 // clear (still accessible) status colors for anything health-related.

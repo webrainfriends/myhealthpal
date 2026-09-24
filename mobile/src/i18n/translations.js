@@ -59,7 +59,7 @@ export const TRANSLATIONS = {
       addItem: 'Add item',
     },
     login: {
-      title: 'MyHealthPal',
+      title: 'EyeMyHealth',
       tagline: "Your friendly companion for a healthier you.",
       featureReports: "Reports decoded",
       featureMeds: "Meds on track",
@@ -160,7 +160,7 @@ export const TRANSLATIONS = {
       speedNormal: 'Normal',
       speedFast: 'Fast',
       testButton: 'Test voice',
-      testSentence: 'This is how MyHealthPal will read your results aloud.',
+      testSentence: 'This is how EyeMyHealth will read your results aloud.',
       stop: 'Stop',
       notSupported: "Voice reading isn't supported on this device or browser.",
     },
@@ -382,7 +382,7 @@ export const TRANSLATIONS = {
       },
     },
     chat: {
-      title: 'Ask MyHealthPal',
+      title: 'Ask EyeMyHealth',
       placeholder: 'Ask a question about your health data…',
       send: 'Send',
       empty:
@@ -536,7 +536,7 @@ export const TRANSLATIONS = {
       addItem: 'Añadir elemento',
     },
     login: {
-      title: 'MyHealthPal',
+      title: 'EyeMyHealth',
       tagline: "Tu compañero amigable para una vida más sana.",
       featureReports: "Informes descifrados",
       featureMeds: "Medicinas al día",
@@ -604,7 +604,7 @@ export const TRANSLATIONS = {
       speedNormal: 'Normal',
       speedFast: 'Rápida',
       testButton: 'Probar voz',
-      testSentence: 'Así es como MyHealthPal leerá tus resultados en voz alta.',
+      testSentence: 'Así es como EyeMyHealth leerá tus resultados en voz alta.',
       stop: 'Detener',
       notSupported: 'La lectura por voz no es compatible con este dispositivo o navegador.',
     },
@@ -826,7 +826,7 @@ export const TRANSLATIONS = {
       },
     },
     chat: {
-      title: 'Pregúntale a MyHealthPal',
+      title: 'Pregúntale a EyeMyHealth',
       placeholder: 'Haz una pregunta sobre tus datos de salud…',
       send: 'Enviar',
       empty:
@@ -980,7 +980,7 @@ export const TRANSLATIONS = {
       addItem: 'Ajouter un élément',
     },
     login: {
-      title: 'MyHealthPal',
+      title: 'EyeMyHealth',
       tagline: "Votre compagnon bienveillant pour une vie plus saine.",
       featureReports: "Rapports décryptés",
       featureMeds: "Médicaments suivis",
@@ -1048,7 +1048,7 @@ export const TRANSLATIONS = {
       speedNormal: 'Normale',
       speedFast: 'Rapide',
       testButton: 'Tester la voix',
-      testSentence: "Voici comment MyHealthPal lira vos résultats à voix haute.",
+      testSentence: "Voici comment EyeMyHealth lira vos résultats à voix haute.",
       stop: 'Arrêter',
       notSupported: "La lecture vocale n'est pas prise en charge sur cet appareil ou ce navigateur.",
     },
@@ -1270,7 +1270,7 @@ export const TRANSLATIONS = {
       },
     },
     chat: {
-      title: 'Demander à MyHealthPal',
+      title: 'Demander à EyeMyHealth',
       placeholder: 'Posez une question sur vos données de santé…',
       send: 'Envoyer',
       empty:
@@ -1424,7 +1424,7 @@ export const TRANSLATIONS = {
       addItem: 'Eintrag hinzufügen',
     },
     login: {
-      title: 'MyHealthPal',
+      title: 'EyeMyHealth',
       tagline: "Dein freundlicher Begleiter für ein gesünderes Leben.",
       featureReports: "Befunde erklärt",
       featureMeds: "Medikamente im Blick",
@@ -1492,7 +1492,7 @@ export const TRANSLATIONS = {
       speedNormal: 'Normal',
       speedFast: 'Schnell',
       testButton: 'Stimme testen',
-      testSentence: 'So wird MyHealthPal deine Ergebnisse vorlesen.',
+      testSentence: 'So wird EyeMyHealth deine Ergebnisse vorlesen.',
       stop: 'Stopp',
       notSupported: 'Vorlesen wird auf diesem Gerät oder Browser nicht unterstützt.',
     },
@@ -1714,7 +1714,7 @@ export const TRANSLATIONS = {
       },
     },
     chat: {
-      title: 'MyHealthPal fragen',
+      title: 'EyeMyHealth fragen',
       placeholder: 'Stelle eine Frage zu deinen Gesundheitsdaten…',
       send: 'Senden',
       empty:
@@ -1868,7 +1868,7 @@ export const TRANSLATIONS = {
       addItem: 'Adicionar item',
     },
     login: {
-      title: 'MyHealthPal',
+      title: 'EyeMyHealth',
       tagline: "Seu companheiro amigo para uma vida mais saudável.",
       featureReports: "Exames explicados",
       featureMeds: "Remédios em dia",
@@ -1936,7 +1936,7 @@ export const TRANSLATIONS = {
       speedNormal: 'Normal',
       speedFast: 'Rápida',
       testButton: 'Testar voz',
-      testSentence: 'É assim que o MyHealthPal vai ler seus resultados em voz alta.',
+      testSentence: 'É assim que o EyeMyHealth vai ler seus resultados em voz alta.',
       stop: 'Parar',
       notSupported: 'A leitura por voz não é compatível com este dispositivo ou navegador.',
     },
@@ -2158,7 +2158,7 @@ export const TRANSLATIONS = {
       },
     },
     chat: {
-      title: 'Perguntar ao MyHealthPal',
+      title: 'Perguntar ao EyeMyHealth',
       placeholder: 'Faça uma pergunta sobre seus dados de saúde…',
       send: 'Enviar',
       empty:
@@ -2312,7 +2312,7 @@ export const TRANSLATIONS = {
       addItem: 'Добавить запись',
     },
     login: {
-      title: 'MyHealthPal',
+      title: 'EyeMyHealth',
       tagline: "Ваш дружелюбный помощник для здоровой жизни.",
       featureReports: "Анализы понятно",
       featureMeds: "Лекарства под контролем",
@@ -2380,7 +2380,7 @@ export const TRANSLATIONS = {
       speedNormal: 'Обычная',
       speedFast: 'Быстро',
       testButton: 'Проверить голос',
-      testSentence: 'Вот как MyHealthPal будет читать ваши результаты вслух.',
+      testSentence: 'Вот как EyeMyHealth будет читать ваши результаты вслух.',
       stop: 'Стоп',
       notSupported: 'Голосовое чтение не поддерживается на этом устройстве или в браузере.',
     },
@@ -2602,7 +2602,7 @@ export const TRANSLATIONS = {
       },
     },
     chat: {
-      title: 'Спросить MyHealthPal',
+      title: 'Спросить EyeMyHealth',
       placeholder: 'Задайте вопрос о своих данных о здоровье…',
       send: 'Отправить',
       empty:
@@ -2756,7 +2756,7 @@ export const TRANSLATIONS = {
       addItem: 'आइटम जोड़ें',
     },
     login: {
-      title: 'MyHealthPal',
+      title: 'EyeMyHealth',
       tagline: "स्वस्थ जीवन के लिए आपका दोस्ताना साथी।",
       featureReports: "रिपोर्ट आसान भाषा में",
       featureMeds: "दवाइयाँ समय पर",
@@ -2824,7 +2824,7 @@ export const TRANSLATIONS = {
       speedNormal: 'सामान्य',
       speedFast: 'तेज़',
       testButton: 'आवाज़ जांचें',
-      testSentence: 'MyHealthPal आपके परिणामों को इस तरह ज़ोर से पढ़ेगा।',
+      testSentence: 'EyeMyHealth आपके परिणामों को इस तरह ज़ोर से पढ़ेगा।',
       stop: 'रोकें',
       notSupported: 'इस डिवाइस या ब्राउज़र पर वॉइस रीडिंग समर्थित नहीं है।',
     },
@@ -3044,7 +3044,7 @@ export const TRANSLATIONS = {
       },
     },
     chat: {
-      title: 'MyHealthPal से पूछें',
+      title: 'EyeMyHealth से पूछें',
       placeholder: 'अपने स्वास्थ्य डेटा के बारे में सवाल पूछें…',
       send: 'भेजें',
       empty: 'अपनी रिपोर्ट, रुझान या दवाओं के बारे में पूछें — जैसे "मेरी नवीनतम रिपोर्ट का सारांश दें", "मेरा HbA1c रुझान दिखाएं", या "मेरा मेटफ़ॉर्मिन कब खत्म होगा?"।',
@@ -3197,7 +3197,7 @@ export const TRANSLATIONS = {
       addItem: '添加项目',
     },
     login: {
-      title: 'MyHealthPal',
+      title: 'EyeMyHealth',
       tagline: "您贴心的健康好伙伴。",
       featureReports: "报告一看就懂",
       featureMeds: "用药按时提醒",
@@ -3263,7 +3263,7 @@ export const TRANSLATIONS = {
       speedNormal: '正常',
       speedFast: '快',
       testButton: '测试语音',
-      testSentence: 'MyHealthPal 将这样为您朗读结果。',
+      testSentence: 'EyeMyHealth 将这样为您朗读结果。',
       stop: '停止',
       notSupported: '此设备或浏览器不支持语音朗读。',
     },
@@ -3481,7 +3481,7 @@ export const TRANSLATIONS = {
       },
     },
     chat: {
-      title: '问一问 MyHealthPal',
+      title: '问一问 EyeMyHealth',
       placeholder: '就您的健康数据提问…',
       send: '发送',
       empty: '可以询问您的报告、趋势或药物 — 例如“总结我最新的报告”“显示我的 HbA1c 趋势”，或“我的二甲双胍什么时候用完？”。',
@@ -3634,7 +3634,7 @@ export const TRANSLATIONS = {
       addItem: '項目を追加',
     },
     login: {
-      title: 'MyHealthPal',
+      title: 'EyeMyHealth',
       tagline: "もっと健康な毎日へ、あなたの頼れる相棒。",
       featureReports: "検査結果をわかりやすく",
       featureMeds: "お薬をしっかり管理",
@@ -3700,7 +3700,7 @@ export const TRANSLATIONS = {
       speedNormal: '普通',
       speedFast: '速い',
       testButton: '音声をテスト',
-      testSentence: 'MyHealthPalはこのようにあなたの結果を読み上げます。',
+      testSentence: 'EyeMyHealthはこのようにあなたの結果を読み上げます。',
       stop: '停止',
       notSupported: 'この端末またはブラウザでは音声読み上げに対応していません。',
     },
@@ -3919,7 +3919,7 @@ export const TRANSLATIONS = {
       },
     },
     chat: {
-      title: 'MyHealthPalに質問する',
+      title: 'EyeMyHealthに質問する',
       placeholder: '健康データについて質問する…',
       send: '送信',
       empty: 'レポートや推移、薬について質問できます。例：「最新のレポートを要約して」「HbA1cの推移を見せて」「メトホルミンはいつなくなる？」',
@@ -4072,7 +4072,7 @@ export const TRANSLATIONS = {
       addItem: 'إضافة عنصر',
     },
     login: {
-      title: 'MyHealthPal',
+      title: 'EyeMyHealth',
       tagline: "رفيقك الودود لحياة أكثر صحة.",
       featureReports: "تقارير مفهومة",
       featureMeds: "أدويتك في موعدها",
@@ -4140,7 +4140,7 @@ export const TRANSLATIONS = {
       speedNormal: 'عادية',
       speedFast: 'سريعة',
       testButton: 'اختبار الصوت',
-      testSentence: '.هكذا سيقرأ MyHealthPal نتائجك بصوت عالٍ',
+      testSentence: '.هكذا سيقرأ EyeMyHealth نتائجك بصوت عالٍ',
       stop: 'إيقاف',
       notSupported: '.القراءة الصوتية غير مدعومة على هذا الجهاز أو المتصفح',
     },
@@ -4359,7 +4359,7 @@ export const TRANSLATIONS = {
       },
     },
     chat: {
-      title: 'اسأل MyHealthPal',
+      title: 'اسأل EyeMyHealth',
       placeholder: '...اطرح سؤالًا حول بياناتك الصحية',
       send: 'إرسال',
       empty:
@@ -4513,7 +4513,7 @@ export const TRANSLATIONS = {
       addItem: 'உருப்படி சேர்',
     },
     login: {
-      title: 'MyHealthPal',
+      title: 'EyeMyHealth',
       tagline: "ஆரோக்கியமான வாழ்க்கைக்கு உங்கள் நட்பான துணை.",
       featureReports: "அறிக்கைகள் எளிதாக",
       featureMeds: "மருந்துகள் சரியான நேரத்தில்",
@@ -4581,7 +4581,7 @@ export const TRANSLATIONS = {
       speedNormal: 'சாதாரண',
       speedFast: 'வேகமாக',
       testButton: 'குரலைச் சோதி',
-      testSentence: 'MyHealthPal உங்கள் முடிவுகளை இப்படித்தான் உரக்கப் படிக்கும்.',
+      testSentence: 'EyeMyHealth உங்கள் முடிவுகளை இப்படித்தான் உரக்கப் படிக்கும்.',
       stop: 'நிறுத்து',
       notSupported: 'இந்த சாதனம் அல்லது உலாவியில் குரல் வாசிப்பு ஆதரிக்கப்படவில்லை.',
     },
@@ -4803,7 +4803,7 @@ export const TRANSLATIONS = {
       },
     },
     chat: {
-      title: 'MyHealthPal-இடம் கேள்',
+      title: 'EyeMyHealth-இடம் கேள்',
       placeholder: 'உங்கள் ஆரோக்கிய தரவைப் பற்றி ஒரு கேள்வி கேளுங்கள்…',
       send: 'அனுப்பு',
       empty:
@@ -4957,7 +4957,7 @@ export const TRANSLATIONS = {
       addItem: 'అంశాన్ని జోడించు',
     },
     login: {
-      title: 'MyHealthPal',
+      title: 'EyeMyHealth',
       tagline: "ఆరోగ్యకరమైన జీవితానికి మీ స్నేహపూర్వక తోడు.",
       featureReports: "నివేదికలు సులభంగా",
       featureMeds: "మందులు సమయానికి",
@@ -5025,7 +5025,7 @@ export const TRANSLATIONS = {
       speedNormal: 'సాధారణం',
       speedFast: 'వేగం',
       testButton: 'వాయిస్‌ను పరీక్షించండి',
-      testSentence: 'MyHealthPal మీ ఫలితాలను ఇలా బిగ్గరగా చదువుతుంది.',
+      testSentence: 'EyeMyHealth మీ ఫలితాలను ఇలా బిగ్గరగా చదువుతుంది.',
       stop: 'ఆపు',
       notSupported: 'ఈ పరికరం లేదా బ్రౌజర్‌లో వాయిస్ రీడింగ్ మద్దతు లేదు.',
     },
@@ -5247,7 +5247,7 @@ export const TRANSLATIONS = {
       },
     },
     chat: {
-      title: 'MyHealthPalను అడగండి',
+      title: 'EyeMyHealthను అడగండి',
       placeholder: 'మీ ఆరోగ్య డేటా గురించి ప్రశ్న అడగండి…',
       send: 'పంపు',
       empty:
@@ -5401,7 +5401,7 @@ export const TRANSLATIONS = {
       addItem: 'Tambah Item',
     },
     login: {
-      title: 'MyHealthPal',
+      title: 'EyeMyHealth',
       tagline: "Teman mesra anda untuk hidup lebih sihat.",
       featureReports: "Laporan mudah difahami",
       featureMeds: "Ubat terurus",
@@ -5469,7 +5469,7 @@ export const TRANSLATIONS = {
       speedNormal: 'Biasa',
       speedFast: 'Pantas',
       testButton: 'Uji suara',
-      testSentence: 'Beginilah cara MyHealthPal akan membacakan keputusan anda.',
+      testSentence: 'Beginilah cara EyeMyHealth akan membacakan keputusan anda.',
       stop: 'Henti',
       notSupported: 'Bacaan suara tidak disokong pada peranti atau pelayar ini.',
     },
@@ -5691,7 +5691,7 @@ export const TRANSLATIONS = {
       },
     },
     chat: {
-      title: 'Tanya MyHealthPal',
+      title: 'Tanya EyeMyHealth',
       placeholder: 'Tanya soalan tentang data kesihatan anda…',
       send: 'Hantar',
       empty:

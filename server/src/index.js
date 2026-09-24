@@ -23,7 +23,7 @@ const { backfillMisclassifiedActivityReports } = require('./services/activityBac
 
 app.listen(config.port, () => {
   // eslint-disable-next-line no-console
-  console.log(`MyHealthPal API listening on port ${config.port}`);
+  console.log(`EyeMyHealth API listening on port ${config.port}`);
 });
 
 // Fire-and-forget, after the server is already accepting requests - a

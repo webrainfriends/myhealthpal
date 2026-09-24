@@ -193,7 +193,7 @@ export default function DashboardScreen({ navigation }) {
           <View style={[styles.heroBubble, styles.heroBubbleTwo]} />
           <View style={styles.heroTopRow}>
             <Text style={styles.heroBrand}>
-              MyHealth<Text style={styles.heroBrandAccent}>Pal</Text>
+              <Text style={styles.heroBrandAccent}>Eye</Text>MyHealth
             </Text>
             <View style={styles.accountActions}>
               <TouchableOpacity

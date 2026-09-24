@@ -1,8 +1,8 @@
 import { useId } from 'react';
 import Svg, { Circle, Defs, Ellipse, G, LinearGradient, Path, RadialGradient, Stop } from 'react-native-svg';
 
-// "Pal" - MyHealthPal's mascot and app icon: a cheerful heart with a face,
-// carrying a small heartbeat badge. Drawn as vector art so it stays crisp at
+// "Pal" - EyeMyHealth's mascot and app icon: a cheerful, wide-eyed heart
+// that keeps an eye on your health, carrying a small heartbeat badge. Drawn as vector art so it stays crisp at
 // every size, from a 32px tab avatar to the full login hero.
 //
 // `mood="wink"` swaps the right eye for a wink (used on the login hero for a
@@ -15,7 +15,7 @@ export default function Mascot({ size = 120, mood = 'happy', badge = true }) {
   const badgeFill = `pal-badge-${uid}`;
 
   return (
-    <Svg width={size} height={size} viewBox="0 0 200 200" accessibilityRole="image" accessibilityLabel="MyHealthPal">
+    <Svg width={size} height={size} viewBox="0 0 200 200" accessibilityRole="image" accessibilityLabel="EyeMyHealth">
       <Defs>
         <LinearGradient id={body} x1="0" y1="0" x2="1" y2="1">
           <Stop offset="0" stopColor="#FF7AB8" />

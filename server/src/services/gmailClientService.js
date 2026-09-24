@@ -31,7 +31,7 @@ function buildAuthUrl(state) {
 
 // Exchanges an authorization code for tokens, and identifies which Google
 // account was actually granted (never assumed from the signed-in
-// MyHealthPal user - a person can authorize a *different* Gmail address
+// EyeMyHealth user - a person can authorize a *different* Gmail address
 // than the one they used to sign in to the app).
 async function exchangeCodeForTokens(code) {
   const client = getOAuthClient();

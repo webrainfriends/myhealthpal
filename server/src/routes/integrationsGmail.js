@@ -60,7 +60,7 @@ function resultPage(title, message) {
   <body>
     <h1>${title}</h1>
     <p>${message}</p>
-    <p>You can close this window and return to MyHealthPal.</p>
+    <p>You can close this window and return to EyeMyHealth.</p>
   </body>
 </html>`;
 }
@@ -118,7 +118,7 @@ router.get('/connect', requireAuth, (req, res) => {
 
 // Public: Google redirects the user's own browser here after they approve
 // or deny access. `state` is the only thing tying this request back to a
-// MyHealthPal user - see authService.signGmailOAuthState.
+// EyeMyHealth user - see authService.signGmailOAuthState.
 router.get('/callback', async (req, res) => {
   const { code, state, error } = req.query;
   if (error) {
@@ -151,7 +151,7 @@ router.get('/callback', async (req, res) => {
       refreshToken,
     });
     await logGmailAction(userId, 'connect', { connectionId: connection.id, detail: { emailAddress } });
-    res.status(200).send(resultPage('Gmail connected', `${emailAddress} is now connected to MyHealthPal.`));
+    res.status(200).send(resultPage('Gmail connected', `${emailAddress} is now connected to EyeMyHealth.`));
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('Gmail OAuth callback failed:', err.message);
