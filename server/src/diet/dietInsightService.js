@@ -1,6 +1,7 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const pool = require('../db/pool');
 const config = require('../config');
+const { recordAiUsage, FEATURES } = require('../services/aiUsageService');
 const { findKnowledgeEntry } = require('../medications/medicationLinkingService');
 
 // General-population dietary guideline defaults (not personalized, not a
@@ -372,6 +373,7 @@ async function rephraseTipWithClaude(client, tip) {
     ].join(' '),
     messages: [{ role: 'user', content: JSON.stringify({ type: tip.type, severity: tip.severity, title: tip.title, data: tip.templateData }) }],
   });
+  recordAiUsage(FEATURES.DIET_TIPS, response);
   const textBlock = response.content.find((b) => b.type === 'text');
   return textBlock ? textBlock.text.trim() : null;
 }

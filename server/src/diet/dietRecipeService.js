@@ -1,6 +1,7 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const pool = require('../db/pool');
 const config = require('../config');
+const { recordAiUsage, FEATURES } = require('../services/aiUsageService');
 const { NUTRIENT_FIELDS, nutrientToolProperties } = require('../extraction/providers/nutrientFields');
 const { computeConsiderations, fetchActiveMedications, fetchAbnormalDietRelevantLabs } = require('./dietInsightService');
 
@@ -149,6 +150,7 @@ async function generateRecipe(userId, { mealType, preferences } = {}) {
     tool_choice: { type: 'tool', name: RECIPE_TOOL.name },
     messages: [{ role: 'user', content: buildUserMessage({ mealType, preferences, considerations }) }],
   });
+  recordAiUsage(FEATURES.RECIPES, response);
 
   const toolUse = response.content.find((block) => block.type === 'tool_use');
   const recipe = toolUse ? mapRecipeResult(toolUse.input) : null;
@@ -364,6 +366,7 @@ async function generateRecipeFeed(userId, { mealType, count = 10, excludeTitles 
       },
     ],
   });
+  recordAiUsage(FEATURES.RECIPES, response);
 
   const toolUse = response.content.find((block) => block.type === 'tool_use');
   const rawRecipes = Array.isArray(toolUse?.input?.recipes) ? toolUse.input.recipes : [];

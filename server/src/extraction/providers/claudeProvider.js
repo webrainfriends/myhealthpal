@@ -1,6 +1,7 @@
 const fs = require('fs');
 const Anthropic = require('@anthropic-ai/sdk');
 const config = require('../../config');
+const { recordAiUsage, FEATURES } = require('../../services/aiUsageService');
 
 const SYSTEM_PROMPT = [
   'You are a precise medical document data-extraction engine.',
@@ -174,6 +175,7 @@ async function extract(document, context = {}) {
       messages: [{ role: 'user', content }],
     })
     .finalMessage();
+  recordAiUsage(FEATURES.REPORT_EXTRACTION, response);
 
   const warnings = [];
   if (response.stop_reason === 'max_tokens') {

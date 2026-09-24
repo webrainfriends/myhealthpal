@@ -1,5 +1,6 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const config = require('../../config');
+const { recordAiUsage, FEATURES } = require('../../services/aiUsageService');
 const { NUTRIENT_FIELDS, nutrientToolProperties } = require('./nutrientFields');
 
 // The manual-entry counterpart to dietPhotoProvider.js: instead of reading
@@ -128,6 +129,7 @@ async function estimate(description, { quantityAmount, quantityUnit } = {}) {
     tool_choice: { type: 'tool', name: ESTIMATE_TOOL.name },
     messages: [{ role: 'user', content: buildUserMessage(description, quantityAmount, quantityUnit) }],
   });
+  recordAiUsage(FEATURES.DIET_TEXT, response);
 
   const toolUse = response.content.find((block) => block.type === 'tool_use');
   if (!toolUse) {

@@ -1,6 +1,7 @@
 const fs = require('fs');
 const Anthropic = require('@anthropic-ai/sdk');
 const config = require('../../config');
+const { recordAiUsage, FEATURES } = require('../../services/aiUsageService');
 const { NUTRIENT_FIELDS, nutrientToolProperties } = require('./nutrientFields');
 
 const SYSTEM_PROMPT = [
@@ -112,6 +113,7 @@ async function extract(document, context = {}) {
     tool_choice: { type: 'tool', name: EXTRACTION_TOOL.name },
     messages: [{ role: 'user', content }],
   });
+  recordAiUsage(FEATURES.DIET_PHOTO, response);
 
   const warnings = [];
   if (response.stop_reason === 'max_tokens') {

@@ -1,6 +1,7 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const pool = require('../db/pool');
 const config = require('../config');
+const { recordAiUsage, FEATURES } = require('../services/aiUsageService');
 const { findKnowledgeEntry } = require('./medicationLinkingService');
 const { normalizeLanguage, languageInstruction, DEFAULT_LANGUAGE } = require('../services/languageService');
 
@@ -67,6 +68,7 @@ async function describeWithClaude(medication, language) {
     tools: [KNOWLEDGE_TOOL],
     tool_choice: { type: 'tool', name: 'describe_medication' },
   });
+  recordAiUsage(FEATURES.MEDICATION_KNOWLEDGE, response);
 
   const toolUse = response.content.find((block) => block.type === 'tool_use');
   const input = toolUse?.input;

@@ -10,6 +10,7 @@
     "migrate": "node db/migrate.js",
     "seed": "node db/seed.js",
     "fixtures": "node scripts/generate-fixtures.js",
+    "ai-usage-report": "node scripts/ai-usage-report.js",
     "test": "node --test"
   },
   "dependencies": {

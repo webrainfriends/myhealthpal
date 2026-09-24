@@ -1,6 +1,7 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const pool = require('../db/pool');
 const config = require('../config');
+const { recordAiUsage, FEATURES } = require('../services/aiUsageService');
 const { normalizeLanguage, languageInstruction, DEFAULT_LANGUAGE } = require('../services/languageService');
 
 const SAFETY_FOOTER =
@@ -120,6 +121,7 @@ async function buildClaudeNarrative(report, measurements, comparisons, language)
       ].join(' ') + languageInstruction(language),
     messages: [{ role: 'user', content: JSON.stringify(payload) }],
   });
+  recordAiUsage(FEATURES.REPORT_SUMMARY, response);
 
   const textBlock = response.content.find((block) => block.type === 'text');
   return textBlock ? textBlock.text : buildHeuristicNarrative(report, measurements, comparisons);
