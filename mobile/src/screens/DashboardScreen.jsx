@@ -8,7 +8,9 @@ import ActivityCard from '../components/ActivityCard';
 import DietCard from '../components/DietCard';
 import SpeakButton from '../components/SpeakButton';
 import SummaryCard from '../components/SummaryCard';
-import { cardShadow, colors, healthStatusColors, radii, spacing, typography } from '../theme/theme';
+import GradientFill from '../components/brand/GradientFill';
+import Mascot from '../components/brand/Mascot';
+import { brandShadow, cardShadow, colors, healthStatusColors, radii, spacing, typography } from '../theme/theme';
 import {
   fetchActivitySummary,
   fetchCustomCards,
@@ -185,29 +187,45 @@ export default function DashboardScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.accountRow}>
-          <View style={styles.greetingBlock}>
-            <View style={styles.greetingRow}>
-              <Text style={typography.title}>
-                {greetingForNow(t)}, {firstName(user, t)}
-              </Text>
-              <SpeakButton text={buildDashboardSpeech(snapshot, organs, t)} label={t('dashboard.readSummary')} />
+        <View style={styles.hero}>
+          <GradientFill />
+          <View style={[styles.heroBubble, styles.heroBubbleOne]} />
+          <View style={[styles.heroBubble, styles.heroBubbleTwo]} />
+          <View style={styles.heroTopRow}>
+            <Text style={styles.heroBrand}>
+              MyHealth<Text style={styles.heroBrandAccent}>Pal</Text>
+            </Text>
+            <View style={styles.accountActions}>
+              <TouchableOpacity
+                style={styles.heroChip}
+                onPress={() => navigation.navigate('Settings')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.heroChipLabel}>⚙️ {t('common.settings')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.heroChip} onPress={signOut} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={styles.heroChipLabel} numberOfLines={1}>
+                  {user?.authProvider === 'guest' ? t('common.guest') : user?.email || t('common.account')} ·{' '}
+                  {t('common.signOut')}
+                </Text>
+              </TouchableOpacity>
             </View>
-            <Text style={typography.bodySecondary}>{t('dashboard.subtitle')}</Text>
           </View>
-          <View style={styles.accountActions}>
-            <TouchableOpacity
-              onPress={() => navigation.navigate('Settings')}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Text style={styles.accountLabel}>{t('common.settings')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={signOut} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Text style={styles.accountLabel}>
-                {user?.authProvider === 'guest' ? t('common.guest') : user?.email || t('common.account')} ·{' '}
-                {t('common.signOut')}
-              </Text>
-            </TouchableOpacity>
+          <View style={styles.heroBody}>
+            <View style={styles.greetingBlock}>
+              <View style={styles.greetingRow}>
+                <Text style={styles.heroGreeting}>
+                  {greetingForNow(t)}, {firstName(user, t)}
+                </Text>
+                <SpeakButton
+                  text={buildDashboardSpeech(snapshot, organs, t)}
+                  label={t('dashboard.readSummary')}
+                  style={styles.heroSpeak}
+                />
+              </View>
+              <Text style={styles.heroSubtitle}>{t('dashboard.subtitle')}</Text>
+            </View>
+            <Mascot size={92} />
           </View>
         </View>
 
@@ -329,15 +347,72 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.xl,
   },
-  accountRow: {
+  hero: {
+    borderRadius: radii.xl,
+    padding: spacing.lg,
+    paddingBottom: spacing.md,
+    overflow: 'hidden',
+    backgroundColor: colors.primary,
+    gap: spacing.md,
+    ...brandShadow,
+  },
+  heroBubble: {
+    position: 'absolute',
+    borderRadius: radii.pill,
+    backgroundColor: 'rgba(255, 255, 255, 0.14)',
+  },
+  heroBubbleOne: { width: 180, height: 180, top: -70, right: -50 },
+  heroBubbleTwo: { width: 110, height: 110, bottom: -50, left: -30, backgroundColor: 'rgba(255, 226, 122, 0.2)' },
+  heroTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     gap: spacing.sm,
   },
+  heroBrand: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: colors.onBrand,
+    letterSpacing: -0.3,
+  },
+  heroBrandAccent: {
+    color: '#FFE27A',
+  },
+  heroChip: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: radii.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    maxWidth: 220,
+  },
+  heroChipLabel: {
+    color: colors.onBrand,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  heroBody: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  heroGreeting: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: colors.onBrand,
+    letterSpacing: -0.3,
+    flexShrink: 1,
+  },
+  heroSubtitle: {
+    fontSize: 15,
+    color: colors.onBrandMuted,
+    fontWeight: '500',
+  },
+  heroSpeak: {
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+  },
   greetingBlock: {
     flex: 1,
-    gap: 2,
+    gap: 4,
   },
   greetingRow: {
     flexDirection: 'row',
@@ -347,10 +422,6 @@ const styles = StyleSheet.create({
   accountActions: {
     alignItems: 'flex-end',
     gap: spacing.xs,
-  },
-  accountLabel: {
-    color: colors.textSecondary,
-    fontSize: 13,
   },
   sectionHeaderRow: {
     flexDirection: 'row',

@@ -1,5 +1,6 @@
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity } from 'react-native';
-import { colors, radii, spacing, typography } from '../theme/theme';
+import GradientFill from './brand/GradientFill';
+import { brandShadow, colors, radii, spacing, typography } from '../theme/theme';
 
 export default function PrimaryButton({ title, onPress, disabled, loading, variant = 'primary' }) {
   const isSecondary = variant === 'secondary';
@@ -13,8 +14,10 @@ export default function PrimaryButton({ title, onPress, disabled, loading, varia
       ]}
       onPress={onPress}
       disabled={disabled || loading}
-      activeOpacity={0.8}
+      activeOpacity={0.85}
+      accessibilityRole="button"
     >
+      {!isSecondary && <GradientFill angle="horizontal" />}
       {loading ? (
         <ActivityIndicator color={isSecondary ? colors.primary : colors.surface} />
       ) : (
@@ -28,25 +31,28 @@ export default function PrimaryButton({ title, onPress, disabled, loading, varia
 
 const styles = StyleSheet.create({
   button: {
-    borderRadius: radii.md,
+    borderRadius: radii.pill,
     paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
+    overflow: 'hidden',
   },
   primary: {
     backgroundColor: colors.primary,
+    ...brandShadow,
   },
   secondary: {
     backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
   },
   disabled: {
     opacity: 0.5,
   },
   label: {
-    fontWeight: '600',
+    fontWeight: '700',
   },
   primaryLabel: {
     color: colors.surface,

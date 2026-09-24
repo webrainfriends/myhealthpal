@@ -1,4 +1,4 @@
-import { ActivityIndicator, Platform, Pressable, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -31,6 +31,7 @@ import VoiceAccessibilityScreen from '../screens/VoiceAccessibilityScreen';
 import AiUsageScreen from '../screens/AiUsageScreen';
 import { useAuth } from '../auth/AuthContext';
 import { useT } from '../i18n/I18nContext';
+import Mascot from '../components/brand/Mascot';
 import { colors } from '../theme/theme';
 
 const navigationTheme = {
@@ -88,6 +89,12 @@ const linking = {
   },
 };
 
+// Emoji tab icons match the emoji iconography used across the app's cards;
+// inactive tabs are dimmed rather than recolored, since emoji ignore tint.
+function tabIcon(glyph) {
+  return ({ focused }) => <Text style={{ fontSize: focused ? 22 : 20, opacity: focused ? 1 : 0.55 }}>{glyph}</Text>;
+}
+
 function Tabs() {
   const t = useT();
   return (
@@ -96,7 +103,8 @@ function Tabs() {
         headerStyle: { backgroundColor: colors.surface },
         headerTintColor: colors.textPrimary,
         headerShadowVisible: false,
-        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border },
+        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border, borderTopWidth: 1 },
+        tabBarLabelStyle: { fontWeight: '600' },
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textTertiary,
         // react-native-web's Pressable renders the `href` React Navigation
@@ -123,15 +131,31 @@ function Tabs() {
         ),
       }}
     >
-      <Tab.Screen name="DashboardTab" component={DashboardScreen} options={{ title: t('nav.dashboard'), headerShown: false }} />
+      <Tab.Screen
+        name="DashboardTab"
+        component={DashboardScreen}
+        options={{ title: t('nav.dashboard'), tabBarIcon: tabIcon('🏠'), headerShown: false }}
+      />
       <Tab.Screen
         name="MedicationsTab"
         component={MedicationsScreen}
-        options={{ title: t('nav.medications'), headerShown: false }}
+        options={{ title: t('nav.medications'), tabBarIcon: tabIcon('💊'), headerShown: false }}
       />
-      <Tab.Screen name="ChatTab" component={ChatScreen} options={{ title: t('nav.ask'), headerShown: false }} />
-      <Tab.Screen name="UploadTab" component={UploadScreen} options={{ title: t('nav.upload'), headerShown: false }} />
-      <Tab.Screen name="MoreTab" component={MoreScreen} options={{ title: t('nav.more'), headerShown: false }} />
+      <Tab.Screen
+        name="ChatTab"
+        component={ChatScreen}
+        options={{ title: t('nav.ask'), tabBarIcon: tabIcon('💬'), headerShown: false }}
+      />
+      <Tab.Screen
+        name="UploadTab"
+        component={UploadScreen}
+        options={{ title: t('nav.upload'), tabBarIcon: tabIcon('📤'), headerShown: false }}
+      />
+      <Tab.Screen
+        name="MoreTab"
+        component={MoreScreen}
+        options={{ title: t('nav.more'), tabBarIcon: tabIcon('✨'), headerShown: false }}
+      />
     </Tab.Navigator>
   );
 }
@@ -142,7 +166,8 @@ export default function RootNavigator() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, backgroundColor: colors.background }}>
+        <Mascot size={96} />
         <ActivityIndicator color={colors.primary} />
       </View>
     );
@@ -157,7 +182,8 @@ export default function RootNavigator() {
       <Stack.Navigator
         screenOptions={{
           headerStyle: { backgroundColor: colors.surface },
-          headerTintColor: colors.textPrimary,
+          headerTintColor: colors.primary,
+          headerTitleStyle: { color: colors.textPrimary, fontWeight: '700' },
           headerShadowVisible: false,
         }}
       >
