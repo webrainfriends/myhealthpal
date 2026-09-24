@@ -4,6 +4,7 @@ const config = require('../config');
 const { recordAiUsage, FEATURES } = require('../services/aiUsageService');
 const { NUTRIENT_FIELDS, nutrientToolProperties } = require('../extraction/providers/nutrientFields');
 const { computeConsiderations, fetchActiveMedications, fetchAbnormalDietRelevantLabs } = require('./dietInsightService');
+const { classifyMealType } = require('./dietScanService');
 
 const MEAL_TYPES = ['breakfast', 'lunch', 'snack', 'dinner', 'supper'];
 
@@ -262,9 +263,19 @@ const FEED_SYSTEM_PROMPT = [
   'of these signals apply to a given recipe, why_this_recipe should describe why it fits the meal type/preferences',
   'instead, with no health claims at all.',
   'Estimate the nutrition per serving using standard nutritional data, the same way you would when logging a food.',
+  'Keep each recipe concise: a one-sentence description, at most 10 ingredients, at most 8 short instruction steps,',
+  'and a why_this_recipe of one or two sentences.',
   'This is a recipe-generation task, not a diagnosis or treatment plan: never suggest a medication change and',
   'never claim a recipe treats or cures a condition.',
 ].join(' ');
+
+// Recipes per feed request. Each one is roughly 800-1,200 output tokens
+// (13 nutrient fields, ingredients, steps), so a small batch keeps the cost
+// of one "Generate" tap predictable. The per-recipe output budget has
+// headroom so a batch finishes instead of being cut off: a cut-off tool
+// call used to lose the *whole* batch while still being billed for it.
+const FEED_MAX_COUNT = 5;
+const FEED_OUTPUT_TOKENS_PER_RECIPE = 1500;
 
 const RECIPE_LIST_TOOL = {
   name: 'generate_recipes',
@@ -332,12 +343,27 @@ function buildFeedUserMessage({ mealType, count, considerations, activity, weigh
   return parts.join(' ');
 }
 
+// The usable recipes in a feed response. When the output was cut off at
+// max_tokens, the last recipe in the partially-parsed array is the one
+// being written at the cutoff - its ingredients, steps, or nutrition may be
+// missing even if it looks well-formed - so it is dropped. Anything without
+// a title, ingredients, and instructions is dropped too, rather than shown
+// as a recipe nobody could cook.
+function completeRecipesFrom(response) {
+  const toolUse = response?.content?.find((block) => block.type === 'tool_use');
+  let rawRecipes = Array.isArray(toolUse?.input?.recipes) ? toolUse.input.recipes : [];
+  if (response?.stop_reason === 'max_tokens') rawRecipes = rawRecipes.slice(0, -1);
+  return rawRecipes
+    .map(mapRecipeResult)
+    .filter((r) => r && r.title !== 'Untitled recipe' && r.ingredients.length > 0 && r.instructions.length > 0);
+}
+
 // Auto-generates a personalized batch of recipes with no meal type or free
 // text typed by the user - grounded the same way generateRecipe() is, plus
 // recent activity, weight goal, and saved diet-type/cuisine preferences.
 // excludeTitles lets the caller page through without repeats: the mobile
-// "Load 10 more" button passes every title already shown so far.
-async function generateRecipeFeed(userId, { mealType, count = 10, excludeTitles = [] } = {}) {
+// "Generate more" button passes every title already shown so far.
+async function generateRecipeFeed(userId, { mealType, count = FEED_MAX_COUNT, excludeTitles = [] } = {}) {
   if (!config.anthropicApiKey) {
     throw new Error('AI recipe generation requires ANTHROPIC_API_KEY to be set.');
   }
@@ -353,27 +379,29 @@ async function generateRecipeFeed(userId, { mealType, count = 10, excludeTitles 
   const activity = describeActivity(activityRows);
 
   const client = new Anthropic({ apiKey: config.anthropicApiKey });
-  const response = await client.messages.create({
-    model: config.anthropicModel,
-    max_tokens: Math.min(8192, 600 * count + 512),
-    system: FEED_SYSTEM_PROMPT,
-    tools: [RECIPE_LIST_TOOL],
-    tool_choice: { type: 'tool', name: RECIPE_LIST_TOOL.name },
-    messages: [
-      {
-        role: 'user',
-        content: buildFeedUserMessage({ mealType, count, considerations, activity, weightGoal, preferences, excludeTitles }),
-      },
-    ],
-  });
+  // Streamed rather than .create(): if the output does hit max_tokens, the
+  // SDK's stream still partially parses the cut-off tool input, so every
+  // recipe finished before the cutoff is kept (see completeRecipesFrom)
+  // instead of the whole paid-for batch coming back empty.
+  const response = await client.messages
+    .stream({
+      model: config.anthropicModel,
+      max_tokens: FEED_OUTPUT_TOKENS_PER_RECIPE * count + 512,
+      system: FEED_SYSTEM_PROMPT,
+      tools: [RECIPE_LIST_TOOL],
+      tool_choice: { type: 'tool', name: RECIPE_LIST_TOOL.name },
+      messages: [
+        {
+          role: 'user',
+          content: buildFeedUserMessage({ mealType, count, considerations, activity, weightGoal, preferences, excludeTitles }),
+        },
+      ],
+    })
+    .finalMessage();
   recordAiUsage(FEATURES.RECIPES, response);
 
-  const toolUse = response.content.find((block) => block.type === 'tool_use');
-  const rawRecipes = Array.isArray(toolUse?.input?.recipes) ? toolUse.input.recipes : [];
   const excludeTitlesLower = new Set(excludeTitles.map((t) => t.toLowerCase().trim()));
-  const recipes = rawRecipes
-    .map(mapRecipeResult)
-    .filter((r) => r && !excludeTitlesLower.has(r.title.toLowerCase().trim()));
+  const recipes = completeRecipesFrom(response).filter((r) => !excludeTitlesLower.has(r.title.toLowerCase().trim()));
 
   return {
     recipes,
@@ -387,9 +415,154 @@ async function generateRecipeFeed(userId, { mealType, count = 10, excludeTitles 
   };
 }
 
+// Recipe suggestions kept per user (see 019_recipe_suggestions.sql) - a
+// personal "recipe box" of everything ever generated, not just the current
+// batch. Capped so it stays a recent, relevant list rather than growing
+// forever; trimming the oldest UNADDED rows first means a recipe the user
+// actually logged stays visible (and food_entries keeps its own copy of
+// the nutrition regardless - see the migration's ON DELETE SET NULL).
+const MAX_SAVED_SUGGESTIONS_PER_USER = 60;
+
+const SUGGESTION_COLUMNS = [
+  'requested_meal_type', 'title', 'meal_type', 'description', 'servings', 'prep_time_minutes', 'cook_time_minutes',
+  'ingredients', 'instructions', 'dietary_tags', 'why_this_recipe', ...NUTRIENT_FIELDS,
+];
+
+function mapSuggestionRow(row) {
+  const nutritionPerServing = {};
+  for (const field of NUTRIENT_FIELDS) {
+    nutritionPerServing[field] = row[field] != null ? Number(row[field]) : null;
+  }
+  return {
+    id: row.id,
+    title: row.title,
+    mealType: row.meal_type,
+    description: row.description,
+    servings: row.servings != null ? Number(row.servings) : null,
+    prepTimeMinutes: row.prep_time_minutes,
+    cookTimeMinutes: row.cook_time_minutes,
+    ingredients: row.ingredients || [],
+    instructions: row.instructions || [],
+    dietaryTags: row.dietary_tags || [],
+    whyThisRecipe: row.why_this_recipe,
+    nutritionPerServing,
+    addedAt: row.added_at,
+    createdAt: row.created_at,
+  };
+}
+
+// Persists every recipe from a just-generated batch, then trims the
+// user's saved suggestions back down to the cap (oldest, never-added ones
+// first). Returns the same recipes with their new database ids attached,
+// so the client can reference a specific suggestion (e.g. to log it) with
+// no separate lookup.
+async function saveRecipeSuggestions(userId, recipes, requestedMealType) {
+  const saved = [];
+  for (const recipe of recipes) {
+    const values = [
+      userId,
+      requestedMealType || null,
+      recipe.title,
+      recipe.mealType,
+      recipe.description,
+      recipe.servings,
+      recipe.prepTimeMinutes,
+      recipe.cookTimeMinutes,
+      JSON.stringify(recipe.ingredients),
+      JSON.stringify(recipe.instructions),
+      JSON.stringify(recipe.dietaryTags),
+      recipe.whyThisRecipe,
+      ...NUTRIENT_FIELDS.map((f) => recipe.nutritionPerServing[f] ?? null),
+    ];
+    const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
+    const { rows } = await pool.query(
+      `INSERT INTO recipe_suggestions (user_id, ${SUGGESTION_COLUMNS.join(', ')}) VALUES (${placeholders}) RETURNING id, created_at`,
+      values
+    );
+    saved.push({ ...recipe, id: rows[0].id, addedAt: null, createdAt: rows[0].created_at });
+  }
+
+  await pool.query(
+    `DELETE FROM recipe_suggestions WHERE id IN (
+       SELECT id FROM recipe_suggestions WHERE user_id = $1
+       ORDER BY (added_at IS NOT NULL), created_at DESC
+       OFFSET $2
+     )`,
+    [userId, MAX_SAVED_SUGGESTIONS_PER_USER]
+  );
+
+  return saved;
+}
+
+// The user's saved recipe suggestions - a free, non-AI read, so the
+// Recipes screen (and the Diet screen's quick-pick list) can show what was
+// already generated with no token cost. mealType filters by the recipe's
+// own meal_type (not the filter a past generation request used), so
+// picking "Lunch" surfaces every lunch-suited recipe ever saved.
+async function listSavedRecipeSuggestions(userId, { mealType, limit = 20 } = {}) {
+  const conditions = ['user_id = $1'];
+  const params = [userId];
+  if (mealType) {
+    params.push(mealType);
+    conditions.push(`meal_type = $${params.length}`);
+  }
+  params.push(Math.min(Math.max(Number(limit) || 20, 1), 60));
+  const { rows } = await pool.query(
+    `SELECT * FROM recipe_suggestions WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC LIMIT $${params.length}`,
+    params
+  );
+  return rows.map(mapSuggestionRow);
+}
+
+// Converts a saved suggestion straight into a food_entries row - the
+// "select this recipe as my diet" action, usable from both the Recipes
+// screen and the Diet screen's quick-pick list. Scoped to userId the same
+// way every other diet route is; a suggestion id belonging to someone else
+// resolves to null rather than leaking its content or logging into the
+// wrong account.
+async function logRecipeSuggestion(userId, suggestionId, { consumedAt } = {}) {
+  const { rows } = await pool.query('SELECT * FROM recipe_suggestions WHERE id = $1 AND user_id = $2', [
+    suggestionId,
+    userId,
+  ]);
+  const suggestion = rows[0];
+  if (!suggestion) return null;
+
+  const when = consumedAt instanceof Date && !Number.isNaN(consumedAt.getTime()) ? consumedAt : new Date();
+  const mealType = suggestion.meal_type || classifyMealType(when);
+
+  const columns = ['user_id', 'name', 'meal_type', 'consumed_at', 'source_type', 'notes', 'ai_verified', 'is_confirmed', 'recipe_suggestion_id', ...NUTRIENT_FIELDS];
+  const values = [
+    userId,
+    suggestion.title,
+    mealType,
+    when,
+    'manual',
+    suggestion.description || null,
+    true,
+    true,
+    suggestion.id,
+    ...NUTRIENT_FIELDS.map((f) => suggestion[f]),
+  ];
+  const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
+  const { rows: inserted } = await pool.query(
+    `INSERT INTO food_entries (${columns.join(', ')}) VALUES (${placeholders}) RETURNING *`,
+    values
+  );
+
+  await pool.query('UPDATE recipe_suggestions SET added_at = COALESCE(added_at, now()) WHERE id = $1', [suggestion.id]);
+
+  return inserted[0];
+}
+
 module.exports = {
   generateRecipe,
   generateRecipeFeed,
+  completeRecipesFrom,
+  saveRecipeSuggestions,
+  listSavedRecipeSuggestions,
+  logRecipeSuggestion,
+  FEED_MAX_COUNT,
   mapRecipeResult,
   buildUserMessage,
   buildFeedUserMessage,
