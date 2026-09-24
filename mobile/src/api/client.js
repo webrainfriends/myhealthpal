@@ -289,6 +289,52 @@ export async function sendInsightFeedback(insightId, feedback) {
   return handleResponse(response);
 }
 
+export async function fetchRetestPlans() {
+  const response = await apiFetch('/api/retest');
+  return handleResponse(response);
+}
+
+export async function snoozeRetestPlan(planId, days = 7) {
+  const response = await apiFetch(`/api/retest/${planId}/snooze`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ days }),
+  });
+  return handleResponse(response);
+}
+
+export async function dismissRetestPlan(planId) {
+  const response = await apiFetch(`/api/retest/${planId}/dismiss`, { method: 'POST' });
+  return handleResponse(response);
+}
+
+export async function setRetestCheckin(planId, done) {
+  const response = await apiFetch(`/api/retest/${planId}/checkin`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ done }),
+  });
+  return handleResponse(response);
+}
+
+export async function updateRetestSettings(remindersEnabled) {
+  const response = await apiFetch('/api/retest/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ remindersEnabled }),
+  });
+  return handleResponse(response);
+}
+
+export async function registerPushToken(token, platform) {
+  const response = await apiFetch('/api/retest/push-token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, platform }),
+  });
+  return handleResponse(response);
+}
+
 export async function createChatSession() {
   const response = await apiFetch('/api/chat/sessions', { method: 'POST' });
   return handleResponse(response);

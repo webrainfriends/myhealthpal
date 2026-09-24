@@ -1,5 +1,6 @@
+import { useEffect } from 'react';
 import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native';
-import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import DashboardScreen from '../screens/DashboardScreen';
@@ -29,6 +30,8 @@ import LoginScreen from '../screens/LoginScreen';
 import LanguagePreferenceScreen from '../screens/LanguagePreferenceScreen';
 import VoiceAccessibilityScreen from '../screens/VoiceAccessibilityScreen';
 import AiUsageScreen from '../screens/AiUsageScreen';
+import RetestRadarScreen from '../screens/RetestRadarScreen';
+import { onRetestNotificationTap, registerForRetestPush } from '../notifications/retestNotifications';
 import { useAuth } from '../auth/AuthContext';
 import { useT } from '../i18n/I18nContext';
 import Mascot from '../components/brand/Mascot';
@@ -71,6 +74,7 @@ const linking = {
       OrganDetail: 'organ/:organKey',
       Insights: 'insights',
       NeedsAttention: 'needs-attention',
+      RetestRadar: 'retest',
       MedicationDetail: 'medications/:medicationId',
       MedicationScanReview: 'medications/scans/:scanId',
       Activity: 'activity',
@@ -160,9 +164,22 @@ function Tabs() {
   );
 }
 
+const navigationRef = createNavigationContainerRef();
+
 export default function RootNavigator() {
   const { user, loading } = useAuth();
   const t = useT();
+  const userId = user?.id;
+
+  // Once per signed-in account on this device: let the server push Retest
+  // Radar reminders here, and open Retest Radar when one is tapped.
+  useEffect(() => {
+    if (!userId) return undefined;
+    registerForRetestPush();
+    return onRetestNotificationTap((screen) => {
+      if (navigationRef.isReady()) navigationRef.navigate(screen);
+    });
+  }, [userId]);
 
   if (loading) {
     return (
@@ -178,7 +195,7 @@ export default function RootNavigator() {
   }
 
   return (
-    <NavigationContainer theme={navigationTheme} linking={linking}>
+    <NavigationContainer ref={navigationRef} theme={navigationTheme} linking={linking}>
       <Stack.Navigator
         screenOptions={{
           headerStyle: { backgroundColor: colors.surface },
@@ -194,6 +211,7 @@ export default function RootNavigator() {
         <Stack.Screen name="OrganDetail" component={OrganDetailScreen} options={{ title: t('nav.organHealth') }} />
         <Stack.Screen name="Insights" component={InsightsScreen} options={{ title: t('nav.insights') }} />
         <Stack.Screen name="NeedsAttention" component={NeedsAttentionScreen} options={{ title: t('nav.needsAttention') }} />
+        <Stack.Screen name="RetestRadar" component={RetestRadarScreen} options={{ title: t('nav.retestRadar') }} />
         <Stack.Screen name="MedicationDetail" component={MedicationDetailScreen} options={{ title: t('nav.medication') }} />
         <Stack.Screen
           name="MedicationScanReview"

@@ -21,6 +21,10 @@ covering:
   calories/macros, auto-tagged by meal (breakfast/lunch/snack/dinner/supper)
   from the time logged, plus a pattern analysis with recommendations that
   considers the user's confirmed lab results and active medications.
+- Retest Radar: a "check again by" countdown for every out-of-range result
+  and every medicine linked to a lab value, a small weekly action to tick
+  off until then, and push reminders two weeks before and on the date
+  (see "Retest Radar" below).
 - Guest, Google, and Apple sign-in, with every user's reports, timeline,
   dashboard, insights, and chat history strictly scoped to their own signed-in
   session and never visible to anyone else.
@@ -563,6 +567,58 @@ persisted server-side - "Log this recipe" on the mobile app is an ordinary
 `POST /api/diet/entries` using the returned nutrition, `ai_verified: true`
 since it's AI-estimated the same as any other entry.
 
+### Retest Radar
+
+Gives people a reason to open the app between lab visits. A plan in
+`retest_plans` (migration `020_retest_plans.sql`) is a "check again by" date
+for one parameter. The date is computed only by rules in
+`server/src/retest/retestRules.js`, never by an LLM:
+
+- **Out-of-range latest result:** the due date is the result date plus a
+  per-parameter cadence, for example HbA1c 90 days, lipids 180, vitamin D and
+  B12 84, TSH 42, anything else 90. A flag containing "critical" or "panic"
+  brings it down to 14 days.
+- **Linked medicine started after the latest result:** the due date is the
+  medicine's start date plus the end of its onset window
+  (`medication_parameter_links.typical_onset_weeks_*`). A result already
+  measured inside that window means the effect has been checked, so this rule
+  stops applying.
+- **Both rules apply:** the earlier date wins.
+
+Plans are recomputed on load (`GET /api/retest`) and by the reminder job, the
+same pull model as medication alerts:
+
+- A newer confirmed result for the parameter closes the plan (`done`).
+- A dismissed or snoozed plan stays that way until its situation changes.
+- Each plan carries a fixed, non-numeric weekly action (for example "15
+  minutes of morning sunlight on 3 days this week"). Ticking it records a
+  `retest_checkins` row for that week, which feeds the week streak.
+
+Endpoints, all under `requireAuth`:
+
+- `GET /api/retest`
+- `POST /api/retest/:id/snooze | dismiss | checkin`
+- `PUT /api/retest/settings` (reminders on/off)
+- `POST`/`DELETE /api/retest/push-token`
+
+How reminders are sent:
+
+- The API process runs `retestReminderService.runReminders` every hour.
+  Pushes go through Expo's push service only between 03:00 and 15:00 UTC.
+- Each user gets at most one combined push per run, covering: two weeks
+  before the date, on the date, and the weekly action.
+- Each reminder is recorded in `retest_reminders_sent`, so it is never
+  repeated.
+- Set `RETEST_REMINDERS=off` to disable the job.
+- `npm run retest-reminders` sends one pass immediately, ignoring the time
+  window.
+
+On mobile, `mobile/src/notifications/retestNotifications.js` registers the
+device's Expo push token after sign-in. Push tokens need an EAS `projectId`
+in `app.json` (`extra.eas.projectId`) and a physical device. Without them
+(web, simulator, no projectId), the same reminders are scheduled as local
+notifications instead. Tapping any of them opens the Retest Radar screen.
+
 ### Known scope limits
 
 - `generateSummary` (`src/services/summaryService.js`) is a heuristic,
@@ -596,8 +652,8 @@ since it's AI-estimated the same as any other entry.
   connector is a new writer into the same tables, not a schema change.
   Dashboard/timeline source filters are wired but only ever see one value
   today.
-- No push/local alerting — "needs attention" is a pull (dashboard) view, not
-  a background-triggered alert.
+- The only push/local alerting is Retest Radar's reminders. "Needs attention"
+  and medication alerts are still pull (on-load) views.
 - Insight thresholds (15%/30% change, 3-point trend/repeat windows) are fixed
   constants, not per-user/per-parameter configuration; exploratory
   correlations and wearable/glucose-pattern insight types from the issue's

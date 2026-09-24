@@ -23,6 +23,9 @@
     },
     "extra": {
       "apiBaseUrl": null
-    }
+    },
+    "plugins": [
+      "expo-notifications"
+    ]
   }
 }

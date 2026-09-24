@@ -18,6 +18,7 @@ const weightGoalRouter = require('./routes/weightGoal');
 const aiUsageRouter = require('./routes/aiUsage');
 const filesRouter = require('./routes/files');
 const integrationsGmailRouter = require('./routes/integrationsGmail');
+const retestRouter = require('./routes/retest');
 
 const app = express();
 
@@ -51,6 +52,7 @@ app.use('/api/diet', requireAuth, dietRouter);
 app.use('/api/recipe-preferences', requireAuth, recipePreferencesRouter);
 app.use('/api/weight-goal', requireAuth, weightGoalRouter);
 app.use('/api/ai-usage', requireAuth, aiUsageRouter);
+app.use('/api/retest', requireAuth, retestRouter);
 // Not wrapped in requireAuth - see routes/files.js for why (a plain link
 // open can't carry an Authorization header, so a short-lived scoped token
 // is the credential here instead).
