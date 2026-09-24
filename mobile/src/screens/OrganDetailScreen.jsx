@@ -7,6 +7,7 @@ import { cardShadow, colors, healthStatusColors, radii, spacing, typography } fr
 import { fetchCustomCards, fetchOrganHealth } from '../api/client';
 import { useT } from '../i18n/I18nContext';
 import { formatCalendarDate } from '../utils/date';
+import { cardCounts, outOfRangeList } from '../utils/organReadout';
 
 const RESULT_STATUS_KEYS = {
   normal: 'organDetail.resultNormal',
@@ -19,15 +20,37 @@ function formatDate(value) {
   return formatCalendarDate(value, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+// "High" / "Low" rather than a bare "Out of range" when the direction is
+// known - it's the first thing anyone asks about a flagged result.
+function resultLabel(parameter, t) {
+  if (parameter.resultStatus === 'abnormal' && parameter.direction === 'high') return t('organDetail.resultHigh');
+  if (parameter.resultStatus === 'abnormal' && parameter.direction === 'low') return t('organDetail.resultLow');
+  return t(RESULT_STATUS_KEYS[parameter.resultStatus] || RESULT_STATUS_KEYS.unknown);
+}
+
+// The doctor-style summary under the hero: how many results are normal,
+// which ones aren't (and which way), and a plain reminder that this counts
+// test results - it is not a measure of how well the organ itself works.
+function organSummary(organ, t) {
+  const { evaluated, normal } = cardCounts(organ);
+  if (evaluated === 0) return null;
+  const organName = organ.label.toLowerCase();
+  const list = outOfRangeList(organ, t);
+  return [
+    t('organDetail.countDescription', { normal, total: evaluated, organ: organName }),
+    list ? t('organDetail.outOfRangeList', { list }) : t('organDetail.allInRange'),
+  ].join(' ');
+}
+
 // Builds the sentence SpeakButton reads for the whole organ card: each
 // tracked test's name, value, and whether it's in range - the same data
 // ParameterRow shows below, said aloud instead.
 function buildOrganSpeech(organ, t) {
   const parts = organ.parameters.map((p) => {
     const value = p.value !== null && p.value !== undefined ? `${p.value} ${p.unit || ''}` : '';
-    return `${p.displayName}: ${value}, ${t(RESULT_STATUS_KEYS[p.resultStatus] || RESULT_STATUS_KEYS.unknown)}.`;
+    return `${p.displayName}: ${value}, ${resultLabel(p, t)}.`;
   });
-  return parts.join(' ');
+  return [organSummary(organ, t), ...parts].filter(Boolean).join(' ');
 }
 
 function ParameterRow({ parameter, onPress, onAlertPress, t }) {
@@ -70,7 +93,7 @@ function ParameterRow({ parameter, onPress, onAlertPress, t }) {
         </Text>
         <View style={[styles.miniPill, { backgroundColor: palette.bg }]}>
           <Text style={[styles.miniPillText, { color: palette.fg }]}>
-            {t(RESULT_STATUS_KEYS[parameter.resultStatus] || RESULT_STATUS_KEYS.unknown)}
+            {resultLabel(parameter, t)}
           </Text>
         </View>
       </View>
@@ -125,6 +148,8 @@ export default function OrganDetailScreen({ route, navigation }) {
   }
 
   const palette = healthStatusColors[organ.status] || healthStatusColors.no_data;
+  const { evaluated, normal } = cardCounts(organ);
+  const summary = organSummary(organ, t);
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -136,8 +161,9 @@ export default function OrganDetailScreen({ route, navigation }) {
             </View>
             <View style={styles.heroScoreBlock}>
               <Text style={[styles.heroScore, { color: palette.fg }]}>
-                {organ.scorePercent === null ? '—' : `${organ.scorePercent}%`}
+                {evaluated === 0 ? '—' : `${normal}/${evaluated}`}
               </Text>
+              {evaluated > 0 && <Text style={typography.caption}>{t('organDetail.heroCountLabel')}</Text>}
               <View style={[styles.statusPill, { backgroundColor: palette.bg }]}>
                 <Text style={[styles.statusPillText, { color: palette.fg }]}>
                   {t(STATUS_LABEL_KEYS[organ.status] || STATUS_LABEL_KEYS.no_data)}
@@ -149,12 +175,11 @@ export default function OrganDetailScreen({ route, navigation }) {
           <Text style={typography.bodySecondary}>
             {organ.trackedCount === 0
               ? t('organDetail.noResultsYet', { organ: organ.label.toLowerCase() })
-              : t('organDetail.healthScoreDescription', {
-                  organ: organ.label.toLowerCase(),
-                  normal: organ.normalCount,
-                  total: organ.normalCount + organ.attentionCount,
-                })}
+              : summary || t('organDetail.cardNotEvaluated', { count: organ.trackedCount, plural: organ.trackedCount === 1 ? '' : 's' })}
           </Text>
+          {evaluated > 0 && (
+            <Text style={typography.caption}>{t('organDetail.notOrganFunction', { organ: organ.label.toLowerCase() })}</Text>
+          )}
           <Text style={styles.disclaimer}>{t('organDetail.disclaimer')}</Text>
         </View>
 

@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ParameterPickerModal from '../components/ParameterPickerModal';
 import OrganHealthCard from '../components/OrganHealthCard';
+import { cardSpeech } from '../utils/organReadout';
 import ActivityCard from '../components/ActivityCard';
 import DietCard from '../components/DietCard';
 import SpeakButton from '../components/SpeakButton';
@@ -40,13 +41,14 @@ function firstName(user, t) {
   return source.split(/[\s@]/)[0];
 }
 
-// Builds the sentence SpeakButton reads for the whole dashboard: organ
-// scores, insight/attention counts, and each tracked metric's latest
-// value - the same summary a sighted user scans down this screen to see.
+// Builds the sentence SpeakButton reads for the whole dashboard: each organ
+// card's readout (how many tests are normal, which aren't), insight/
+// attention counts, and each tracked metric's latest value - the same
+// summary a sighted user scans down this screen to see.
 function buildDashboardSpeech(snapshot, organs, t) {
   const parts = [];
   for (const organ of organs || []) {
-    parts.push(`${organ.label}: ${organ.scorePercent === null ? t('common.dash') : `${organ.scorePercent}%`}.`);
+    parts.push(cardSpeech(organ, t));
   }
   parts.push(`${t('dashboard.aiInsights')}: ${snapshot.insights.length}. ${t('dashboard.needsAttention')}: ${snapshot.needsAttention.length}.`);
   for (const metric of snapshot.trackedMetrics || []) {

@@ -1,10 +1,13 @@
 // Groups the Health Parameter Registry's existing `category` taxonomy into
 // body-organ groups a non-clinical user recognizes, and turns a user's
-// latest measurements into a per-organ "Health Score": the % of their
-// tracked results that fall inside the printed reference range. This is a
-// deterministic readout of the user's own data (never a diagnosis, and
-// never fabricated by a model) - framed plainly so it can't be mistaken for
-// clinical judgement.
+// latest measurements into a per-organ readout the way a doctor reads a
+// report back to a patient: how many of the tests came back normal, and -
+// by name - which ones are outside range, which way (high/low), and by how
+// much. It deliberately does NOT headline a percentage: "Kidney 60%" reads
+// as "my kidneys work at 60%", when it only ever meant "3 of 5 kidney-
+// related results were in range" - a count of tests, not a measure of how
+// well the organ itself is working. This is a deterministic readout of the
+// user's own data (never a diagnosis, and never fabricated by a model).
 // Thyroid strongly regulates metabolic rate, so its category is folded into
 // "Metabolism & Intestines" rather than given its own card - this changes
 // only which card a thyroid result counts toward, never the category value
@@ -163,14 +166,68 @@ const QUALITATIVE_NORMAL_VALUES = {
   urine_mucus: new Set(['absent', 'nil', 'none']),
 };
 
-// 'normal' | 'abnormal' | 'unknown' (not enough information to judge -
-// excluded from the score rather than guessed at). `standardRange`, when
-// given, is this parameter's row from reference_ranges (see
-// referenceRangeService.getAllReferenceRangesByCode) - the same
-// WHO/ICMR/FDA-aligned general clinical range the Medications tab scores
-// against, used here only as a fallback.
-function determineResultStatus(row, standardRange) {
+const HIGH_FLAGS = new Set(['high', 'h', 'critically high']);
+const LOW_FLAGS = new Set(['low', 'l', 'critically low']);
+const CRITICAL_FLAGS = new Set(['critical', 'critically high', 'critically low', 'panic']);
+
+// How far past its limit a value has to be before it's described as
+// "well above/below" rather than just "slightly": a result a few percent
+// over the line (TSH 4.8 vs 4.5, MCHC 31.8 vs 32) is something a doctor
+// usually notes and rechecks, whereas one a quarter or more past it
+// (creatinine 1.6 vs 1.2, fasting glucose 130 vs 99) is something they'd
+// actually act on. Only a readout-framing threshold, not a clinical cut-off.
+const MARKED_DEVIATION_PERCENT = 25;
+
+function numericValueOf(row) {
+  const value = row.normalizedValue ?? row.numericValue;
+  return value === null || value === undefined || !Number.isFinite(Number(value)) ? null : Number(value);
+}
+
+// The limits a result is judged against: the report's own printed
+// "min-max" range when it has one, else the app's standard range.
+function limitsFor(row, standardRange) {
+  const range = parseRange(row.referenceRangeRaw);
+  if (range) return { low: range.min, high: range.max };
+  if (standardRange) {
+    const low = standardRange.range_low;
+    const high = standardRange.range_high;
+    return {
+      low: low === null || low === undefined ? null : Number(low),
+      high: high === null || high === undefined ? null : Number(high),
+    };
+  }
+  return null;
+}
+
+// % beyond the limit crossed, relative to that limit (LDL 160 against an
+// upper limit of 100 -> 60). Null when there's no usable number to compare.
+function deviationPast(limit, value, direction) {
+  if (limit === null || value === null || limit === 0) return null;
+  const delta = direction === 'high' ? value - limit : limit - value;
+  if (delta <= 0) return null;
+  return Math.round((delta / Math.abs(limit)) * 100);
+}
+
+// Full per-result evaluation: { status, direction, deviationPercent,
+// severity }. `status` is 'normal' | 'abnormal' | 'unknown' (not enough
+// information to judge - excluded from the counts rather than guessed at).
+// For an abnormal result, `direction` is 'high' | 'low' | null (null for a
+// qualitative finding like a "Positive" urine protein), and `severity` is
+// 'critical' (the lab flagged it critical/panic), 'marked' (at least
+// MARKED_DEVIATION_PERCENT past its limit), or 'mild' (anything else,
+// including an out-of-range result whose distance can't be measured).
+// `standardRange`, when given, is this parameter's row from
+// reference_ranges (see referenceRangeService.getAllReferenceRangesByCode)
+// - the same WHO/ICMR/FDA-aligned general clinical range the Medications
+// tab scores against, used here only as a fallback.
+function evaluateResult(row, standardRange) {
   const flag = String(row.statusFlag || '').trim().toLowerCase();
+  const value = numericValueOf(row);
+  const limits = limitsFor(row, standardRange);
+
+  let status = 'unknown';
+  let direction = null;
+
   // Trust status_flag only when it's a clearly recognized normal/abnormal
   // token. Real extractions produce plenty of flag text that means neither
   // - a placeholder dash a lab prints for "no flag", "See Note", a stray
@@ -180,42 +237,67 @@ function determineResultStatus(row, standardRange) {
   // it silently marked in-range results as out-of-range. An unrecognized
   // flag now falls through to actually comparing the value against the
   // range instead, the same as printing no flag at all.
-  if (NORMAL_FLAGS.has(flag)) return 'normal';
-  if (ABNORMAL_FLAGS.has(flag)) return 'abnormal';
-
-  const value = row.normalizedValue ?? row.numericValue;
-  const range = parseRange(row.referenceRangeRaw);
-  if (value !== null && value !== undefined && range) {
-    return value >= range.min && value <= range.max ? 'normal' : 'abnormal';
+  if (NORMAL_FLAGS.has(flag)) {
+    status = 'normal';
+  } else if (ABNORMAL_FLAGS.has(flag)) {
+    status = 'abnormal';
+    if (HIGH_FLAGS.has(flag)) direction = 'high';
+    else if (LOW_FLAGS.has(flag)) direction = 'low';
+    else if (value !== null && limits) {
+      if (limits.high !== null && value > limits.high) direction = 'high';
+      else if (limits.low !== null && value < limits.low) direction = 'low';
+    }
+  } else if (value !== null && limits && (limits.low !== null || limits.high !== null)) {
+    // A report's own printed range isn't always a plain "min-max" - a
+    // multi-tier diagnostic band like HbA1c's "Non-Diabetic <5.7 / Pre
+    // Diabetic 5.7-6.4 / Diabetic >=6.5" (or no range printed at all,
+    // common for a home glucometer reading) can't be parsed by
+    // parseRange. Rather than leave every such result stuck at 'unknown',
+    // limitsFor falls back to the app's own standard reference range.
+    if (limits.low !== null && value < limits.low) {
+      status = 'abnormal';
+      direction = 'low';
+    } else if (limits.high !== null && value > limits.high) {
+      status = 'abnormal';
+      direction = 'high';
+    } else {
+      status = 'normal';
+    }
+  } else {
+    const normalValues = QUALITATIVE_NORMAL_VALUES[row.code];
+    if (normalValues && row.qualitativeValue) {
+      status = normalValues.has(String(row.qualitativeValue).trim().toLowerCase()) ? 'normal' : 'abnormal';
+    }
   }
 
-  // A report's own printed range isn't always a plain "min-max" - a
-  // multi-tier diagnostic band like HbA1c's "Non-Diabetic <5.7 / Pre
-  // Diabetic 5.7-6.4 / Diabetic >=6.5" (or no range printed at all, common
-  // for a home glucometer reading) can't be parsed by the regex above.
-  // Rather than leave every such result stuck at 'unknown', fall back to
-  // the app's own standard reference range for this parameter.
-  if (value !== null && value !== undefined && standardRange) {
-    const { range_low: low, range_high: high } = standardRange;
-    if (low !== null && low !== undefined && value < low) return 'abnormal';
-    if (high !== null && high !== undefined && value > high) return 'abnormal';
-    return 'normal';
-  }
+  if (status !== 'abnormal') return { status, direction: null, deviationPercent: null, severity: null };
 
-  const normalValues = QUALITATIVE_NORMAL_VALUES[row.code];
-  if (normalValues && row.qualitativeValue) {
-    return normalValues.has(String(row.qualitativeValue).trim().toLowerCase()) ? 'normal' : 'abnormal';
-  }
+  const deviationPercent =
+    direction && limits ? deviationPast(direction === 'high' ? limits.high : limits.low, value, direction) : null;
+  let severity = 'mild';
+  if (CRITICAL_FLAGS.has(flag)) severity = 'critical';
+  else if (deviationPercent !== null && deviationPercent >= MARKED_DEVIATION_PERCENT) severity = 'marked';
 
-  return 'unknown';
+  return { status, direction, deviationPercent, severity };
 }
 
-function scoreToStatus(scorePercent) {
-  if (scorePercent === null) return 'no_data';
-  if (scorePercent >= 90) return 'good';
-  if (scorePercent >= 70) return 'watch';
-  return 'attention';
+function determineResultStatus(row, standardRange) {
+  return evaluateResult(row, standardRange).status;
 }
+
+// A card's overall status follows how a doctor triages a report - by the
+// worst individual finding, not by what fraction of tests passed. One
+// critical or well-out-of-range result deserves attention even if ten
+// others are fine, while a couple of results just over the line on a
+// 20-test blood count are "keep an eye on it", not an alarm.
+function cardStatus(evaluatedCount, outOfRange) {
+  if (evaluatedCount === 0) return 'no_data';
+  if (outOfRange.length === 0) return 'good';
+  if (outOfRange.some((p) => p.severity === 'critical' || p.severity === 'marked')) return 'attention';
+  return 'watch';
+}
+
+const SEVERITY_RANK = { critical: 0, marked: 1, mild: 2 };
 
 const STATUS_LABELS = {
   good: 'Good',
@@ -246,6 +328,7 @@ function buildCardSummaries(rows, groups, standardRangesByCode = new Map()) {
     const groupRows = group.categories.flatMap((category) => rowsByCategory.get(category) || []);
     const parameters = groupRows.map((row) => {
       const standardRange = standardRangesByCode.get(row.code);
+      const evaluation = evaluateResult(row, standardRange);
       return {
         code: row.code,
         displayName: row.displayName,
@@ -260,7 +343,13 @@ function buildCardSummaries(rows, groups, standardRangesByCode = new Map()) {
         standardRange: standardRange
           ? { low: standardRange.range_low, high: standardRange.range_high, source: standardRange.source }
           : null,
-        resultStatus: determineResultStatus(row, standardRange),
+        resultStatus: evaluation.status,
+        // 'high' | 'low' | null, and how far past its limit (in % of that
+        // limit) - so the client can say "LDL well above range" rather
+        // than just "out of range".
+        direction: evaluation.direction,
+        deviationPercent: evaluation.deviationPercent,
+        severity: evaluation.severity,
         effectiveDate: row.effectiveDate || null,
         reportId: row.reportId || null,
       };
@@ -268,8 +357,27 @@ function buildCardSummaries(rows, groups, standardRangesByCode = new Map()) {
 
     const determinable = parameters.filter((p) => p.resultStatus !== 'unknown');
     const normalCount = determinable.filter((p) => p.resultStatus === 'normal').length;
+    const outOfRange = determinable
+      .filter((p) => p.resultStatus === 'abnormal')
+      .sort(
+        (a, b) =>
+          SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] ||
+          (b.deviationPercent ?? -1) - (a.deviationPercent ?? -1) ||
+          a.displayName.localeCompare(b.displayName)
+      )
+      .map(({ code, displayName, direction, deviationPercent, severity }) => ({
+        code,
+        displayName,
+        direction,
+        deviationPercent,
+        severity,
+      }));
+    // Share of evaluated results in range. Kept in the payload for API
+    // compatibility only - the app never headlines it, since a bare "60%"
+    // on an organ card reads as how well the organ works (see this file's
+    // header comment). The counts and outOfRange list are what's shown.
     const scorePercent = determinable.length > 0 ? Math.round((normalCount / determinable.length) * 100) : null;
-    const status = scoreToStatus(scorePercent);
+    const status = cardStatus(determinable.length, outOfRange);
 
     return {
       key: group.key,
@@ -279,8 +387,12 @@ function buildCardSummaries(rows, groups, standardRangesByCode = new Map()) {
       status,
       statusLabel: STATUS_LABELS[status],
       trackedCount: parameters.length,
+      evaluatedCount: determinable.length,
       normalCount,
       attentionCount: determinable.length - normalCount,
+      // Out-of-range results, most concerning first - what a doctor would
+      // actually name when reading the report back ("your LDL is high").
+      outOfRange,
       parameters: parameters.sort((a, b) => a.displayName.localeCompare(b.displayName)),
       // What lab tests commonly feed this card - always present (not just
       // when empty) so a populated card can still answer "what else could I
@@ -307,4 +419,11 @@ function buildOrganSummaries(rows, standardRangesByCode = new Map()) {
   return buildCardSummaries(rows, ORGAN_GROUPS, standardRangesByCode);
 }
 
-module.exports = { ORGAN_GROUPS, buildOrganSummaries, buildCardSummaries, determineResultStatus, parseRange };
+module.exports = {
+  ORGAN_GROUPS,
+  buildOrganSummaries,
+  buildCardSummaries,
+  determineResultStatus,
+  evaluateResult,
+  parseRange,
+};

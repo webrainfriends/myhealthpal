@@ -5,6 +5,7 @@ const {
   buildOrganSummaries,
   buildCardSummaries,
   determineResultStatus,
+  evaluateResult,
 } = require('../src/services/organHealthService');
 
 test('no registry category is claimed by more than one organ group', () => {
@@ -200,9 +201,9 @@ test('kidney card folds in urine complete analysis results, scored via known-nor
   );
 });
 
-test('buildOrganSummaries scores an organ by % of determinable results that are normal, ignoring unknowns', () => {
+test('buildOrganSummaries counts normal vs out-of-range results and names what is out of range, ignoring unknowns', () => {
   const rows = [
-    { code: 'ldl', displayName: 'LDL Cholesterol', category: 'lipids', statusFlag: 'High', numericValue: 160 },
+    { code: 'ldl', displayName: 'LDL Cholesterol', category: 'lipids', statusFlag: 'High', numericValue: 160, referenceRangeRaw: '0-100' },
     { code: 'hdl', displayName: 'HDL Cholesterol', category: 'lipids', statusFlag: 'Normal', numericValue: 55 },
     { code: 'trig', displayName: 'Triglycerides', category: 'lipids', statusFlag: 'Normal', numericValue: 120 },
     { code: 'unk', displayName: 'Some Unscored Lipid Marker', category: 'lipids' }, // no flag, no range -> unknown
@@ -212,10 +213,13 @@ test('buildOrganSummaries scores an organ by % of determinable results that are 
   const heart = summaries.find((s) => s.key === 'heart');
 
   assert.equal(heart.trackedCount, 4);
+  assert.equal(heart.evaluatedCount, 3);
   assert.equal(heart.normalCount, 2);
   assert.equal(heart.attentionCount, 1);
-  assert.equal(heart.scorePercent, 67); // 2 of 3 determinable results normal
-  assert.equal(heart.status, 'attention'); // 67% is below the 70% "watch" threshold
+  assert.deepEqual(heart.outOfRange, [
+    { code: 'ldl', displayName: 'LDL Cholesterol', direction: 'high', deviationPercent: 60, severity: 'marked' },
+  ]);
+  assert.equal(heart.status, 'attention'); // LDL is 60% past its upper limit
   assert.equal(heart.statusLabel, 'Needs attention');
 });
 
@@ -228,21 +232,46 @@ test('an organ group with no tracked parameters reports no_data rather than a fa
   }
 });
 
-test('score thresholds: >=90 good, 70-89 watch, <70 attention', () => {
-  const makeRows = (normal, abnormal) => {
-    const rows = [];
-    for (let i = 0; i < normal; i += 1) {
-      rows.push({ code: `n${i}`, displayName: `Normal ${i}`, category: 'kidney', statusFlag: 'Normal', numericValue: 1 });
-    }
-    for (let i = 0; i < abnormal; i += 1) {
-      rows.push({ code: `a${i}`, displayName: `Abnormal ${i}`, category: 'kidney', statusFlag: 'High', numericValue: 1 });
-    }
-    return rows;
-  };
+test('card status follows the worst single finding, not the share of tests passed', () => {
+  const kidneyStatus = (rows) => buildOrganSummaries(rows).find((s) => s.key === 'kidney').status;
+  const normal = (i) => ({ code: `n${i}`, displayName: `Normal ${i}`, category: 'kidney', statusFlag: 'Normal', numericValue: 1 });
+  const normals = (n) => Array.from({ length: n }, (_, i) => normal(i));
 
-  assert.equal(buildOrganSummaries(makeRows(9, 1)).find((s) => s.key === 'kidney').status, 'good'); // 90%
-  assert.equal(buildOrganSummaries(makeRows(7, 3)).find((s) => s.key === 'kidney').status, 'watch'); // 70%
-  assert.equal(buildOrganSummaries(makeRows(6, 4)).find((s) => s.key === 'kidney').status, 'attention'); // 60%
+  assert.equal(kidneyStatus(normals(5)), 'good');
+  // Slightly over the line (1.3 vs 1.2 -> 8% past) -> keep an eye on it,
+  // even when it's 1 of only 2 tests (a 50% "score" under the old model).
+  const mild = { code: 'creat', displayName: 'Creatinine', category: 'kidney', numericValue: 1.3, referenceRangeRaw: '0.6-1.2' };
+  assert.equal(kidneyStatus([...normals(1), mild]), 'watch');
+  // Well past the limit (1.8 vs 1.2 -> 50% past) -> needs attention, even
+  // with nine other results normal (a 90% "score" under the old model).
+  const marked = { ...mild, numericValue: 1.8 };
+  assert.equal(kidneyStatus([...normals(9), marked]), 'attention');
+  // A lab's critical flag always needs attention.
+  const critical = { code: 'k', displayName: 'Potassium', category: 'electrolytes', statusFlag: 'Critical', numericValue: 6.8 };
+  assert.equal(kidneyStatus([...normals(9), critical]), 'attention');
+});
+
+test('evaluateResult reports direction and how far past the limit a result is', () => {
+  assert.deepEqual(evaluateResult({ numericValue: 8, referenceRangeRaw: '13.0-17.0' }), {
+    status: 'abnormal',
+    direction: 'low',
+    deviationPercent: 38,
+    severity: 'marked',
+  });
+  assert.deepEqual(evaluateResult({ statusFlag: 'H', numericValue: 4.8, referenceRangeRaw: '0.4-4.5' }), {
+    status: 'abnormal',
+    direction: 'high',
+    deviationPercent: 7,
+    severity: 'mild',
+  });
+  // A qualitative abnormal has no direction or measurable distance.
+  assert.deepEqual(evaluateResult({ code: 'urine_protein', qualitativeValue: 'Positive' }), {
+    status: 'abnormal',
+    direction: null,
+    deviationPercent: null,
+    severity: 'mild',
+  });
+  assert.equal(evaluateResult({ numericValue: 14, referenceRangeRaw: '13.0-17.0' }).severity, null);
 });
 
 test('buildCardSummaries backs ad-hoc (non-organ) groups the same way, e.g. for unmapped results with no registry code', () => {

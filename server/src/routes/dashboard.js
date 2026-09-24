@@ -96,9 +96,10 @@ router.get('/snapshot', async (req, res, next) => {
   }
 });
 
-// One card per body-organ group, each with a Health Score: the % of that
-// organ's tracked parameters whose latest result falls in range - the
-// report's own printed flag/range when it's usable, else the app's own
+// One card per body-organ group, each read back the way a doctor would:
+// how many of that organ's latest results are in range and which ones
+// aren't (high/low, and how far) - judged by the report's own printed
+// flag/range when it's usable, else the app's own
 // standards-based (WHO/ICMR/FDA) general reference range (same source the
 // Medications tab scores against) as a fallback. Every group is always
 // returned (even with no data yet)
