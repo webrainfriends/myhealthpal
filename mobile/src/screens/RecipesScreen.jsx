@@ -7,7 +7,10 @@ import { cardShadow, colors, radii, spacing, typography } from '../theme/theme';
 import { createFoodEntry, fetchDietRecipeFeed } from '../api/client';
 import { showAlert } from '../utils/alert';
 
-const PAGE_SIZE = 10;
+// Recipes are generated five at a time, and the next five only when the
+// person asks for them (the "Next 5 recipes" button) - never automatically
+// on scroll - so each batch is a deliberate, affordable AI call.
+const PAGE_SIZE = 5;
 
 const MEAL_TYPE_OPTIONS = [
   { value: 'breakfast', label: 'Breakfast' },
@@ -74,6 +77,7 @@ export default function RecipesScreen({ navigation }) {
   }, [mealType]);
 
   async function handleLoadMore() {
+    if (loadingMore) return; // one batch at a time, even on a double tap
     setLoadingMore(true);
     try {
       const excludeTitles = recipes.map((r) => r.title);
@@ -204,7 +208,13 @@ export default function RecipesScreen({ navigation }) {
         })}
 
         {!loading && recipes.length > 0 && hasMore && (
-          <PrimaryButton title="Load 10 more" variant="secondary" onPress={handleLoadMore} loading={loadingMore} />
+          <PrimaryButton
+            title={`Next ${PAGE_SIZE} recipes`}
+            variant="secondary"
+            onPress={handleLoadMore}
+            loading={loadingMore}
+            disabled={loadingMore}
+          />
         )}
       </ScrollView>
     </SafeAreaView>

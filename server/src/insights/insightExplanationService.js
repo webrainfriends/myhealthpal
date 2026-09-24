@@ -8,8 +8,6 @@ const SAFETY_TAIL =
 function buildTitle(candidate) {
   const { type, templateData: d } = candidate;
   switch (type) {
-    case 'new_result':
-      return `First recorded ${d.parameterName}`;
     case 'change_from_previous':
       return d.qualitative
         ? `${d.parameterName} changed`
@@ -17,9 +15,11 @@ function buildTitle(candidate) {
     case 'sustained_trend':
       return `${d.parameterName} has been ${d.direction} across your last ${d.windowSize} results`;
     case 'new_abnormal_flag':
-      return `${d.parameterName} newly flagged ${d.flag}`;
+      return d.firstTime
+        ? `${d.parameterName} out of range for the first time`
+        : `${d.parameterName} newly out of range`;
     case 'repeated_abnormal':
-      return `${d.parameterName} flagged abnormal ${d.windowSize} times in a row`;
+      return `${d.parameterName} out of range ${d.windowSize} times in a row`;
     default:
       return d.parameterName;
   }
@@ -29,9 +29,6 @@ function buildHeuristicExplanation(candidate) {
   const { type, templateData: d, severity } = candidate;
   let text;
   switch (type) {
-    case 'new_result':
-      text = `This is the first confirmed ${d.parameterName} result in your history: ${d.value} ${d.unit}.`.trim();
-      break;
     case 'change_from_previous':
       text = d.qualitative
         ? `Your ${d.parameterName} changed from "${d.previousValue}" to "${d.currentValue}" compared with your previous confirmed result.`
@@ -41,10 +38,16 @@ function buildHeuristicExplanation(candidate) {
       text = `Across your last ${d.windowSize} confirmed results, ${d.parameterName} moved from ${d.firstValue} ${d.unit} to ${d.lastValue} ${d.unit}, consistently ${d.direction}.`;
       break;
     case 'new_abnormal_flag':
-      text = `Your latest ${d.parameterName} result (${d.value} ${d.unit}) was flagged "${d.flag}" by the source report; your previous confirmed result was not flagged.`;
+      {
+        const where = d.direction === 'high' ? 'above' : d.direction === 'low' ? 'below' : 'outside';
+        const result = `(${d.value} ${d.unit})`.replace(' )', ')');
+        text = d.firstTime
+          ? `Your first recorded ${d.parameterName} result ${result} is ${where} the normal range.`
+          : `Your latest ${d.parameterName} result ${result} is ${where} the normal range; your previous confirmed result was within it.`;
+      }
       break;
     case 'repeated_abnormal':
-      text = `Your last ${d.windowSize} confirmed ${d.parameterName} results have all been flagged "${d.flag}" by their source reports.`;
+      text = `Your last ${d.windowSize} confirmed ${d.parameterName} results have all been outside the normal range.`;
       break;
     default:
       text = `${d.parameterName} changed.`;

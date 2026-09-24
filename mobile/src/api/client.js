@@ -483,7 +483,7 @@ export async function generateDietRecipe(fields) {
 // Auto-generated, paginated recipe feed for the standalone Recipes screen.
 // excludeTitles carries every title already shown so far so a "Load more"
 // call doesn't repeat them.
-export async function fetchDietRecipeFeed({ mealType, excludeTitles = [], limit = 10 } = {}) {
+export async function fetchDietRecipeFeed({ mealType, excludeTitles = [], limit = 5 } = {}) {
   const response = await apiFetch('/api/diet/recipes/feed', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

@@ -507,13 +507,18 @@ router.post('/recipes/generate', async (req, res, next) => {
 // dietRecipeService.generateRecipeFeed). Not persisted; "Add to Diet" on
 // the mobile app is just a normal POST /entries using the returned
 // nutrition, same as /recipes/generate's "Log this recipe".
+const RECIPE_BATCH_SIZE = 5;
+
 router.post('/recipes/feed', async (req, res, next) => {
   try {
     const body = req.body || {};
     if (body.meal_type && !MEAL_TYPES.has(body.meal_type)) {
       return res.status(400).json({ error: 'meal_type is not a recognized meal.' });
     }
-    const count = Math.min(Math.max(Number.parseInt(body.limit, 10) || 10, 1), 10);
+    // Five per batch, the next batch only on an explicit "Next 5" from the
+    // app (see RecipesScreen) - capped here too so no client can ask for a
+    // bigger, costlier generation in one call.
+    const count = Math.min(Math.max(Number.parseInt(body.limit, 10) || RECIPE_BATCH_SIZE, 1), RECIPE_BATCH_SIZE);
     const excludeTitles = Array.isArray(body.exclude_titles)
       ? body.exclude_titles.filter((t) => typeof t === 'string').slice(0, 200)
       : [];

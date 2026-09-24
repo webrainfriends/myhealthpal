@@ -334,8 +334,8 @@ function buildFeedUserMessage({ mealType, count, considerations, activity, weigh
 // text typed by the user - grounded the same way generateRecipe() is, plus
 // recent activity, weight goal, and saved diet-type/cuisine preferences.
 // excludeTitles lets the caller page through without repeats: the mobile
-// "Load 10 more" button passes every title already shown so far.
-async function generateRecipeFeed(userId, { mealType, count = 10, excludeTitles = [] } = {}) {
+// "Next 5 recipes" button passes every title already shown so far.
+async function generateRecipeFeed(userId, { mealType, count = 5, excludeTitles = [] } = {}) {
   if (!config.anthropicApiKey) {
     throw new Error('AI recipe generation requires ANTHROPIC_API_KEY to be set.');
   }
