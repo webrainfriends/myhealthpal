@@ -27,6 +27,16 @@ export function setUnauthorizedHandler(handler) {
   onUnauthorized = handler;
 }
 
+// The family member's profile currently being viewed (Family Health Eye),
+// or null for the signed-in account's own. Set by AuthContext; sent as
+// X-Profile-Id, which the server only honors for a profile this account has
+// been granted (and ignores on account routes like /api/auth and
+// /api/family).
+let activeProfileId = null;
+export function setActiveProfileId(profileId) {
+  activeProfileId = profileId || null;
+}
+
 // Every authenticated call funnels through here so the session token is
 // attached exactly once, in one place, rather than at each of the 20+ call
 // sites below - and so a 401 (expired/invalid/revoked session) is handled
@@ -36,6 +46,7 @@ async function apiFetch(path, options = {}) {
   const token = loadToken();
   const headers = { ...(options.headers || {}) };
   if (token) headers.Authorization = `Bearer ${token}`;
+  if (activeProfileId) headers['X-Profile-Id'] = activeProfileId;
 
   // Belt-and-suspenders alongside the server's own Cache-Control: no-store -
   // every call here is a signed-in user's current data (report processing
@@ -318,7 +329,7 @@ export async function setRetestCheckin(planId, done) {
 }
 
 export async function updateRetestSettings(remindersEnabled) {
-  const response = await apiFetch('/api/retest/settings', {
+  const response = await apiFetch('/api/account/retest-settings', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ remindersEnabled }),
@@ -327,11 +338,62 @@ export async function updateRetestSettings(remindersEnabled) {
 }
 
 export async function registerPushToken(token, platform) {
-  const response = await apiFetch('/api/retest/push-token', {
+  const response = await apiFetch('/api/account/push-token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token, platform }),
   });
+  return handleResponse(response);
+}
+
+export async function fetchFamily() {
+  const response = await apiFetch('/api/family');
+  return handleResponse(response);
+}
+
+export async function createFamilyMember(displayName, relation) {
+  const response = await apiFetch('/api/family/members', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ displayName, relation }),
+  });
+  return handleResponse(response);
+}
+
+export async function updateFamilyMember(memberId, changes) {
+  const response = await apiFetch(`/api/family/members/${memberId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(changes),
+  });
+  return handleResponse(response);
+}
+
+export async function removeFamilyMember(memberId) {
+  const response = await apiFetch(`/api/family/members/${memberId}`, { method: 'DELETE' });
+  return handleResponse(response);
+}
+
+export async function createFamilyInvite({ profileId, access }) {
+  const response = await apiFetch('/api/family/invites', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ profileId, access }),
+  });
+  return handleResponse(response);
+}
+
+export async function redeemFamilyInvite(code) {
+  const response = await apiFetch('/api/family/invites/redeem', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
+  });
+  return handleResponse(response);
+}
+
+export async function revokeFamilyAccess(userId) {
+  const response = await apiFetch(`/api/family/shared-with/${userId}`, { method: 'DELETE' });
   return handleResponse(response);
 }
 

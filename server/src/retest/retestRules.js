@@ -195,8 +195,17 @@ function reminderKind(dueDate, today = new Date()) {
   return null;
 }
 
+// Fills a booking-link template's {test} placeholder. Returns null for a
+// template that isn't an http(s) URL, so a misconfiguration never hands the
+// app an arbitrary scheme to open.
+function bookingUrl(template, testName) {
+  if (!template || !/^https?:\/\//i.test(template)) return null;
+  return template.split('{test}').join(encodeURIComponent(testName || ''));
+}
+
 module.exports = {
   RETEST_INTERVAL_DAYS,
+  bookingUrl,
   DEFAULT_ABNORMAL_INTERVAL_DAYS,
   CRITICAL_INTERVAL_DAYS,
   evaluateRetest,

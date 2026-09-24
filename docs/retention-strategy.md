@@ -50,7 +50,9 @@ Competitors are report lockers or report explainers. EyeMyHealth becomes the app
 Pricing: free for yourself, a paid Family plan (per parent or per household).
 
 ## 4. Build order
-
-1. **Retest Radar + push reminders**: built (see README, "Retest Radar").
-2. **Family/caregiver profiles**: data is keyed only by `user_id` today, so this needs a `profiles` table, per-person tables moved onto `profile_id`, and an invite/share flow.
-3. **ABHA link, WhatsApp upload, a lab-booking partner link, and medicine milestones on trend charts.**
+1. **Retest Radar + push reminders**: built.
+2. **Family Health Eye** (caregiver and managed profiles, sharing by invite code, caregiver reminders): built.
+3. **Book-test link**: built as a configurable URL (`LAB_BOOKING_URL_TEMPLATE`). Swap in a lab partner's booking page once a partnership exists.
+4. **ABHA/ABDM linking**: needs registration as a PHR app with NHA (National Health Authority), plus ABDM sandbox credentials.
+5. **WhatsApp upload**: needs a WhatsApp Business API account (Meta, or a provider such as Gupshup or Twilio) and a verified number. The existing ingestion pipeline can take the forwarded files.
+6. **Medicine milestones on trend charts** ("started Metformin here").

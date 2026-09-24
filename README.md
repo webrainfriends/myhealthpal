@@ -25,6 +25,10 @@ covering:
   and every medicine linked to a lab value, a small weekly action to tick
   off until then, and push reminders two weeks before and on the date
   (see "Retest Radar" below).
+- Family Health Eye: one account looks after parents and family members.
+  It can add a "managed" profile for someone who won't use the app, or
+  follow another account that shares itself with an invite code (view-only
+  or full access). Caregivers get that person's recheck reminders too.
 - Guest, Google, and Apple sign-in, with every user's reports, timeline,
   dashboard, insights, and chat history strictly scoped to their own signed-in
   session and never visible to anyone else.
@@ -618,6 +622,51 @@ device's Expo push token after sign-in. Push tokens need an EAS `projectId`
 in `app.json` (`extra.eas.projectId`) and a physical device. Without them
 (web, simulator, no projectId), the same reminders are scheduled as local
 notifications instead. Tapping any of them opens the Retest Radar screen.
+
+### Family Health Eye
+
+Every family member is an ordinary `users` row, so every existing table and
+route scopes their data with no changes. Migration `021_family_profiles.sql`
+adds:
+
+- a `managed` `auth_provider`: a profile with no sign-in of its own
+- `family_links (owner_user_id, member_user_id, relation, access)`, where
+  `access` is `manage` or `view`
+- `family_invites`: single-use codes that expire after 7 days
+
+How profile switching works:
+
+- The client sends `X-Profile-Id` to act as a linked profile.
+- `requireAuth` honors the header only when a `family_links` row grants it,
+  and refuses every non-GET request on a `view` link.
+- `req.accountUser` is always the signed-in account; `req.user` is the
+  active profile.
+- `requireAccountAuth` ignores the header entirely. It covers account-level
+  routes: `/api/auth`, `/api/family`, and `/api/account` (push tokens,
+  reminder settings).
+- AI usage is always billed to the signed-in account.
+
+Family routes:
+
+- `GET /api/family`: returns this account's profiles, plus who can see its
+  own data.
+- `POST`/`PATCH`/`DELETE /api/family/members[/:id]`: create a managed
+  profile, set its name, relation or summary language, or remove it.
+  Removing the last manager of a managed profile deletes the profile and all
+  its data.
+- `POST /api/family/invites` and `POST /api/family/invites/redeem`: share or
+  join a profile by code.
+- `DELETE /api/family/shared-with/:userId`: revoke someone's access to your
+  own data.
+
+The Retest Radar reminder job notifies each profile's own devices, and every
+linked caregiver's devices too ("Time to recheck Dad's HbA1c"). Tapping a
+caregiver's reminder opens that profile.
+
+Retest Radar's **Book test** button opens `LAB_BOOKING_URL_TEMPLATE`, with
+`{test}` replaced by the test name. The default is a nearby-labs map search;
+point it at a lab partner's booking page when you have one. The button shows
+prominently once a recheck is 14 days away or less.
 
 ### Known scope limits
 

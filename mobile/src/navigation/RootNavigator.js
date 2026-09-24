@@ -31,6 +31,7 @@ import LanguagePreferenceScreen from '../screens/LanguagePreferenceScreen';
 import VoiceAccessibilityScreen from '../screens/VoiceAccessibilityScreen';
 import AiUsageScreen from '../screens/AiUsageScreen';
 import RetestRadarScreen from '../screens/RetestRadarScreen';
+import FamilyScreen from '../screens/FamilyScreen';
 import { onRetestNotificationTap, registerForRetestPush } from '../notifications/retestNotifications';
 import { useAuth } from '../auth/AuthContext';
 import { useT } from '../i18n/I18nContext';
@@ -75,6 +76,7 @@ const linking = {
       Insights: 'insights',
       NeedsAttention: 'needs-attention',
       RetestRadar: 'retest',
+      Family: 'family',
       MedicationDetail: 'medications/:medicationId',
       MedicationScanReview: 'medications/scans/:scanId',
       Activity: 'activity',
@@ -167,7 +169,7 @@ function Tabs() {
 const navigationRef = createNavigationContainerRef();
 
 export default function RootNavigator() {
-  const { user, loading } = useAuth();
+  const { user, loading, activeProfile, switchProfileById } = useAuth();
   const t = useT();
   const userId = user?.id;
 
@@ -176,10 +178,15 @@ export default function RootNavigator() {
   useEffect(() => {
     if (!userId) return undefined;
     registerForRetestPush();
-    return onRetestNotificationTap((screen) => {
-      if (navigationRef.isReady()) navigationRef.navigate(screen);
+    return onRetestNotificationTap(async (screen, data) => {
+      // A caregiver's reminder is about a family member - open their
+      // profile first (the navigator remounts, so navigate after a tick).
+      if (data?.profileId !== undefined) await switchProfileById(data.profileId);
+      setTimeout(() => {
+        if (navigationRef.isReady()) navigationRef.navigate(screen);
+      }, 0);
     });
-  }, [userId]);
+  }, [userId, switchProfileById]);
 
   if (loading) {
     return (
@@ -195,7 +202,9 @@ export default function RootNavigator() {
   }
 
   return (
-    <NavigationContainer ref={navigationRef} theme={navigationTheme} linking={linking}>
+    // Keyed by the active profile: switching to a family member remounts
+    // every screen, so nothing shows the previous person's data.
+    <NavigationContainer key={activeProfile?.id || 'self'} ref={navigationRef} theme={navigationTheme} linking={linking}>
       <Stack.Navigator
         screenOptions={{
           headerStyle: { backgroundColor: colors.surface },
@@ -212,6 +221,7 @@ export default function RootNavigator() {
         <Stack.Screen name="Insights" component={InsightsScreen} options={{ title: t('nav.insights') }} />
         <Stack.Screen name="NeedsAttention" component={NeedsAttentionScreen} options={{ title: t('nav.needsAttention') }} />
         <Stack.Screen name="RetestRadar" component={RetestRadarScreen} options={{ title: t('nav.retestRadar') }} />
+        <Stack.Screen name="Family" component={FamilyScreen} options={{ title: t('nav.family') }} />
         <Stack.Screen name="MedicationDetail" component={MedicationDetailScreen} options={{ title: t('nav.medication') }} />
         <Stack.Screen
           name="MedicationScanReview"

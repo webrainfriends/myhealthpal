@@ -68,33 +68,37 @@ function reminderDate(dueDate, daysBefore) {
   return at.getTime() > Date.now() ? at : null;
 }
 
-// Re-schedules this device's local reminders to match the current plans.
-// A no-op when the server is pushing, and on web.
-export async function syncLocalRetestReminders(plans, { enabled, t }) {
+// Re-schedules this device's local reminders for one profile's plans
+// (`profile` is the family member being viewed, or null for the account's
+// own), leaving other profiles' reminders alone. A no-op when the server is
+// pushing, and on web.
+export async function syncLocalRetestReminders(plans, { enabled, t, profile = null }) {
   if (Platform.OS === 'web' || serverPushActive) return;
+  const prefix = `${LOCAL_ID_PREFIX}${profile ? profile.id : 'self'}-`;
   try {
     const scheduled = await Notifications.getAllScheduledNotificationsAsync();
     await Promise.all(
       scheduled
-        .filter((n) => n.identifier.startsWith(LOCAL_ID_PREFIX))
+        .filter((n) => n.identifier.startsWith(prefix))
         .map((n) => Notifications.cancelScheduledNotificationAsync(n.identifier))
     );
     if (!enabled || plans.length === 0) return;
     if (!(await Notifications.getPermissionsAsync()).granted) return;
 
     for (const plan of plans) {
+      const name = profile ? `${profile.displayName} · ${plan.parameterDisplayName}` : plan.parameterDisplayName;
       const reminders = [
-        { key: 'two_weeks', date: reminderDate(plan.dueDate, 14), title: t('retest.pushTwoWeeksTitle', { name: plan.parameterDisplayName }) },
-        { key: 'due', date: reminderDate(plan.dueDate, 0), title: t('retest.pushDueTitle', { name: plan.parameterDisplayName }) },
+        { key: 'two_weeks', date: reminderDate(plan.dueDate, 14), title: t('retest.pushTwoWeeksTitle', { name }) },
+        { key: 'due', date: reminderDate(plan.dueDate, 0), title: t('retest.pushDueTitle', { name }) },
       ];
       for (const reminder of reminders) {
         if (!reminder.date) continue;
         await Notifications.scheduleNotificationAsync({
-          identifier: `${LOCAL_ID_PREFIX}${plan.id}-${reminder.key}`,
+          identifier: `${prefix}${plan.id}-${reminder.key}`,
           content: {
             title: reminder.title,
             body: reminder.key === 'due' ? t('retest.pushDueBody') : plan.microAction,
-            data: { screen: 'RetestRadar', planId: plan.id },
+            data: { screen: 'RetestRadar', planId: plan.id, profileId: profile ? profile.id : null },
           },
           trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: reminder.date },
         });
@@ -110,7 +114,8 @@ export async function syncLocalRetestReminders(plans, { enabled, t }) {
 export function onRetestNotificationTap(navigate) {
   if (Platform.OS === 'web') return () => {};
   const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
-    if (response.notification.request.content.data?.screen === 'RetestRadar') navigate('RetestRadar');
+    const data = response.notification.request.content.data;
+    if (data?.screen === 'RetestRadar') navigate('RetestRadar', data);
   });
   return () => subscription.remove();
 }

@@ -10,6 +10,7 @@ const {
   checkinStreak,
   reminderKind,
   CRITICAL_INTERVAL_DAYS,
+  bookingUrl,
 } = require('../src/retest/retestRules');
 const { pendingReminders, buildMessage } = require('../src/retest/retestReminderService');
 
@@ -155,4 +156,23 @@ test('buildMessage leads with the most urgent item and counts the rest', () => {
   assert.equal(message.title, 'Time to recheck your TSH');
   assert.match(message.body, /\+1 more/);
   assert.equal(message.data.planId, 'a');
+});
+
+test('buildMessage names the family member for a caregiver', () => {
+  const pending = [{ plan: plan({ id: 'a', parameterDisplayName: 'HbA1c', daysLeft: 0 }), kind: 'due' }];
+  const own = buildMessage(pending);
+  assert.equal(own.title, 'Time to recheck your HbA1c');
+  assert.equal(own.data.profileId, null);
+  const caregiver = buildMessage(pending, { id: 'dad-1', name: 'Dad' });
+  assert.equal(caregiver.title, "Time to recheck Dad's HbA1c");
+  assert.equal(caregiver.data.profileId, 'dad-1');
+});
+
+test('bookingUrl fills the test name and refuses non-http templates', () => {
+  assert.equal(
+    bookingUrl('https://labs.example/search?q={test}', 'Vitamin D, 25-Hydroxy'),
+    'https://labs.example/search?q=Vitamin%20D%2C%2025-Hydroxy'
+  );
+  assert.equal(bookingUrl('javascript:alert(1)//{test}', 'x'), null);
+  assert.equal(bookingUrl('', 'x'), null);
 });
