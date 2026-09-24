@@ -1,6 +1,11 @@
 const express = require('express');
 const pool = require('../db/pool');
-const { buildOrganSummaries, buildCardSummaries } = require('../services/organHealthService');
+const {
+  ORGAN_GROUPS,
+  buildOrganSummaries,
+  buildCardSummaries,
+  organKeyForCustomLabel,
+} = require('../services/organHealthService');
 const { getAllReferenceRangesByCode } = require('../medications/referenceRangeService');
 const { groupTestNames, normalizeTestNameKey } = require('../services/customCardService');
 
@@ -144,6 +149,23 @@ router.get('/organs', async (req, res, next) => {
       reportId: row.report_id,
     }));
 
+    // An unmapped result the custom-card grouping puts in the same kind of
+    // group as one of the organ cards (e.g. a CA-125 grouped as "Tumor
+    // Markers") joins that card rather than showing up on a second card
+    // with the same name - see ORGAN_GROUPS' customLabels. Best-effort: a
+    // failure here only means those results stay on their custom card.
+    try {
+      const classified = await classifyUnmappedMeasurements(userId, req.user.preferred_language);
+      for (const { row, classification } of classified) {
+        const organKey = organKeyForCustomLabel(classification.label);
+        if (!organKey) continue;
+        const group = ORGAN_GROUPS.find((g) => g.key === organKey);
+        measurements.push(toCardMeasurement(row, group.categories[0]));
+      }
+    } catch (err) {
+      console.warn('Could not fold unmapped results into organ cards', err.message);
+    }
+
     const standardRangesByCode = await getAllReferenceRangesByCode();
 
     res.json({ organs: buildOrganSummaries(measurements, standardRangesByCode) });
@@ -197,24 +219,54 @@ async function fetchLatestUnmappedMeasurements(userId) {
   return rows;
 }
 
+// Every latest unmapped result paired with its custom-card grouping (see
+// customCardService.groupTestNames - cached per test name and language).
+async function classifyUnmappedMeasurements(userId, language) {
+  const rows = await fetchLatestUnmappedMeasurements(userId);
+  const groupByKey = await groupTestNames(
+    rows.map((row) => row.raw_test_name),
+    language
+  );
+  return rows.map((row) => ({
+    row,
+    classification: groupByKey.get(normalizeTestNameKey(row.raw_test_name)) || {
+      label: 'Other Results',
+      icon: '🔬',
+      description: null,
+    },
+  }));
+}
+
+function toCardMeasurement(row, category) {
+  return {
+    // No registry code exists for an unmapped result - the raw test
+    // name is the only stable identity it has.
+    code: null,
+    displayName: row.raw_test_name,
+    category,
+    rawValue: row.raw_value,
+    rawUnit: row.raw_unit,
+    qualitativeValue: row.qualitative_value,
+    statusFlag: row.status_flag,
+    referenceRangeRaw: row.reference_range_raw,
+    numericValue: row.numeric_value,
+    normalizedValue: row.normalized_value,
+    effectiveDate: row.effective_date,
+    reportId: row.report_id,
+  };
+}
+
 router.get('/custom-cards', async (req, res, next) => {
   try {
     const userId = currentUserId(req);
 
-    const rows = await fetchLatestUnmappedMeasurements(userId);
-
-    const groupByKey = await groupTestNames(
-      rows.map((row) => row.raw_test_name),
-      req.user.preferred_language
-    );
+    const classified = await classifyUnmappedMeasurements(userId, req.user.preferred_language);
 
     const groupsByLabel = new Map();
-    const measurements = rows.map((row) => {
-      const classification = groupByKey.get(normalizeTestNameKey(row.raw_test_name)) || {
-        label: 'Other Results',
-        icon: '🔬',
-        description: null,
-      };
+    const measurements = [];
+    for (const { row, classification } of classified) {
+      // Already shown on the matching organ card (see /organs).
+      if (organKeyForCustomLabel(classification.label)) continue;
       if (!groupsByLabel.has(classification.label)) {
         groupsByLabel.set(classification.label, {
           key: slugifyGroupLabel(classification.label),
@@ -227,23 +279,8 @@ router.get('/custom-cards', async (req, res, next) => {
           note: classification.description || undefined,
         });
       }
-      return {
-        // No registry code exists for an unmapped result - the raw test
-        // name is the only stable identity it has.
-        code: null,
-        displayName: row.raw_test_name,
-        category: classification.label,
-        rawValue: row.raw_value,
-        rawUnit: row.raw_unit,
-        qualitativeValue: row.qualitative_value,
-        statusFlag: row.status_flag,
-        referenceRangeRaw: row.reference_range_raw,
-        numericValue: row.numeric_value,
-        normalizedValue: row.normalized_value,
-        effectiveDate: row.effective_date,
-        reportId: row.report_id,
-      };
-    });
+      measurements.push(toCardMeasurement(row, classification.label));
+    }
 
     const cards = buildCardSummaries(measurements, [...groupsByLabel.values()]);
 

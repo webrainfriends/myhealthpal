@@ -48,7 +48,7 @@ function organSummary(organ, t) {
 function buildOrganSpeech(organ, t) {
   const parts = organ.parameters.map((p) => {
     const value = p.value !== null && p.value !== undefined ? `${p.value} ${p.unit || ''}` : '';
-    return `${p.displayName}: ${value}, ${resultLabel(p, t)}.`;
+    return `${p.displayName}: ${value}, ${resultLabel(p, t)}.${p.relevance ? ` ${p.relevance}` : ''}`;
   });
   const headline = cardHeadline(organ, t);
   return [headline ? `${headline}.` : null, organSummary(organ, t), ...parts].filter(Boolean).join(' ');
@@ -87,6 +87,7 @@ function ParameterRow({ parameter, onPress, onAlertPress, t }) {
           </Text>
         </View>
         <Text style={typography.caption}>{formatDate(parameter.effectiveDate)}</Text>
+        {parameter.relevance ? <Text style={styles.relevance}>{parameter.relevance}</Text> : null}
       </View>
       <View style={styles.rowValueBlock}>
         <Text style={typography.heading}>
@@ -167,7 +168,7 @@ export default function OrganDetailScreen({ route, navigation }) {
           </View>
         ))}
       </View>
-      {organ.note && <Text style={styles.disclaimer}>{organ.note}</Text>}
+      {organ.trackedCount === 0 && organ.note && <Text style={styles.disclaimer}>{organ.note}</Text>}
     </View>
   );
 
@@ -200,6 +201,10 @@ export default function OrganDetailScreen({ route, navigation }) {
               ? t('organDetail.noResultsYet', { organ: organ.label.toLowerCase() })
               : summary || t('organDetail.cardNotEvaluated', { count: organ.trackedCount, plural: organ.trackedCount === 1 ? '' : 's' })}
           </Text>
+          {/* A card's own context (e.g. that a tumor marker alone can't show or
+              rule out cancer) belongs next to the results it qualifies, not
+              below the fold - so once anything is tracked it moves up here. */}
+          {organ.trackedCount > 0 && organ.note ? <Text style={styles.cardNote}>{organ.note}</Text> : null}
           {evaluated > 0 && <Text style={typography.caption}>{t('organDetail.notOrganFunction')}</Text>}
           <Text style={styles.disclaimer}>{t('organDetail.disclaimer')}</Text>
         </View>
@@ -296,6 +301,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  cardNote: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.textPrimary,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radii.md,
+    padding: spacing.sm,
+  },
   disclaimer: {
     fontSize: 11,
     color: colors.textTertiary,
@@ -358,6 +371,11 @@ const styles = StyleSheet.create({
   },
   rowNameText: {
     flexShrink: 1,
+  },
+  relevance: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   rowValueBlock: {
     alignItems: 'flex-end',
