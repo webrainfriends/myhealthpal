@@ -40,6 +40,11 @@ export default function SettingsScreen({ navigation }) {
           subtitle={t('settings.voiceSubtitle')}
           onPress={() => navigation.navigate('VoiceAccessibility')}
         />
+        <SettingsRow
+          title={t('settings.aiUsageTitle')}
+          subtitle={t('settings.aiUsageSubtitle')}
+          onPress={() => navigation.navigate('AiUsage')}
+        />
       </ScrollView>
     </SafeAreaView>
   );

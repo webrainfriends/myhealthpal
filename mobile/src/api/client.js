@@ -97,6 +97,13 @@ export async function fetchMe() {
   return handleResponse(response);
 }
 
+// The signed-in user's AI token usage - this session, the last `days`
+// days, and all-time - for Settings > AI usage.
+export async function fetchAiUsage(days = 30) {
+  const response = await apiFetch(`/api/ai-usage?days=${encodeURIComponent(days)}`);
+  return handleResponse(response);
+}
+
 export async function fetchSupportedLanguages() {
   const response = await apiFetch('/api/auth/languages');
   return handleResponse(response);

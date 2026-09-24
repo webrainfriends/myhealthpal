@@ -1,4 +1,5 @@
 const authService = require('../services/authService');
+const { runWithContext } = require('../lib/requestContext');
 
 // Attaches req.user from a verified "Authorization: Bearer <token>" -
 // the only source of identity for any user-scoped route from here on.
@@ -13,8 +14,9 @@ async function requireAuth(req, res, next) {
   }
 
   let userId;
+  let sessionId;
   try {
-    userId = authService.verifySessionUserId(token);
+    ({ userId, sessionId } = authService.verifySession(token));
   } catch (err) {
     return res.status(401).json({ error: 'Session expired or invalid. Please sign in again.' });
   }
@@ -25,7 +27,11 @@ async function requireAuth(req, res, next) {
       return res.status(401).json({ error: 'Session expired or invalid. Please sign in again.' });
     }
     req.user = user;
-    next();
+    req.sessionId = sessionId;
+    // Everything downstream of this request - including background work it
+    // kicks off - is attributed to this user and session for AI usage
+    // tracking (see services/aiUsageService.js).
+    runWithContext({ userId: user.id, sessionId }, () => next());
   } catch (err) {
     next(err);
   }

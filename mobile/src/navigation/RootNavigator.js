@@ -28,6 +28,7 @@ import GmailIntegrationScreen from '../screens/GmailIntegrationScreen';
 import LoginScreen from '../screens/LoginScreen';
 import LanguagePreferenceScreen from '../screens/LanguagePreferenceScreen';
 import VoiceAccessibilityScreen from '../screens/VoiceAccessibilityScreen';
+import AiUsageScreen from '../screens/AiUsageScreen';
 import { useAuth } from '../auth/AuthContext';
 import { useT } from '../i18n/I18nContext';
 import { colors } from '../theme/theme';
@@ -82,6 +83,7 @@ const linking = {
       GmailIntegration: 'settings/gmail',
       LanguagePreference: 'settings/language',
       VoiceAccessibility: 'settings/voice',
+      AiUsage: 'settings/ai-usage',
     },
   },
 };
@@ -208,6 +210,7 @@ export default function RootNavigator() {
           component={VoiceAccessibilityScreen}
           options={{ title: t('nav.voiceAccessibility') }}
         />
+        <Stack.Screen name="AiUsage" component={AiUsageScreen} options={{ title: t('nav.aiUsage') }} />
       </Stack.Navigator>
     </NavigationContainer>
   );
