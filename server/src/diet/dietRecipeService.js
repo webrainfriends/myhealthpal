@@ -4,6 +4,7 @@ const config = require('../config');
 const { recordAiUsage, FEATURES } = require('../services/aiUsageService');
 const { NUTRIENT_FIELDS, nutrientToolProperties } = require('../extraction/providers/nutrientFields');
 const { computeConsiderations, fetchActiveMedications, fetchAbnormalDietRelevantLabs } = require('./dietInsightService');
+const { classifyMealType } = require('./dietScanService');
 
 const MEAL_TYPES = ['breakfast', 'lunch', 'snack', 'dinner', 'supper'];
 
@@ -414,10 +415,153 @@ async function generateRecipeFeed(userId, { mealType, count = FEED_MAX_COUNT, ex
   };
 }
 
+// Recipe suggestions kept per user (see 019_recipe_suggestions.sql) - a
+// personal "recipe box" of everything ever generated, not just the current
+// batch. Capped so it stays a recent, relevant list rather than growing
+// forever; trimming the oldest UNADDED rows first means a recipe the user
+// actually logged stays visible (and food_entries keeps its own copy of
+// the nutrition regardless - see the migration's ON DELETE SET NULL).
+const MAX_SAVED_SUGGESTIONS_PER_USER = 60;
+
+const SUGGESTION_COLUMNS = [
+  'requested_meal_type', 'title', 'meal_type', 'description', 'servings', 'prep_time_minutes', 'cook_time_minutes',
+  'ingredients', 'instructions', 'dietary_tags', 'why_this_recipe', ...NUTRIENT_FIELDS,
+];
+
+function mapSuggestionRow(row) {
+  const nutritionPerServing = {};
+  for (const field of NUTRIENT_FIELDS) {
+    nutritionPerServing[field] = row[field] != null ? Number(row[field]) : null;
+  }
+  return {
+    id: row.id,
+    title: row.title,
+    mealType: row.meal_type,
+    description: row.description,
+    servings: row.servings != null ? Number(row.servings) : null,
+    prepTimeMinutes: row.prep_time_minutes,
+    cookTimeMinutes: row.cook_time_minutes,
+    ingredients: row.ingredients || [],
+    instructions: row.instructions || [],
+    dietaryTags: row.dietary_tags || [],
+    whyThisRecipe: row.why_this_recipe,
+    nutritionPerServing,
+    addedAt: row.added_at,
+    createdAt: row.created_at,
+  };
+}
+
+// Persists every recipe from a just-generated batch, then trims the
+// user's saved suggestions back down to the cap (oldest, never-added ones
+// first). Returns the same recipes with their new database ids attached,
+// so the client can reference a specific suggestion (e.g. to log it) with
+// no separate lookup.
+async function saveRecipeSuggestions(userId, recipes, requestedMealType) {
+  const saved = [];
+  for (const recipe of recipes) {
+    const values = [
+      userId,
+      requestedMealType || null,
+      recipe.title,
+      recipe.mealType,
+      recipe.description,
+      recipe.servings,
+      recipe.prepTimeMinutes,
+      recipe.cookTimeMinutes,
+      JSON.stringify(recipe.ingredients),
+      JSON.stringify(recipe.instructions),
+      JSON.stringify(recipe.dietaryTags),
+      recipe.whyThisRecipe,
+      ...NUTRIENT_FIELDS.map((f) => recipe.nutritionPerServing[f] ?? null),
+    ];
+    const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
+    const { rows } = await pool.query(
+      `INSERT INTO recipe_suggestions (user_id, ${SUGGESTION_COLUMNS.join(', ')}) VALUES (${placeholders}) RETURNING id, created_at`,
+      values
+    );
+    saved.push({ ...recipe, id: rows[0].id, addedAt: null, createdAt: rows[0].created_at });
+  }
+
+  await pool.query(
+    `DELETE FROM recipe_suggestions WHERE id IN (
+       SELECT id FROM recipe_suggestions WHERE user_id = $1
+       ORDER BY (added_at IS NOT NULL), created_at DESC
+       OFFSET $2
+     )`,
+    [userId, MAX_SAVED_SUGGESTIONS_PER_USER]
+  );
+
+  return saved;
+}
+
+// The user's saved recipe suggestions - a free, non-AI read, so the
+// Recipes screen (and the Diet screen's quick-pick list) can show what was
+// already generated with no token cost. mealType filters by the recipe's
+// own meal_type (not the filter a past generation request used), so
+// picking "Lunch" surfaces every lunch-suited recipe ever saved.
+async function listSavedRecipeSuggestions(userId, { mealType, limit = 20 } = {}) {
+  const conditions = ['user_id = $1'];
+  const params = [userId];
+  if (mealType) {
+    params.push(mealType);
+    conditions.push(`meal_type = $${params.length}`);
+  }
+  params.push(Math.min(Math.max(Number(limit) || 20, 1), 60));
+  const { rows } = await pool.query(
+    `SELECT * FROM recipe_suggestions WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC LIMIT $${params.length}`,
+    params
+  );
+  return rows.map(mapSuggestionRow);
+}
+
+// Converts a saved suggestion straight into a food_entries row - the
+// "select this recipe as my diet" action, usable from both the Recipes
+// screen and the Diet screen's quick-pick list. Scoped to userId the same
+// way every other diet route is; a suggestion id belonging to someone else
+// resolves to null rather than leaking its content or logging into the
+// wrong account.
+async function logRecipeSuggestion(userId, suggestionId, { consumedAt } = {}) {
+  const { rows } = await pool.query('SELECT * FROM recipe_suggestions WHERE id = $1 AND user_id = $2', [
+    suggestionId,
+    userId,
+  ]);
+  const suggestion = rows[0];
+  if (!suggestion) return null;
+
+  const when = consumedAt instanceof Date && !Number.isNaN(consumedAt.getTime()) ? consumedAt : new Date();
+  const mealType = suggestion.meal_type || classifyMealType(when);
+
+  const columns = ['user_id', 'name', 'meal_type', 'consumed_at', 'source_type', 'notes', 'ai_verified', 'is_confirmed', 'recipe_suggestion_id', ...NUTRIENT_FIELDS];
+  const values = [
+    userId,
+    suggestion.title,
+    mealType,
+    when,
+    'manual',
+    suggestion.description || null,
+    true,
+    true,
+    suggestion.id,
+    ...NUTRIENT_FIELDS.map((f) => suggestion[f]),
+  ];
+  const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
+  const { rows: inserted } = await pool.query(
+    `INSERT INTO food_entries (${columns.join(', ')}) VALUES (${placeholders}) RETURNING *`,
+    values
+  );
+
+  await pool.query('UPDATE recipe_suggestions SET added_at = COALESCE(added_at, now()) WHERE id = $1', [suggestion.id]);
+
+  return inserted[0];
+}
+
 module.exports = {
   generateRecipe,
   generateRecipeFeed,
   completeRecipesFrom,
+  saveRecipeSuggestions,
+  listSavedRecipeSuggestions,
+  logRecipeSuggestion,
   FEED_MAX_COUNT,
   mapRecipeResult,
   buildUserMessage,

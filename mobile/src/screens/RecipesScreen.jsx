@@ -1,22 +1,14 @@
-import { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ChipSelect from '../components/ChipSelect';
 import PrimaryButton from '../components/PrimaryButton';
 import { cardShadow, colors, radii, spacing, typography } from '../theme/theme';
-import { createFoodEntry, fetchDietRecipeFeed } from '../api/client';
-import { useAuth } from '../auth/AuthContext';
+import { fetchSavedRecipes, generateRecipeFeed, logRecipeSuggestion } from '../api/client';
 import { showAlert } from '../utils/alert';
 
-// Matches the server's per-request cap (dietRecipeService FEED_MAX_COUNT).
-const PAGE_SIZE = 5;
-
-// The last generated batch, kept for the life of the app so leaving the
-// screen and coming back shows the recipes already paid for instead of an
-// empty screen (or, as before, silently generating a new batch). Tagged
-// with the user id: recipes are personalized from health data, so a
-// different account signing in on the same device must never see them.
-let lastFeed = null;
+// Matches the server's per-generation cap (dietRecipeService FEED_MAX_COUNT).
+const GENERATE_COUNT = 5;
 
 const MEAL_TYPE_OPTIONS = [
   { value: 'breakfast', label: 'Breakfast' },
@@ -41,84 +33,74 @@ const ACTIVITY_LEVEL_LABELS = {
   'low activity': 'your activity level',
 };
 
-// A standalone recipe feed - not a form embedded in the Diet screen. Every
-// generation costs AI tokens, so nothing is generated until the person taps
-// "Generate recipes" (never on open, and never just from changing the meal
-// filter). Recipes are grounded in the person's lab results that need
-// attention, recent activity, weight goal, and saved diet/cuisine
-// preferences (see dietRecipeService.generateRecipeFeed server-side). "Add
-// to Diet" on a card is the same food_entries POST the manual/scanned flows
-// use.
-export default function RecipesScreen({ navigation }) {
-  const { user } = useAuth();
-  const saved = lastFeed && lastFeed.userId === user?.id ? lastFeed : null;
-  const [mealType, setMealType] = useState(saved?.mealType ?? null);
-  const [recipes, setRecipes] = useState(saved?.recipes ?? []);
-  const [considerations, setConsiderations] = useState(saved?.considerations ?? []);
-  const [signals, setSignals] = useState(saved?.signals ?? null);
-  const [hasMore, setHasMore] = useState(saved?.hasMore ?? false);
-  const [generated, setGenerated] = useState(Boolean(saved));
-  const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
+// A standalone recipe box - not a form embedded in the Diet screen. Opening
+// it, or changing the meal filter, only ever reads recipes already
+// generated (GET /recipes/feed, no AI call, no cost) - a new batch is
+// generated only when the person explicitly taps "Generate", and every
+// generated recipe is saved server-side (see dietRecipeService.js), so it's
+// never lost to leaving the screen or restarting the app, and never
+// re-generated (re-billed) for the same idea. Recipes are grounded in the
+// person's lab results that need attention, recent activity, weight goal,
+// and saved diet/cuisine preferences. "Add to diet" logs the recipe
+// straight from its saved id (POST /recipes/:id/log) - the same action
+// available from the Diet screen's own quick-pick list.
+export default function RecipesScreen() {
+  const [mealType, setMealType] = useState(null);
+  const [recipes, setRecipes] = useState([]);
+  const [considerations, setConsiderations] = useState([]);
+  const [signals, setSignals] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState(null);
-  const [expandedTitle, setExpandedTitle] = useState(null);
-  const [addingTitle, setAddingTitle] = useState(null);
+  const [expandedId, setExpandedId] = useState(null);
+  const [addingId, setAddingId] = useState(null);
 
-  function remember(next) {
-    lastFeed = { userId: user?.id, mealType, recipes, considerations, signals, hasMore, ...next };
-  }
-
-  async function handleGenerate() {
+  const loadSaved = useCallback(async (type) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchDietRecipeFeed({ mealType, limit: PAGE_SIZE });
-      const more = Boolean(data.hasMore) && data.recipes.length > 0;
+      const data = await fetchSavedRecipes({ mealType: type });
       setRecipes(data.recipes);
-      setConsiderations(data.considerations || []);
-      setSignals(data.signals || null);
-      setHasMore(more);
-      setGenerated(true);
-      remember({ recipes: data.recipes, considerations: data.considerations || [], signals: data.signals || null, hasMore: more });
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
-  async function handleLoadMore() {
-    setLoadingMore(true);
+  useEffect(() => {
+    loadSaved(mealType);
+  }, [mealType, loadSaved]);
+
+  async function handleGenerate() {
+    setGenerating(true);
+    setError(null);
     try {
       const excludeTitles = recipes.map((r) => r.title);
-      const data = await fetchDietRecipeFeed({ mealType, excludeTitles, limit: PAGE_SIZE });
-      const nextRecipes = [...recipes, ...data.recipes];
-      const more = Boolean(data.hasMore) && data.recipes.length > 0;
-      setRecipes(nextRecipes);
-      setHasMore(more);
-      remember({ recipes: nextRecipes, hasMore: more });
+      const data = await generateRecipeFeed({ mealType, excludeTitles, limit: GENERATE_COUNT });
+      setRecipes((prev) => [...data.recipes, ...prev]);
+      setConsiderations(data.considerations || []);
+      setSignals(data.signals || null);
+      if (data.recipes.length === 0) {
+        showAlert('No new recipes', 'The AI did not return any new recipe ideas this time - try again.');
+      }
     } catch (err) {
-      showAlert('Could not load more recipes', err.message);
+      setError(err.message);
     } finally {
-      setLoadingMore(false);
+      setGenerating(false);
     }
   }
 
   async function handleAddToDiet(recipe) {
-    setAddingTitle(recipe.title);
+    setAddingId(recipe.id);
     try {
-      await createFoodEntry({
-        name: recipe.title,
-        notes: recipe.description || undefined,
-        meal_type: recipe.mealType || undefined,
-        ai_verified: true,
-        ...recipe.nutritionPerServing,
-      });
+      await logRecipeSuggestion(recipe.id);
+      setRecipes((prev) => prev.map((r) => (r.id === recipe.id ? { ...r, addedAt: new Date().toISOString() } : r)));
       showAlert('Added', `"${recipe.title}" was added to your diet log.`);
     } catch (err) {
       showAlert('Could not add this recipe', err.message);
     } finally {
-      setAddingTitle(null);
+      setAddingId(null);
     }
   }
 
@@ -134,30 +116,32 @@ export default function RecipesScreen({ navigation }) {
         <Text style={[typography.bodySecondary, styles.subtitle]}>
           {signalNotes.length > 0
             ? `Personalized for you, based on ${signalNotes.join(', ')}, and your diet/cuisine preferences.`
-            : 'Personalized for you, based on your health data and diet/cuisine preferences.'}
+            : 'Your saved AI recipe ideas, personalized from your health data and diet/cuisine preferences.'}
         </Text>
 
         <ChipSelect label="Meal (optional filter)" options={MEAL_TYPE_OPTIONS} value={mealType} onChange={setMealType} />
 
         <PrimaryButton
-          title={generated ? `Generate ${PAGE_SIZE} new recipes` : `Generate ${PAGE_SIZE} recipes`}
+          title={recipes.length > 0 ? `Generate ${GENERATE_COUNT} new recipes` : `Generate ${GENERATE_COUNT} recipes`}
           onPress={handleGenerate}
-          loading={loading}
-          disabled={loading || loadingMore}
+          loading={generating}
+          disabled={generating || loading}
         />
         <Text style={[typography.caption, styles.costHint]}>Each generation uses AI tokens - see Settings › AI usage.</Text>
 
-        {loading && <Text style={[typography.bodySecondary, styles.status]}>Generating recipes for you…</Text>}
+        {loading && <ActivityIndicator style={styles.status} color={colors.primary} />}
         {!loading && error && <Text style={[typography.bodySecondary, styles.status]}>{error}</Text>}
-        {!loading && !error && generated && recipes.length === 0 && (
-          <Text style={[typography.bodySecondary, styles.status]}>No recipes came back this time. Please try again.</Text>
+        {!loading && !error && recipes.length === 0 && (
+          <Text style={[typography.bodySecondary, styles.status]}>
+            No recipes yet. Tap "Generate {GENERATE_COUNT} recipes" to get personalized ideas.
+          </Text>
         )}
 
         {recipes.map((recipe) => {
-          const expanded = expandedTitle === recipe.title;
+          const expanded = expandedId === recipe.id;
           return (
-            <View key={recipe.title} style={[styles.recipeCard, cardShadow]}>
-              <TouchableOpacity onPress={() => setExpandedTitle(expanded ? null : recipe.title)}>
+            <View key={recipe.id} style={[styles.recipeCard, cardShadow]}>
+              <TouchableOpacity onPress={() => setExpandedId(expanded ? null : recipe.id)}>
                 <Text style={typography.title}>{recipe.title}</Text>
                 {recipe.description && <Text style={typography.bodySecondary}>{recipe.description}</Text>}
 
@@ -166,6 +150,7 @@ export default function RecipesScreen({ navigation }) {
                   {recipe.servings != null && <Text style={typography.caption}>Serves {recipe.servings}</Text>}
                   {recipe.prepTimeMinutes != null && <Text style={typography.caption}>Prep {recipe.prepTimeMinutes} min</Text>}
                   {recipe.cookTimeMinutes != null && <Text style={typography.caption}>Cook {recipe.cookTimeMinutes} min</Text>}
+                  {recipe.addedAt && <Text style={styles.addedTag}>✓ Added</Text>}
                 </View>
 
                 {recipe.dietaryTags.length > 0 && (
@@ -217,23 +202,14 @@ export default function RecipesScreen({ navigation }) {
               )}
 
               <PrimaryButton
-                title="Add to diet"
+                title={recipe.addedAt ? 'Add to diet again' : 'Add to diet'}
+                variant={recipe.addedAt ? 'secondary' : 'primary'}
                 onPress={() => handleAddToDiet(recipe)}
-                loading={addingTitle === recipe.title}
+                loading={addingId === recipe.id}
               />
             </View>
           );
         })}
-
-        {!loading && recipes.length > 0 && hasMore && (
-          <PrimaryButton
-            title={`Load ${PAGE_SIZE} more`}
-            variant="secondary"
-            onPress={handleLoadMore}
-            loading={loadingMore}
-            disabled={loadingMore}
-          />
-        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -276,6 +252,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.primary,
     textTransform: 'uppercase',
+  },
+  addedTag: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.success,
+    marginLeft: 'auto',
   },
   tagRow: {
     flexDirection: 'row',

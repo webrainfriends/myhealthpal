@@ -504,9 +504,11 @@ router.post('/recipes/generate', async (req, res, next) => {
 // On-demand, paginated recipe feed for the standalone Recipes screen -
 // grounded in the same considerations as /recipes/generate plus recent
 // activity, weight goal, and saved diet/cuisine preferences (see
-// dietRecipeService.generateRecipeFeed). Not persisted; "Add to Diet" on
-// the mobile app is just a normal POST /entries using the returned
-// nutrition, same as /recipes/generate's "Log this recipe".
+// dietRecipeService.generateRecipeFeed). Every recipe returned is
+// persisted (see saveRecipeSuggestions) so a batch that cost AI tokens is
+// never lost to a screen unmount or app restart, and GET below can list it
+// back with no further AI cost. "Add to Diet" on the mobile app posts to
+// /recipes/:id/log, same nutrition either way.
 router.post('/recipes/feed', async (req, res, next) => {
   try {
     const body = req.body || {};
@@ -526,12 +528,49 @@ router.post('/recipes/feed', async (req, res, next) => {
       count,
       excludeTitles,
     });
+    const saved = await dietRecipeService.saveRecipeSuggestions(currentUserId(req), recipes, body.meal_type || null);
 
-    res.json({ recipes, considerations, signals, hasMore: recipes.length > 0 });
+    res.json({ recipes: saved, considerations, signals, hasMore: saved.length > 0 });
   } catch (err) {
     if (err.message && err.message.includes('ANTHROPIC_API_KEY')) {
       return res.status(503).json({ error: err.message });
     }
+    next(err);
+  }
+});
+
+// The user's previously generated recipe suggestions (see
+// saveRecipeSuggestions) - a free, non-AI read. Backs both the Recipes
+// screen on open (so it shows what was already generated instead of
+// generating again) and the Diet screen's quick-pick list.
+router.get('/recipes/feed', async (req, res, next) => {
+  try {
+    const mealType = req.query.meal_type || null;
+    if (mealType && !MEAL_TYPES.has(mealType)) {
+      return res.status(400).json({ error: 'meal_type is not a recognized meal.' });
+    }
+    const recipes = await dietRecipeService.listSavedRecipeSuggestions(currentUserId(req), {
+      mealType,
+      limit: req.query.limit,
+    });
+    res.json({ recipes });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Logs a previously generated (or just-generated) recipe suggestion as a
+// food_entries row - the "select this as my diet" action, used from both
+// the Recipes screen and the Diet screen's quick-pick list. Scoped to the
+// signed-in user the same way every other diet route is: a suggestion id
+// belonging to someone else 404s rather than leaking its content.
+router.post('/recipes/:id/log', async (req, res, next) => {
+  try {
+    const consumedAt = parseConsumedAt(req.body?.consumed_at);
+    const entry = await dietRecipeService.logRecipeSuggestion(currentUserId(req), req.params.id, { consumedAt });
+    if (!entry) return res.status(404).json({ error: 'Recipe suggestion not found.' });
+    res.status(201).json({ entry });
+  } catch (err) {
     next(err);
   }
 });

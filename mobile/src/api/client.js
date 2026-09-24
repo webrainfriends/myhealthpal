@@ -487,14 +487,44 @@ export async function generateDietRecipe(fields) {
   return handleResponse(response);
 }
 
-// Auto-generated, paginated recipe feed for the standalone Recipes screen.
-// excludeTitles carries every title already shown so far so a "Load more"
-// call doesn't repeat them.
-export async function fetchDietRecipeFeed({ mealType, excludeTitles = [], limit = 10 } = {}) {
+// The signed-in user's already-generated recipe suggestions (see
+// dietRecipeService.saveRecipeSuggestions server-side) - a free read, no AI
+// call. Backs both the Recipes screen on open and the Diet screen's
+// quick-pick list, so returning to either never re-spends tokens on ideas
+// already generated.
+export async function fetchSavedRecipes({ mealType, limit } = {}) {
+  const params = new URLSearchParams();
+  if (mealType) params.set('meal_type', mealType);
+  if (limit) params.set('limit', String(limit));
+  const query = params.toString();
+  const response = await apiFetch(`/api/diet/recipes/feed${query ? `?${query}` : ''}`);
+  return handleResponse(response);
+}
+
+// Generates a new batch of AI recipe ideas - this is the only diet-recipe
+// call that spends AI tokens, so it only ever fires from an explicit
+// "Generate" tap, never automatically. Every recipe returned is already
+// saved server-side (it comes back with an id) - see fetchSavedRecipes
+// above to read it back later at no cost. excludeTitles carries every
+// title already shown so the new batch doesn't repeat them.
+export async function generateRecipeFeed({ mealType, excludeTitles = [], limit = 5 } = {}) {
   const response = await apiFetch('/api/diet/recipes/feed', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ meal_type: mealType || undefined, exclude_titles: excludeTitles, limit }),
+  });
+  return handleResponse(response);
+}
+
+// Logs a saved recipe suggestion as a food_entries row - the "select this
+// as my diet" action, used from both the Recipes screen and the Diet
+// screen's quick-pick list. No AI call: the nutrition was already
+// estimated when the recipe was generated.
+export async function logRecipeSuggestion(recipeSuggestionId, { consumedAt } = {}) {
+  const response = await apiFetch(`/api/diet/recipes/${recipeSuggestionId}/log`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ consumed_at: consumedAt || undefined }),
   });
   return handleResponse(response);
 }
