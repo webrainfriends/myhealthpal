@@ -170,8 +170,8 @@ router.post('/', async (req, res, next) => {
          user_id, name, generic_name, brand_name, form, dosage_amount, dosage_unit,
          frequency_per_day, times_of_day, route, instructions, prescribed_for, prescribing_doctor,
          start_date, duration_days, end_date, quantity_dispensed, quantity_unit, expiry_date, ingredients_raw,
-         source_type, status, notes, is_confirmed
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,'manual',$21,$22,true)
+         medicine_system, source_type, status, notes, is_confirmed
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,'manual',$22,$23,true)
        RETURNING *`,
       [
         currentUserId(req),
@@ -194,6 +194,7 @@ router.post('/', async (req, res, next) => {
         body.quantity_unit || null,
         body.expiry_date || null,
         body.ingredients_raw || null,
+        body.medicine_system || 'allopathic',
         body.status || 'active',
         body.notes || null,
       ]
@@ -250,6 +251,7 @@ const EDITABLE_FIELDS = [
   'quantity_unit',
   'expiry_date',
   'ingredients_raw',
+  'medicine_system',
   'status',
   'notes',
 ];
@@ -279,7 +281,7 @@ router.patch('/:id', async (req, res, next) => {
          frequency_per_day = $8, times_of_day = $9, route = $10, instructions = $11, prescribed_for = $12,
          prescribing_doctor = $13, start_date = $14, duration_days = $15, end_date = $16,
          quantity_dispensed = $17, quantity_unit = $18, expiry_date = $19, ingredients_raw = $20,
-         status = $21, notes = $22, updated_at = now()
+         medicine_system = $21, status = $22, notes = $23, updated_at = now()
        WHERE id = $1
        RETURNING *`,
       [
@@ -303,6 +305,7 @@ router.patch('/:id', async (req, res, next) => {
         next_.quantity_unit,
         next_.expiry_date,
         next_.ingredients_raw,
+        next_.medicine_system,
         next_.status,
         next_.notes,
       ]

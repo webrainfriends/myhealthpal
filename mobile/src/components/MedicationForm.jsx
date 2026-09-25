@@ -15,6 +15,13 @@ const FORM_OPTIONS = [
   'other',
 ].map((v) => ({ value: v, label: v[0].toUpperCase() + v.slice(1) }));
 const DOSAGE_UNIT_OPTIONS = ['mg', 'mcg', 'g', 'ml', 'iu', 'percent', 'other'].map((v) => ({ value: v, label: v }));
+const MEDICINE_SYSTEM_OPTIONS = [
+  { value: 'allopathic', label: 'Allopathic (modern medicine)' },
+  { value: 'ayurvedic', label: 'Ayurvedic' },
+  { value: 'homeopathic', label: 'Homeopathic' },
+  { value: 'unani', label: 'Unani' },
+  { value: 'siddha', label: 'Siddha' },
+];
 
 function Field({ label, value, onChangeText, placeholder, keyboardType }) {
   return (
@@ -66,6 +73,13 @@ export default function MedicationForm({ value, onChange }) {
         onChange={(v) => set('dosage_unit', v)}
       />
       <ChipSelect label="Form" options={FORM_OPTIONS} value={value.form} onChange={(v) => set('form', v)} />
+      <ChipSelect
+        label="Medicine system"
+        options={MEDICINE_SYSTEM_OPTIONS}
+        value={value.medicine_system || 'allopathic'}
+        onChange={(v) => set('medicine_system', v)}
+        allowClear={false}
+      />
       <Field
         label="Ingredients / composition (as printed on the label)"
         value={value.ingredients_raw}

@@ -1,15 +1,32 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ChipSelect from '../components/ChipSelect';
 import MedicationForm from '../components/MedicationForm';
 import PrimaryButton from '../components/PrimaryButton';
 import SpeakButton from '../components/SpeakButton';
-import { cardShadow, colors, healthStatusColors, radii, spacing, typography } from '../theme/theme';
+import { cardShadow, colors, healthStatusColors, medicineSystemColors, radii, spacing, typography } from '../theme/theme';
 import { deleteMedication, fetchMedication, updateMedication } from '../api/client';
 import { useT } from '../i18n/I18nContext';
 import { showAlert } from '../utils/alert';
 import { formatCalendarDate } from '../utils/date';
+
+const SYSTEM_LABEL_KEYS = {
+  allopathic: 'medicationDetail.systemAllopathic',
+  ayurvedic: 'medicationDetail.systemAyurvedic',
+  homeopathic: 'medicationDetail.systemHomeopathic',
+  unani: 'medicationDetail.systemUnani',
+  siddha: 'medicationDetail.systemSiddha',
+};
+
+function SourceLink({ name, url, t }) {
+  if (!url) return null;
+  return (
+    <TouchableOpacity onPress={() => Linking.openURL(url)} hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}>
+      <Text style={styles.sourceLink}>{t('medicationDetail.viewSource', { name: name || url })}</Text>
+    </TouchableOpacity>
+  );
+}
 
 const FORECAST_LABEL_STYLE = {
   too_early: healthStatusColors.no_data,
@@ -124,6 +141,9 @@ function ParameterForecastRow({ item, t }) {
           })}
         </Text>
       )}
+      {item.standardRange?.citationSource?.url && (
+        <SourceLink name={item.standardRange.citationSource.name} url={item.standardRange.citationSource.url} t={t} />
+      )}
 
       <View style={[styles.pill, styles.forecastPill, { backgroundColor: forecastPalette.bg }]}>
         <Text style={[styles.pillText, { color: forecastPalette.fg }]}>
@@ -184,6 +204,7 @@ export default function MedicationDetailScreen({ route, navigation }) {
         instructions: draft.instructions,
         prescribed_for: draft.prescribed_for,
         prescribing_doctor: draft.prescribing_doctor,
+        medicine_system: draft.medicine_system || 'allopathic',
         start_date: draft.start_date || null,
         duration_days: draft.duration_days === '' ? null : draft.duration_days,
         quantity_dispensed: draft.quantity_dispensed === '' ? null : draft.quantity_dispensed,
@@ -269,6 +290,24 @@ export default function MedicationDetailScreen({ route, navigation }) {
                   {forecast.standardsScorePercent === null ? '—' : `${forecast.standardsScorePercent}%`}
                 </Text>
               </View>
+              {(medication.medicine_system || 'allopathic') !== 'allopathic' && (
+                <View
+                  style={[
+                    styles.pill,
+                    styles.systemPill,
+                    { backgroundColor: (medicineSystemColors[medication.medicine_system] || medicineSystemColors.allopathic).bg },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.pillText,
+                      { color: (medicineSystemColors[medication.medicine_system] || medicineSystemColors.allopathic).fg },
+                    ]}
+                  >
+                    {t(SYSTEM_LABEL_KEYS[medication.medicine_system] || SYSTEM_LABEL_KEYS.allopathic)}
+                  </Text>
+                </View>
+              )}
               <ScoreBar percent={forecast.standardsScorePercent} palette={scorePalette} />
               <Text style={styles.disclaimer}>{t('medicationDetail.scoreDisclaimer')}</Text>
             </View>
@@ -316,6 +355,15 @@ export default function MedicationDetailScreen({ route, navigation }) {
 
             {(knowledge?.commonSideEffects?.length > 0 || knowledge?.warnings?.length > 0) && (
               <Text style={styles.disclaimer}>{t('medicationDetail.drugDisclaimer')}</Text>
+            )}
+
+            {knowledge?.sourceUrl && (
+              <View style={styles.section}>
+                <Text style={styles.disclaimer}>
+                  {t(knowledge.sourceIsExactCitation ? 'medicationDetail.sourceExact' : 'medicationDetail.sourceLookup')}
+                </Text>
+                <SourceLink name={knowledge.sourceName} url={knowledge.sourceUrl} t={t} />
+              </View>
             )}
 
             <View style={styles.section}>
@@ -464,6 +512,16 @@ const styles = StyleSheet.create({
   barFill: {
     height: '100%',
     borderRadius: radii.pill,
+  },
+  systemPill: {
+    alignSelf: 'flex-start',
+  },
+  sourceLink: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primary,
+    textDecorationLine: 'underline',
+    marginTop: 2,
   },
   disclaimer: {
     fontSize: 11,
