@@ -32,26 +32,29 @@ function pendingReminders(plans, alreadySent, today = new Date()) {
   return pending;
 }
 
-// One combined notification per user per run, led by the most urgent item,
-// so several plans never turn into a burst of separate pushes.
-function buildMessage(allPending) {
+// One combined notification per profile per run, led by the most urgent
+// item, so several plans never turn into a burst of separate pushes.
+// `profile` is set when the recipient is a caregiver (a family_links owner)
+// rather than the person the plans belong to.
+function buildMessage(allPending, profile = null) {
   const pending = allPending.filter((item) => !item.silent);
   const [first] = pending;
   const name = first.plan.parameterDisplayName;
+  const whose = profile ? `${profile.name}'s` : 'your';
   let title;
   let body;
   if (first.kind === 'due') {
-    title = `Time to recheck your ${name}`;
-    body = 'Your recheck date is here. Book the test and upload the report when it arrives.';
+    title = `Time to recheck ${whose} ${name}`;
+    body = 'The recheck date is here. Book the test and upload the report when it arrives.';
   } else if (first.kind === 'two_weeks') {
-    title = `${name} recheck in ${first.plan.daysLeft} days`;
-    body = 'Plan your lab visit now so it fits your week.';
+    title = `${profile ? `${profile.name}'s ` : ''}${name} recheck in ${first.plan.daysLeft} days`;
+    body = 'Plan the lab visit now so it fits the week.';
   } else {
-    title = `This week for your ${name}`;
+    title = `This week for ${whose} ${name}`;
     body = first.plan.microAction;
   }
   if (pending.length > 1) body += ` (+${pending.length - 1} more in Retest Radar)`;
-  return { title, body, data: { screen: 'RetestRadar', planId: first.plan.id } };
+  return { title, body, data: { screen: 'RetestRadar', planId: first.plan.id, profileId: profile ? profile.id : null } };
 }
 
 async function sendExpoPush(tokens, message) {
@@ -72,18 +75,33 @@ async function runReminders({ today = new Date(), send = sendExpoPush, ignoreSen
   const hour = today.getUTCHours();
   if (!ignoreSendWindow && (hour < SEND_WINDOW_UTC.start || hour >= SEND_WINDOW_UTC.end)) return { sent: 0 };
 
-  const { rows: users } = await pool.query(
-    `SELECT u.id, array_agg(pt.token) AS tokens
-     FROM users u JOIN push_tokens pt ON pt.user_id = u.id
-     WHERE u.retest_reminders_enabled = true
-     GROUP BY u.id`
+  // Who hears about whose plans: every account about its own, plus every
+  // caregiver (family_links owner, manage or view) about each member they
+  // follow - e.g. a son abroad gets "Dad: Time to recheck your HbA1c".
+  // Only recipients with a device and reminders switched on count.
+  const { rows: recipients } = await pool.query(
+    `SELECT r.member_id, r.recipient_id, m.display_name AS member_name, array_agg(pt.token) AS tokens
+     FROM (
+       SELECT id AS member_id, id AS recipient_id FROM users
+       UNION
+       SELECT member_user_id, owner_user_id FROM family_links
+     ) r
+     JOIN users m ON m.id = r.member_id
+     JOIN users rc ON rc.id = r.recipient_id AND rc.retest_reminders_enabled = true
+     JOIN push_tokens pt ON pt.user_id = r.recipient_id
+     GROUP BY r.member_id, r.recipient_id, m.display_name`
   );
+  const byMember = new Map();
+  for (const row of recipients) {
+    if (!byMember.has(row.member_id)) byMember.set(row.member_id, []);
+    byMember.get(row.member_id).push(row);
+  }
 
   let sent = 0;
-  for (const user of users) {
+  for (const [memberId, memberRecipients] of byMember) {
     try {
-      await recomputeForUser(user.id);
-      const plans = await listVisiblePlans(user.id, today);
+      await recomputeForUser(memberId);
+      const plans = await listVisiblePlans(memberId, today);
       if (plans.length === 0) continue;
 
       const { rows: sentRows } = await pool.query(
@@ -94,19 +112,23 @@ async function runReminders({ today = new Date(), send = sendExpoPush, ignoreSen
       const pending = pendingReminders(plans, alreadySent, today);
       if (pending.length === 0) continue;
 
-      await send(user.tokens, buildMessage(pending));
+      for (const recipient of memberRecipients) {
+        const profile =
+          recipient.recipient_id === memberId ? null : { id: memberId, name: recipient.member_name || 'Family member' };
+        await send(recipient.tokens, buildMessage(pending, profile));
+        sent += 1;
+      }
       for (const item of pending) {
         await pool.query(
           `INSERT INTO retest_reminders_sent (plan_id, kind, period) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
           [item.plan.id, item.kind, item.period]
         );
       }
-      sent += 1;
     } catch (err) {
-      // One user's failure (bad token batch, network blip) must not stop
+      // One profile's failure (bad token batch, network blip) must not stop
       // everyone else's reminders; unsent items are retried next run.
       // eslint-disable-next-line no-console
-      console.error(`Retest reminders failed for user ${user.id}:`, err.message);
+      console.error(`Retest reminders failed for profile ${memberId}:`, err.message);
     }
   }
   return { sent };

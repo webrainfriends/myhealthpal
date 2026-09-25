@@ -23,6 +23,12 @@ export default function MoreScreen({ navigation }) {
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={[typography.title, styles.title]}>{t('nav.more')}</Text>
         <MoreRow
+          icon="👪"
+          title={t('family.title')}
+          subtitle={t('family.moreSubtitle')}
+          onPress={() => navigation.navigate('Family')}
+        />
+        <MoreRow
           icon="📅"
           title={t('retest.radarTitle')}
           subtitle={t('retest.moreSubtitle')}

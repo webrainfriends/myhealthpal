@@ -6,6 +6,7 @@ import { useT } from '../i18n/I18nContext';
 import { fetchRetestPlans, updateRetestSettings } from '../api/client';
 import { syncLocalRetestReminders } from '../notifications/retestNotifications';
 import { showAlert } from '../utils/alert';
+import { useAuth } from '../auth/AuthContext';
 
 function SettingsRow({ title, subtitle, onPress }) {
   return (
@@ -22,6 +23,7 @@ function SettingsRow({ title, subtitle, onPress }) {
 // Server-side opt-out for Retest Radar push reminders; local fallback
 // reminders on this device are re-synced to match.
 function RetestRemindersRow({ t }) {
+  const { activeProfile } = useAuth();
   const [enabled, setEnabled] = useState(null);
   const [plans, setPlans] = useState([]);
 
@@ -38,7 +40,7 @@ function RetestRemindersRow({ t }) {
     setEnabled(next);
     try {
       await updateRetestSettings(next);
-      syncLocalRetestReminders(plans, { enabled: next, t });
+      syncLocalRetestReminders(plans, { enabled: next, t, profile: activeProfile });
     } catch (err) {
       setEnabled(!next);
       showAlert(t('retest.couldNotUpdate'), err.message);

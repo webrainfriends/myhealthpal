@@ -1,7 +1,12 @@
 const express = require('express');
 const pool = require('../db/pool');
 const { recomputeForUser, listVisiblePlans } = require('../retest/retestService');
-const { addDays, weekStart } = require('../retest/retestRules');
+const config = require('../config');
+const { addDays, weekStart, bookingUrl } = require('../retest/retestRules');
+
+function withBookingUrl(plan) {
+  return { ...plan, bookingUrl: bookingUrl(config.labBookingUrlTemplate, plan.parameterDisplayName) };
+}
 
 const router = express.Router();
 
@@ -16,9 +21,10 @@ const MAX_SNOOZE_DAYS = 60;
 router.get('/', async (req, res, next) => {
   try {
     await recomputeForUser(currentUserId(req));
-    const plans = await listVisiblePlans(currentUserId(req));
-    const { rows } = await pool.query('SELECT retest_reminders_enabled FROM users WHERE id = $1', [currentUserId(req)]);
-    res.json({ plans, remindersEnabled: rows[0] ? rows[0].retest_reminders_enabled : true });
+    const plans = (await listVisiblePlans(currentUserId(req))).map(withBookingUrl);
+    // Reminders are the signed-in account's setting (it's their phone),
+    // even while viewing a family member's plans.
+    res.json({ plans, remindersEnabled: req.accountUser.retest_reminders_enabled });
   } catch (err) {
     next(err);
   }
@@ -76,50 +82,8 @@ router.post('/:id/checkin', async (req, res, next) => {
       );
     }
     const plans = await listVisiblePlans(currentUserId(req));
-    res.json({ plan: plans.find((p) => p.id === req.params.id) || null });
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.put('/settings', async (req, res, next) => {
-  try {
-    if (typeof req.body.remindersEnabled !== 'boolean') {
-      return res.status(400).json({ error: 'remindersEnabled must be true or false.' });
-    }
-    await pool.query('UPDATE users SET retest_reminders_enabled = $2 WHERE id = $1', [
-      currentUserId(req),
-      req.body.remindersEnabled,
-    ]);
-    res.json({ remindersEnabled: req.body.remindersEnabled });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// Registers (or re-assigns) this device's Expo push token to the signed-in
-// user - a token moves with whoever last signed in on that device.
-router.post('/push-token', async (req, res, next) => {
-  try {
-    const { token, platform } = req.body;
-    if (typeof token !== 'string' || !/^Expo(nent)?PushToken\[.+\]$/.test(token)) {
-      return res.status(400).json({ error: 'token must be an Expo push token.' });
-    }
-    await pool.query(
-      `INSERT INTO push_tokens (token, user_id, platform) VALUES ($1, $2, $3)
-       ON CONFLICT (token) DO UPDATE SET user_id = EXCLUDED.user_id, platform = EXCLUDED.platform, updated_at = now()`,
-      [token, currentUserId(req), typeof platform === 'string' ? platform.slice(0, 20) : null]
-    );
-    res.status(204).end();
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.delete('/push-token', async (req, res, next) => {
-  try {
-    await pool.query('DELETE FROM push_tokens WHERE token = $1 AND user_id = $2', [req.body.token, currentUserId(req)]);
-    res.status(204).end();
+    const plan = plans.find((p) => p.id === req.params.id);
+    res.json({ plan: plan ? withBookingUrl(plan) : null });
   } catch (err) {
     next(err);
   }

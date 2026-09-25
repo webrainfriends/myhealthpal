@@ -68,6 +68,11 @@ module.exports = {
   databaseUrl: process.env.DATABASE_URL,
   uploadDir: path.resolve(__dirname, '..', process.env.UPLOAD_DIR || 'uploads'),
   maxUploadBytes: Number(process.env.MAX_UPLOAD_BYTES) || 20 * 1024 * 1024,
+  // Retest Radar's "Book test" link. {test} is replaced with the URL-encoded
+  // test name - point this at a lab partner's search/booking page when one
+  // exists; the default is a nearby-labs map search.
+  labBookingUrlTemplate:
+    process.env.LAB_BOOKING_URL_TEMPLATE || 'https://www.google.com/maps/search/{test}+test+lab+near+me',
   supportedExtensions: SUPPORTED_EXTENSIONS,
   jwtSecret,
   googleClientId: process.env.GOOGLE_CLIENT_ID || null,

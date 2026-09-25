@@ -102,7 +102,7 @@ function TrackedMetricCard({ metric, onPress, onUnpin, t }) {
 }
 
 export default function DashboardScreen({ navigation }) {
-  const { user, signOut } = useAuth();
+  const { user, signOut, activeProfile } = useAuth();
   const t = useT();
   const [loading, setLoading] = useState(true);
   const [snapshot, setSnapshot] = useState({ trackedMetrics: [], needsAttention: [], insights: [] });
@@ -215,6 +215,15 @@ export default function DashboardScreen({ navigation }) {
             <View style={styles.accountActions}>
               <TouchableOpacity
                 style={styles.heroChip}
+                onPress={() => navigation.navigate('Family')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.heroChipLabel} numberOfLines={1}>
+                  👪 {activeProfile ? activeProfile.displayName : t('family.title')} ▾
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.heroChip}
                 onPress={() => navigation.navigate('Settings')}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
@@ -232,7 +241,9 @@ export default function DashboardScreen({ navigation }) {
             <View style={styles.greetingBlock}>
               <View style={styles.greetingRow}>
                 <Text style={styles.heroGreeting}>
-                  {greetingForNow(t)}, {firstName(user, t)}
+                  {activeProfile
+                    ? t('family.lookingAfter', { name: activeProfile.displayName })
+                    : `${greetingForNow(t)}, ${firstName(user, t)}`}
                 </Text>
                 <SpeakButton
                   text={buildDashboardSpeech(snapshot, organs, t)}
@@ -240,7 +251,13 @@ export default function DashboardScreen({ navigation }) {
                   style={styles.heroSpeak}
                 />
               </View>
-              <Text style={styles.heroSubtitle}>{t('dashboard.subtitle')}</Text>
+              <Text style={styles.heroSubtitle}>
+                {activeProfile
+                  ? activeProfile.access === 'view'
+                    ? t('family.heroSubtitleViewOnly', { name: activeProfile.displayName })
+                    : t('family.heroSubtitle', { name: activeProfile.displayName })
+                  : t('dashboard.subtitle')}
+              </Text>
             </View>
             <Mascot size={92} />
           </View>

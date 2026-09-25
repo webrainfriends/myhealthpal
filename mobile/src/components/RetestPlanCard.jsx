@@ -1,6 +1,14 @@
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { cardShadow, colors, radii, spacing, typography } from '../theme/theme';
 import { formatCalendarDate } from '../utils/date';
+
+// Within this many days the "Book test" button is shown prominently on the
+// card itself - the moment the recheck turns from a countdown into a to-do.
+export const BOOKING_WINDOW_DAYS = 14;
+
+export function openBooking(plan) {
+  if (plan.bookingUrl) Linking.openURL(plan.bookingUrl).catch((err) => console.warn('Could not open booking link', err.message));
+}
 
 function urgencyPalette(daysLeft) {
   if (daysLeft <= 0) return { fg: colors.danger, bg: colors.dangerMuted };
@@ -48,6 +56,12 @@ export default function RetestPlanCard({ plan, t, onToggleCheckin, onPress, acti
           </Text>
         </View>
       </View>
+
+      {plan.bookingUrl && plan.daysLeft <= BOOKING_WINDOW_DAYS && (
+        <TouchableOpacity style={styles.bookButton} onPress={() => openBooking(plan)} activeOpacity={0.8} accessibilityRole="link">
+          <Text style={styles.bookLabel}>🧪 {t('retest.bookTest')}</Text>
+        </TouchableOpacity>
+      )}
 
       {plan.microAction ? (
         <TouchableOpacity
@@ -112,6 +126,17 @@ const styles = StyleSheet.create({
   titleBlock: {
     flex: 1,
     gap: 2,
+  },
+  bookButton: {
+    backgroundColor: colors.primary,
+    borderRadius: radii.pill,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+  },
+  bookLabel: {
+    color: colors.onBrand,
+    fontSize: 14,
+    fontWeight: '700',
   },
   actionRow: {
     flexDirection: 'row',

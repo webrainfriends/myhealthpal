@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import RetestPlanCard, { countdownLabel, reasonLabel } from '../components/RetestPlanCard';
+import RetestPlanCard, { BOOKING_WINDOW_DAYS, countdownLabel, openBooking, reasonLabel } from '../components/RetestPlanCard';
 import SpeakButton from '../components/SpeakButton';
 import { colors, spacing, typography } from '../theme/theme';
 import { dismissRetestPlan, fetchRetestPlans, setRetestCheckin, snoozeRetestPlan } from '../api/client';
 import { syncLocalRetestReminders } from '../notifications/retestNotifications';
 import { useT } from '../i18n/I18nContext';
+import { useAuth } from '../auth/AuthContext';
 import { showAlert } from '../utils/alert';
 
 function buildSpeech(plans, t) {
@@ -18,6 +19,7 @@ function buildSpeech(plans, t) {
 
 export default function RetestRadarScreen({ navigation }) {
   const t = useT();
+  const { activeProfile } = useAuth();
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -25,13 +27,13 @@ export default function RetestRadarScreen({ navigation }) {
     try {
       const data = await fetchRetestPlans();
       setPlans(data.plans);
-      syncLocalRetestReminders(data.plans, { enabled: data.remindersEnabled, t });
+      syncLocalRetestReminders(data.plans, { enabled: data.remindersEnabled, t, profile: activeProfile });
     } catch (err) {
       console.warn('Failed to load retest plans', err.message);
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  }, [t, activeProfile]);
 
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', load);
@@ -77,6 +79,11 @@ export default function RetestRadarScreen({ navigation }) {
             t={t}
             onToggleCheckin={handleToggleCheckin}
             actions={[
+              // Further out, booking is a quieter action - the card shows the
+              // prominent button once the date is close.
+              ...(item.bookingUrl && item.daysLeft > BOOKING_WINDOW_DAYS
+                ? [{ label: t('retest.bookTest'), onPress: () => openBooking(item) }]
+                : []),
               {
                 label: t('retest.viewTrend'),
                 onPress: () =>
