@@ -28,6 +28,13 @@
 #    bound to localhost at the OS level (Node's default), so don't open it
 #    in the security group either - leaving it closed there is what keeps
 #    it unreachable except through nginx.
+#    For the custom domain (APP_DOMAIN below), also allow inbound TCP 80
+#    and 443 from the internet, and point DNS A records for the domain and
+#    its www. subdomain at this instance's public IP. Until both are done
+#    the domain setup simply waits (the :NGINX_PORT URL keeps working);
+#    the first deploy after that obtains the HTTPS certificate. Optionally
+#    add a LETSENCRYPT_EMAIL repository secret for certificate expiry
+#    notices (renewal itself is automatic).
 # 3. In this repository's Settings -> Secrets and variables -> Actions, add
 #    a repository secret named EC2_SSH_KEY containing the private key
 #    (PEM) that matches the EC2 instance's key pair (the same key used by
@@ -78,6 +85,9 @@ env:
   APP_DIR: myhealthpal
   APP_PORT: 4010
   NGINX_PORT: 5250
+  # The app's own domain, served on 80/443 in addition to NGINX_PORT (see
+  # scripts/configure-domain.sh). Set to empty to turn it off.
+  APP_DOMAIN: eyemyhealth.com
 
 permissions:
   contents: read
@@ -105,7 +115,7 @@ jobs:
           username: ${{ env.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: 15m
-          envs: APP_DIR,BRANCH,REPO_URL,APP_PORT,NGINX_PORT,PUBLIC_HOST,ANTHROPIC_API_KEY,GOOGLE_CLIENT_ID,APPLE_CLIENT_ID
+          envs: APP_DIR,BRANCH,REPO_URL,APP_PORT,NGINX_PORT,APP_DOMAIN,LETSENCRYPT_EMAIL,PUBLIC_HOST,ANTHROPIC_API_KEY,GOOGLE_CLIENT_ID,APPLE_CLIENT_ID
           script_stop: true
           script: |
             set -euo pipefail
@@ -180,6 +190,14 @@ jobs:
             sudo ln -sf /etc/nginx/sites-available/myhealthpal /etc/nginx/sites-enabled/myhealthpal
             sudo nginx -t
             sudo systemctl reload nginx
+
+            # Custom domain (eyemyhealth.com + www) on ports 80/443, forwarding
+            # to the :NGINX_PORT site above - an addition alongside it, never a
+            # replacement. Its own nginx site file, validated and rolled back
+            # on any error, and HTTPS via Let's Encrypt once DNS points here;
+            # it never fails the deploy. See scripts/configure-domain.sh.
+            DOMAIN="$APP_DOMAIN" UPSTREAM_PORT="$NGINX_PORT" LETSENCRYPT_EMAIL="${LETSENCRYPT_EMAIL:-}" \
+              bash scripts/configure-domain.sh || echo "[deploy] custom domain setup skipped - the :${NGINX_PORT} site is unaffected"
 
             DB_CONTAINER=myhealthpal-postgres
             DB_HOST_PORT=6250
@@ -300,6 +318,9 @@ jobs:
             pm2 save
 
             echo "Deployed. API listening on: http://${PUBLIC_HOST}:${NGINX_PORT}"
+            if [ -n "$APP_DOMAIN" ]; then
+              echo "Also served at: http(s)://${APP_DOMAIN} (https once DNS points here and the certificate is issued)"
+            fi
         env:
           BRANCH: ${{ github.ref_name }}
           REPO_URL: https://github.com/${{ github.repository }}.git
@@ -307,3 +328,4 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           APPLE_CLIENT_ID: ${{ secrets.APPLE_CLIENT_ID }}
+          LETSENCRYPT_EMAIL: ${{ secrets.LETSENCRYPT_EMAIL }}

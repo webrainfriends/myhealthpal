@@ -13,25 +13,17 @@ function isAbnormalFlag(flag) {
   return Boolean(flag) && !/normal/i.test(flag);
 }
 
-function comparableValue(m) {
-  return m.normalizedValue ?? m.numericValue ?? null;
+// Whether a result is outside its normal range: the in-range verdict the
+// caller already worked out against the printed or standard range
+// (m.outOfRange - see insightService.fetchConfirmedSeries), falling back to
+// the report's own flag text when no range was available to judge by.
+function isOutOfRange(m) {
+  if (m.outOfRange === true || m.outOfRange === false) return m.outOfRange;
+  return isAbnormalFlag(m.statusFlag);
 }
 
-function detectNewResult(current, priorSeries) {
-  if (priorSeries.length > 0) return null;
-  return {
-    type: 'new_result',
-    severity: 'info',
-    evidenceMeasurementIds: [current.measurementId],
-    evidenceReportIds: [current.reportId],
-    effectiveStartDate: current.effectiveDate,
-    effectiveEndDate: current.effectiveDate,
-    templateData: {
-      parameterName: current.parameterDisplayName,
-      value: current.qualitativeValue ?? current.value,
-      unit: current.normalizedUnit || current.rawUnit || '',
-    },
-  };
+function comparableValue(m) {
+  return m.normalizedValue ?? m.numericValue ?? null;
 }
 
 function detectChangeFromPrevious(current, priorSeries) {
@@ -117,10 +109,14 @@ function detectSustainedTrend(current, priorSeries) {
   };
 }
 
+// A result that's out of range when the one before it wasn't - including a
+// parameter's very first result (firstTime), which is the only kind of
+// "first recorded" result worth surfacing: a first result that's simply
+// normal isn't an insight, it's just data.
 function detectNewAbnormalFlag(current, priorSeries) {
-  if (!isAbnormalFlag(current.statusFlag)) return null;
+  if (!isOutOfRange(current)) return null;
   const prior = priorSeries[priorSeries.length - 1];
-  if (prior && isAbnormalFlag(prior.statusFlag)) return null; // repeated, not new
+  if (prior && isOutOfRange(prior)) return null; // repeated, not new
 
   return {
     type: 'new_abnormal_flag',
@@ -133,7 +129,9 @@ function detectNewAbnormalFlag(current, priorSeries) {
       parameterName: current.parameterDisplayName,
       value: current.qualitativeValue ?? current.value,
       unit: current.normalizedUnit || current.rawUnit || '',
-      flag: current.statusFlag,
+      flag: current.statusFlag || null,
+      direction: current.direction || null,
+      firstTime: !prior,
     },
   };
 }
@@ -141,7 +139,7 @@ function detectNewAbnormalFlag(current, priorSeries) {
 function detectRepeatedAbnormal(current, priorSeries) {
   if (priorSeries.length < REPEATED_ABNORMAL_WINDOW - 1) return null;
   const window = [...priorSeries.slice(-(REPEATED_ABNORMAL_WINDOW - 1)), current];
-  if (!window.every((m) => isAbnormalFlag(m.statusFlag))) return null;
+  if (!window.every(isOutOfRange)) return null;
 
   return {
     type: 'repeated_abnormal',
@@ -153,16 +151,17 @@ function detectRepeatedAbnormal(current, priorSeries) {
     templateData: {
       parameterName: current.parameterDisplayName,
       windowSize: window.length,
-      flag: current.statusFlag,
+      flag: current.statusFlag || null,
     },
   };
 }
 
 // Order matters only for readability of results — every rule is independent
 // and a single measurement can legitimately produce several insights (e.g.
-// both newly abnormal and part of a sustained trend).
+// both newly abnormal and part of a sustained trend). There's deliberately
+// no "first recorded" rule: a parameter's first result only becomes an
+// insight when it's out of range (detectNewAbnormalFlag's firstTime).
 const RULES = [
-  detectNewResult,
   detectChangeFromPrevious,
   detectSustainedTrend,
   detectNewAbnormalFlag,
@@ -175,10 +174,10 @@ function evaluateRules(current, priorSeries) {
 
 module.exports = {
   evaluateRules,
-  detectNewResult,
   detectChangeFromPrevious,
   detectSustainedTrend,
   detectNewAbnormalFlag,
   detectRepeatedAbnormal,
   isAbnormalFlag,
+  isOutOfRange,
 };

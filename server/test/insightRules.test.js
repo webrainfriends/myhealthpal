@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  detectNewResult,
+  evaluateRules,
   detectChangeFromPrevious,
   detectSustainedTrend,
   detectNewAbnormalFlag,
@@ -24,10 +24,26 @@ function measurement(overrides) {
   };
 }
 
-test('detectNewResult fires only when there is no prior history', () => {
-  const current = measurement({ measurementId: 'm1', normalizedValue: 5.6 });
-  assert.ok(detectNewResult(current, []));
-  assert.equal(detectNewResult(current, [measurement({ measurementId: 'm0' })]), null);
+test('a first result produces no insight at all when it is in range - there is no "first recorded" insight', () => {
+  const current = measurement({ measurementId: 'm1', normalizedValue: 5.2, statusFlag: 'Normal' });
+  assert.deepEqual(evaluateRules(current, []), []);
+});
+
+test('a first result that is out of range produces one "out of range for the first time" insight', () => {
+  const current = measurement({ measurementId: 'm1', normalizedValue: 6.8, statusFlag: null, outOfRange: true, direction: 'high' });
+  const candidates = evaluateRules(current, []);
+  assert.deepEqual(candidates.map((c) => c.type), ['new_abnormal_flag']);
+  assert.equal(candidates[0].templateData.firstTime, true);
+  assert.equal(candidates[0].templateData.direction, 'high');
+});
+
+test('the in-range verdict (value vs range) overrides a missing or unrecognized flag', () => {
+  // No flag printed, but the value is out of range -> still new abnormal.
+  const unflagged = measurement({ measurementId: 'm2', statusFlag: null, outOfRange: true });
+  assert.ok(detectNewAbnormalFlag(unflagged, [measurement({ measurementId: 'm1', outOfRange: false })]));
+  // Flag text says nothing useful but the value is in range -> nothing.
+  const inRange = measurement({ measurementId: 'm3', statusFlag: 'See note', outOfRange: false });
+  assert.equal(detectNewAbnormalFlag(inRange, []), null);
 });
 
 test('detectChangeFromPrevious ignores small moves, fires on a large one', () => {

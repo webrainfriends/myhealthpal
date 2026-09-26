@@ -77,6 +77,7 @@ dedicated, isolated container sidesteps.
 | AWS region | `ap-southeast-1` |
 | SSH user | `ubuntu` |
 | App URL after deploy (web app + API) | `http://ec2-13-250-133-109.ap-southeast-1.compute.amazonaws.com:5250` |
+| App domain (web app + API) | `https://eyemyhealth.com` (+ `www.`) — once DNS points at the host; see step 7 |
 | Internal API port (nginx -> API) | `4010`, `127.0.0.1` only |
 | Web build root | `/var/www/myhealthpal-web` (rewritten every deploy) |
 
@@ -129,10 +130,35 @@ One-time setup before the first deploy:
    `APPLE_CLIENT_ID`. Apple additionally requires the page to be served over
    **HTTPS** (or `localhost`) and that same origin to be domain-verified -
    the plain `http://` URL this workflow deploys to does not satisfy that,
-   so the button stays hidden until the site is put behind TLS (a reverse
-   proxy/cert setup, e.g. Let's Encrypt via certbot, is not something this
-   workflow sets up). Leave unset (or unmet) to simply not offer this
-   option - guest sign-in always still works.
+   so the button stays hidden until the site is served over HTTPS - use
+   the `https://eyemyhealth.com` origin from step 7 for this. Leave unset
+   (or unmet) to simply not offer this option - guest sign-in always still
+   works.
+7. **The app's domain, `eyemyhealth.com`.** Every deploy also serves the
+   app at `eyemyhealth.com` and `www.eyemyhealth.com` on the standard ports
+   (80/443), in addition to — not instead of — the `:5250` URL above
+   (`scripts/configure-domain.sh`; set `APP_DOMAIN` in
+   `.github/workflows/deploy.yml` to change or disable it). It adds its own
+   nginx site that forwards those hostnames to the existing `:5250` site,
+   is checked with `nginx -t` and rolled back on any error, never claims
+   the host's default site (other apps on ports 80/443 keep their own
+   hostnames), and never fails the deploy. To make it live:
+   - At your domain registrar's DNS settings, add **A records** for
+     `eyemyhealth.com` (`@`) and `www` pointing to **`13.250.133.109`**
+     (if that isn't an Elastic IP, allocate one first — a plain EC2 public
+     IP changes whenever the instance is stopped/started).
+   - In the instance's security group, allow inbound TCP **80** and
+     **443** from the internet.
+   - Push/re-run the deploy. The first deploy after DNS resolves to the
+     host obtains a free Let's Encrypt HTTPS certificate (renewed
+     automatically by certbot's timer) and redirects `http://` to
+     `https://`. Until then the domain is served over plain HTTP, or skipped
+     if DNS isn't pointed yet — the deploy log's `[domain]` lines say which.
+   - Optional: a `LETSENCRYPT_EMAIL` repo secret for certificate expiry
+     notices.
+   - If you use Google sign-in, add `https://eyemyhealth.com` (and
+     `https://www.eyemyhealth.com`) to the OAuth client's **Authorized
+     JavaScript origins** too.
 
 That's it — every push to `main` after that pulls the latest code, rebuilds
 the web app, runs `npm ci` for the API, applies migrations, restarts the
