@@ -1,4 +1,5 @@
 const pool = require('../db/pool');
+const { toPublicRecord } = require('../security/reportAccess');
 const registry = require('../extraction/registry');
 const { findKnowledgeEntry } = require('../medications/medicationLinkingService');
 const { getMedicationKnowledge } = require('../medications/medicationKnowledgeService');
@@ -72,7 +73,9 @@ const getReportById = {
       [report.id]
     );
     return {
-      data: { report, measurements: measurements.rows },
+      // Only the report's public fields - never storage paths or key
+      // metadata - reach the model (ids are stripped by the AI gateway).
+      data: { report: toPublicRecord(report), measurements: measurements.rows },
       evidence: [
         { type: 'report', id: report.id, label: report.original_filename },
         ...evidenceFor('measurement', measurements.rows),

@@ -1,12 +1,12 @@
-const fs = require('fs');
-const path = require('path');
 const crypto = require('crypto');
-const { v4: uuidv4 } = require('uuid');
 const pool = require('../db/pool');
 const config = require('../config');
 const { extensionOf } = require('../middleware/upload');
 const gmailClient = require('./gmailClientService');
 const ingestionService = require('./ingestionService');
+const { secureStore, encryptionInsertParts } = require('../security/secureUpload');
+const encryptedFileStore = require('../security/encryptedFileStore');
+const { requireConsent } = require('../security/consentService');
 
 // "Quest Diagnostics <noreply@questdiagnostics.com>" -> "Quest Diagnostics";
 // a bare "noreply@questdiagnostics.com" is returned as-is. Used only for
@@ -96,15 +96,17 @@ async function importOne({ userId, connection, accessToken, messageId, attachmen
     return { messageId, attachmentId, status: 'duplicate', reportId: duplicateByContent.imported_report_id };
   }
 
-  const storageFilename = `${uuidv4()}${extension ? `.${extension}` : ''}`;
-  const storagePath = path.join(config.uploadDir, storageFilename);
-  await fs.promises.writeFile(storagePath, bytes);
+  // Same path as a direct upload: consent, content validation, malware
+  // scan, then encrypted straight from memory - never written as plaintext.
+  await requireConsent(userId, 'medical_record_storage');
+  const meta = await secureStore({ userId, buffer: bytes, extension });
 
   try {
+    const enc = encryptionInsertParts(meta, 7);
     const { rows } = await pool.query(
       `INSERT INTO reports
-         (user_id, original_filename, mime_type, file_extension, file_size_bytes, storage_path, source_type, source_provider)
-       VALUES ($1, $2, $3, $4, $5, $6, 'gmail_import', $7)
+         (user_id, original_filename, mime_type, file_extension, file_size_bytes, source_type, source_provider, ${enc.columns.join(', ')})
+       VALUES ($1, $2, $3, $4, $5, 'gmail_import', $6, ${enc.placeholders.join(', ')})
        RETURNING id`,
       [
         userId,
@@ -112,8 +114,8 @@ async function importOne({ userId, connection, accessToken, messageId, attachmen
         attachment.mimeType || 'application/octet-stream',
         extension,
         bytes.length,
-        storagePath,
         senderDisplayName(message.from),
+        ...enc.values,
       ]
     );
     const reportId = rows[0].id;
@@ -140,7 +142,7 @@ async function importOne({ userId, connection, accessToken, messageId, attachmen
     ingestionService.enqueueProcessing(reportId);
     return { messageId, attachmentId, status: 'imported', reportId };
   } catch (err) {
-    await fs.promises.unlink(storagePath).catch(() => {});
+    await encryptedFileStore.remove(meta).catch(() => {});
     throw err;
   }
 }

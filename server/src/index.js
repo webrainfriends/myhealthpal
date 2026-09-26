@@ -17,6 +17,10 @@ if (typeof Promise.withResolvers !== 'function') {
   };
 }
 
+// Fail fast (production) before accepting any request if medical-file
+// encryption/key management isn't configured - see docs/security/.
+require('./security/configValidation').assertSecurityConfig();
+
 const app = require('./app');
 const config = require('./config');
 const { backfillMisclassifiedActivityReports } = require('./services/activityBackfillService');
@@ -47,4 +51,17 @@ if (process.env.RETEST_REMINDERS !== 'off') {
     });
   setInterval(tick, 60 * 60 * 1000).unref();
   tick();
+}
+
+// Optional retention policy for abandoned medication/diet scan files
+// (RETENTION_UNCONFIRMED_SCAN_DAYS) - checked daily.
+if (config.security.retentionUnconfirmedScanDays) {
+  const { purgeExpiredScans } = require('./security/maintenance');
+  const purge = () =>
+    purgeExpiredScans().catch((err) => {
+      // eslint-disable-next-line no-console
+      console.error('Scan retention purge failed:', err.message);
+    });
+  setInterval(purge, 24 * 60 * 60 * 1000).unref();
+  purge();
 }

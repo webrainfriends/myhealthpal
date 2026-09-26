@@ -55,7 +55,7 @@ function buildEvidence(candidate) {
 }
 
 async function persistInsight({ userId, healthParameterId, candidate, dedupKey, existingActive, language }) {
-  const { title, explanation, provider, model } = await generateExplanation(candidate, language);
+  const { title, explanation, provider, model } = await generateExplanation(candidate, language, userId);
 
   if (existingActive) {
     await pool.query(`UPDATE insights SET lifecycle_state = 'superseded', updated_at = now() WHERE id = $1`, [

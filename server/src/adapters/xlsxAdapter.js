@@ -12,9 +12,12 @@ function flattenCellValue(cell) {
   return value;
 }
 
-async function extract(filePath) {
+// `input` is the decrypted file as a Buffer (the vault never writes
+// plaintext to disk); a path is still accepted for tests and tools.
+async function extract(input) {
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.readFile(filePath);
+  if (Buffer.isBuffer(input)) await workbook.xlsx.load(input);
+  else await workbook.xlsx.readFile(input);
 
   if (workbook.worksheets.length === 0) {
     throw new Error('Spreadsheet contains no sheets');

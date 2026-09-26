@@ -1,4 +1,4 @@
-const Anthropic = require('@anthropic-ai/sdk');
+const { getAiClient } = require('../ai/privacyGateway');
 const config = require('../config');
 const { languageInstruction, DEFAULT_LANGUAGE } = require('../services/languageService');
 
@@ -82,8 +82,8 @@ function explanationOnlyReferencesEvidenceNumbers(text, templateData) {
   });
 }
 
-async function buildClaudeExplanation(candidate, language) {
-  const client = new Anthropic({ apiKey: config.anthropicApiKey });
+async function buildClaudeExplanation(candidate, language, userId) {
+  const client = await getAiClient({ subjectUserId: userId, purpose: 'insight_explanation' });
   const response = await client.messages.create({
     model: config.anthropicModel,
     max_tokens: 300,
@@ -106,7 +106,9 @@ async function buildClaudeExplanation(candidate, language) {
 // has no per-language copy) - a non-English request with no AI provider
 // configured, or where Claude's response fails the evidence-number check
 // below, still gets a correct, safe explanation, just in English.
-async function generateExplanation(candidate, language = DEFAULT_LANGUAGE) {
+// `userId` is the data subject - without their AI-insights consent the
+// gateway refuses and the heuristic text below is used.
+async function generateExplanation(candidate, language = DEFAULT_LANGUAGE, userId = null) {
   const title = buildTitle(candidate);
   const heuristicText = buildHeuristicExplanation(candidate);
 
@@ -115,7 +117,7 @@ async function generateExplanation(candidate, language = DEFAULT_LANGUAGE) {
   }
 
   try {
-    const claudeText = await buildClaudeExplanation(candidate, language);
+    const claudeText = await buildClaudeExplanation(candidate, language, userId);
     if (claudeText && explanationOnlyReferencesEvidenceNumbers(claudeText, candidate.templateData)) {
       return { title, explanation: claudeText, provider: 'claude', model: config.anthropicModel };
     }

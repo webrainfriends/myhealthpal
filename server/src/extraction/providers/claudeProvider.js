@@ -1,5 +1,4 @@
-const fs = require('fs');
-const Anthropic = require('@anthropic-ai/sdk');
+const { getAiClient } = require('../../ai/privacyGateway');
 const config = require('../../config');
 const { recordAiUsage, FEATURES } = require('../../services/aiUsageService');
 
@@ -112,8 +111,8 @@ function buildContent(document, context) {
     }));
     return [...imageBlocks, { type: 'text', text: DOCUMENT_INSTRUCTION }];
   }
-  if (document.contentKind === 'image_scanned' && context.filePath && /^image\//.test(context.mimeType || '')) {
-    const base64 = fs.readFileSync(context.filePath).toString('base64');
+  if (document.contentKind === 'image_scanned' && context.fileBuffer && /^image\//.test(context.mimeType || '')) {
+    const base64 = context.fileBuffer.toString('base64');
     return [
       { type: 'image', source: { type: 'base64', media_type: context.mimeType, data: base64 } },
       { type: 'text', text: DOCUMENT_INSTRUCTION },
@@ -144,7 +143,9 @@ async function extract(document, context = {}) {
   }
   const isVisionRequest = document.contentKind === 'image_scanned';
 
-  const client = new Anthropic({ apiKey: config.anthropicApiKey });
+  // Consent-checked and audited (ai/privacyGateway.js); only the document
+  // content itself is sent - no names, ids or account details.
+  const client = await getAiClient({ subjectUserId: context.userId, purpose: 'report_extraction', reportId: context.reportId });
   // .stream().finalMessage() rather than .create(): the Anthropic SDK
   // requires streaming for a request it estimates could run past 10
   // minutes, which a 32000-token ceiling can trigger - .create() throws
@@ -152,8 +153,7 @@ async function extract(document, context = {}) {
   // take longer than 10 minutes"). finalMessage() awaits the same
   // {content, stop_reason, ...} Message shape .create() would have
   // resolved to, so nothing downstream changes.
-  const response = await client.messages
-    .stream({
+  const response = await client.messages.streamFinal({
       model: config.anthropicModel,
       // A long multi-page report can legitimately have 60-100+ result rows,
       // and this call echoes each one's reference_range "exactly as printed"
@@ -173,8 +173,7 @@ async function extract(document, context = {}) {
       tools: [EXTRACTION_TOOL],
       tool_choice: { type: 'tool', name: EXTRACTION_TOOL.name },
       messages: [{ role: 'user', content }],
-    })
-    .finalMessage();
+    });
   recordAiUsage(FEATURES.REPORT_EXTRACTION, response);
 
   const warnings = [];

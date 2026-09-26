@@ -1,5 +1,4 @@
-const fs = require('fs');
-const Anthropic = require('@anthropic-ai/sdk');
+const { getAiClient } = require('../../ai/privacyGateway');
 const config = require('../../config');
 const { recordAiUsage, FEATURES } = require('../../services/aiUsageService');
 
@@ -116,8 +115,8 @@ function buildContent(document, scanType) {
   return null;
 }
 
-function readImageAsContent(filePath, mimeType, scanType) {
-  const base64 = fs.readFileSync(filePath).toString('base64');
+function readImageAsContent(fileBuffer, mimeType, scanType) {
+  const base64 = fileBuffer.toString('base64');
   return [
     { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } },
     { type: 'text', text: instructionFor(scanType) },
@@ -126,15 +125,15 @@ function readImageAsContent(filePath, mimeType, scanType) {
 
 // Provider-agnostic contract: extract(document, context) -> { medications,
 // documentInfo, warnings, rawModelOutput }, where context carries
-// { filePath, mimeType, scanType }.
+// { fileBuffer, userId, mimeType, scanType }.
 async function extract(document, context = {}) {
   if (!config.anthropicApiKey) {
     throw new Error('Medication scanning requires ANTHROPIC_API_KEY to be set.');
   }
 
   let content = buildContent(document, context.scanType);
-  if (!content && context.filePath && /^image\//.test(context.mimeType || '')) {
-    content = readImageAsContent(context.filePath, context.mimeType, context.scanType);
+  if (!content && context.fileBuffer && /^image\//.test(context.mimeType || '')) {
+    content = readImageAsContent(context.fileBuffer, context.mimeType, context.scanType);
   }
   if (!content) {
     return {
@@ -145,7 +144,7 @@ async function extract(document, context = {}) {
     };
   }
 
-  const client = new Anthropic({ apiKey: config.anthropicApiKey });
+  const client = await getAiClient({ subjectUserId: context.userId, purpose: 'medication_scan' });
   const response = await client.messages.create({
     model: config.anthropicModel,
     max_tokens: 4096,

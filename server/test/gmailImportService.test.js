@@ -6,6 +6,10 @@ const gmailClient = require('../src/services/gmailClientService');
 const gmailConnectionService = require('../src/services/gmailConnectionService');
 const ingestionService = require('../src/services/ingestionService');
 const { importSelections } = require('../src/services/gmailImportService');
+const encryptedFileStore = require('../src/security/encryptedFileStore');
+const consentService = require('../src/security/consentService');
+const config = require('../src/config');
+const path = require('path');
 
 let userId;
 let connection;
@@ -27,6 +31,7 @@ test.before(async () => {
     `INSERT INTO users (email, display_name) VALUES ('gmail-import-test@example.com', 'Gmail Import Test') RETURNING id`
   );
   userId = user.rows[0].id;
+  await consentService.setConsent({ userId, consentType: 'medical_record_storage', granted: true });
   connection = await gmailConnectionService.upsertConnection({
     userId,
     providerAccountId: 'google-sub-123',
@@ -37,9 +42,9 @@ test.before(async () => {
 });
 
 test.after(async () => {
-  const { rows } = await pool.query('SELECT storage_path FROM reports WHERE id = ANY($1)', [createdReportIds]);
+  const { rows } = await pool.query('SELECT * FROM reports WHERE id = ANY($1)', [createdReportIds]);
   for (const row of rows) {
-    if (row.storage_path) fs.promises.unlink(row.storage_path).catch(() => {});
+    await encryptedFileStore.remove(row).catch(() => {});
   }
   await pool.query('DELETE FROM gmail_document_sources WHERE user_id = $1', [userId]);
   await pool.query('DELETE FROM reports WHERE user_id = $1', [userId]);
@@ -90,7 +95,13 @@ test('importSelections imports a new attachment into reports with Gmail provenan
     assert.equal(report.rows[0].source_type, 'gmail_import');
     assert.equal(report.rows[0].source_provider, 'Quest Diagnostics');
     assert.equal(report.rows[0].original_filename, 'results.pdf');
-    assert.ok(fs.existsSync(report.rows[0].storage_path));
+    // Stored only as ciphertext in the vault - no plaintext path at all.
+    assert.equal(report.rows[0].storage_path, null);
+    assert.equal(report.rows[0].encryption_version, 1);
+    const objectFile = path.join(config.security.encryptedStoreDir, report.rows[0].storage_object_key);
+    assert.ok(!fs.readFileSync(objectFile).includes(Buffer.from('fake report bytes')));
+    const decrypted = await encryptedFileStore.readDecrypted(report.rows[0]);
+    assert.equal(decrypted.toString(), '%PDF-1.4 fake report bytes');
 
     const source = await pool.query('SELECT * FROM gmail_document_sources WHERE imported_report_id = $1', [
       results[0].reportId,
@@ -114,7 +125,7 @@ test('importSelections is idempotent: re-importing the same message/attachment r
         attachments: [{ filename: 'lipid.pdf', mimeType: 'application/pdf', attachmentId: 'att-2' }],
       },
     },
-    attachmentBytes: async () => Buffer.from('lipid panel bytes'),
+    attachmentBytes: async () => Buffer.from('%PDF-1.4 lipid panel bytes'),
   });
 
   try {
@@ -164,7 +175,7 @@ test('importSelections detects duplicate content arriving under a different mess
         attachments: [{ filename: 'thyroid.pdf', mimeType: 'application/pdf', attachmentId: 'att-4' }],
       },
     },
-    attachmentBytes: async () => Buffer.from('identical thyroid bytes'),
+    attachmentBytes: async () => Buffer.from('%PDF-1.4 identical thyroid bytes'),
   });
 
   try {
@@ -204,7 +215,7 @@ test('importSelections reports an unsupported attachment type as an error withou
         ],
       },
     },
-    attachmentBytes: async () => Buffer.from('bytes'),
+    attachmentBytes: async () => Buffer.from('%PDF-1.4 bytes'),
   });
 
   try {

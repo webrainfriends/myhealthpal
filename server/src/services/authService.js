@@ -32,26 +32,33 @@ function verifySession(token) {
 
 // A file-open link (window.open/Linking.openURL, or a plain <a href>) can't
 // carry an Authorization header, so viewing an original report file uses a
-// second, narrowly-scoped token instead of the session one: short-lived,
-// tied to one specific report, and tagged with its own `type` so a leaked
-// download link can never be replayed as a session token (or vice versa).
-const DOWNLOAD_TOKEN_TTL = '10m';
+// second, narrowly-scoped token instead of the session one:
+//  - signed with its own key, derived from JWT_SECRET via HKDF, so a
+//    session token can never verify as a download token (or vice versa);
+//  - tied to one report and one user, with a unique jti (optionally
+//    single-use - see routes/files.js);
+//  - short-lived (DOWNLOAD_TOKEN_TTL_SECONDS, default 5 minutes).
+function downloadTokenKey() {
+  return Buffer.from(crypto.hkdfSync('sha256', config.jwtSecret, Buffer.alloc(0), 'myhealthpal:report-download:v1', 32));
+}
 
 function signReportDownloadToken({ userId, reportId }) {
-  return jwt.sign({ sub: userId, reportId, type: 'report_download' }, config.jwtSecret, {
-    expiresIn: DOWNLOAD_TOKEN_TTL,
+  return jwt.sign({ sub: userId, reportId, type: 'report_download' }, downloadTokenKey(), {
+    expiresIn: config.security.downloadTokenTtlSeconds,
+    jwtid: crypto.randomUUID(),
+    algorithm: 'HS256',
   });
 }
 
 // Throws on a missing/expired/tampered token, or one that isn't actually a
-// download token (e.g. a session token reused here) - same "never silently
-// fall back" contract as verifySessionUserId.
+// download token - same "never silently fall back" contract as
+// verifySessionUserId.
 function verifyReportDownloadToken(token) {
-  const payload = jwt.verify(token, config.jwtSecret);
-  if (payload.type !== 'report_download') {
+  const payload = jwt.verify(token, downloadTokenKey(), { algorithms: ['HS256'] });
+  if (payload.type !== 'report_download' || !payload.jti) {
     throw new Error('Not a report download token');
   }
-  return { userId: payload.sub, reportId: payload.reportId };
+  return { userId: payload.sub, reportId: payload.reportId, jti: payload.jti, expiresAt: payload.exp };
 }
 
 async function findUserById(id) {

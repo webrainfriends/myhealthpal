@@ -1,4 +1,4 @@
-const Anthropic = require('@anthropic-ai/sdk');
+const { getAiClient, isAllowed } = require('../ai/privacyGateway');
 const pool = require('../db/pool');
 const config = require('../config');
 const { recordAiUsage, FEATURES } = require('../services/aiUsageService');
@@ -378,17 +378,22 @@ async function rephraseTipWithClaude(client, tip) {
   return textBlock ? textBlock.text.trim() : null;
 }
 
-async function finalizeTips(tips) {
+async function finalizeTips(tips, userId) {
   const withSafetyTail = tips.map((t) => ({
     ...t,
     heuristicDetail: t.severity === 'info' ? t.heuristicDetail : `${t.heuristicDetail}${SAFETY_TAIL}`,
   }));
 
-  if (config.dietProvider !== 'claude' || !config.anthropicApiKey || withSafetyTail.length === 0) {
+  if (
+    config.dietProvider !== 'claude' ||
+    !config.anthropicApiKey ||
+    withSafetyTail.length === 0 ||
+    !(await isAllowed({ subjectUserId: userId, purpose: 'diet_insight' }))
+  ) {
     return { tips: withSafetyTail.map((t) => ({ type: t.type, severity: t.severity, title: t.title, detail: t.heuristicDetail })), provider: 'heuristic', model: null };
   }
 
-  const client = new Anthropic({ apiKey: config.anthropicApiKey });
+  const client = await getAiClient({ subjectUserId: userId, purpose: 'diet_insight' });
   const finalTips = [];
   let usedClaude = false;
   for (const tip of withSafetyTail) {
@@ -432,7 +437,7 @@ async function generateRecommendations(userId, windowDays = 14) {
       : `Over the last ${metrics.loggedDayCount} logged day${metrics.loggedDayCount === 1 ? '' : 's'} (${metrics.entriesAnalyzedCount} entries), you averaged about ${metrics.avgDailyCalories} calories/day.` +
         (tips.length === 0 ? ' No notable patterns stood out - keep it up.' : ` ${tips.length} thing${tips.length === 1 ? '' : 's'} stood out below.`);
 
-  const { tips: finalTips, provider, model } = await finalizeTips(tips);
+  const { tips: finalTips, provider, model } = await finalizeTips(tips, userId);
 
   const evidence = { metrics, flags, considerations: considerations.map(({ key, label, medicationNames, labFindings }) => ({ key, label, medicationNames, labFindings })) };
 

@@ -35,7 +35,12 @@ test('signReportDownloadToken + verifyReportDownloadToken round-trip to the same
   const userId = '44444444-4444-4444-4444-444444444444';
   const reportId = '55555555-5555-5555-5555-555555555555';
   const token = signReportDownloadToken({ userId, reportId });
-  assert.deepEqual(verifyReportDownloadToken(token), { userId, reportId });
+  const claims = verifyReportDownloadToken(token);
+  assert.equal(claims.userId, userId);
+  assert.equal(claims.reportId, reportId);
+  // Every link carries a unique id (for optional single-use enforcement).
+  assert.match(claims.jti, /^[0-9a-f-]{36}$/);
+  assert.notEqual(verifyReportDownloadToken(signReportDownloadToken({ userId, reportId })).jti, claims.jti);
 });
 
 test('verifyReportDownloadToken rejects a session token used in its place', () => {

@@ -107,8 +107,15 @@ async function runTurn({ userId, sessionId, userMessage, priorMessages, language
     const start = Date.now();
     let response;
     try {
-      response = await provider.converse({ systemPrompt, messages, tools });
+      response = await provider.converse({ systemPrompt, messages, tools, userId });
     } catch (err) {
+      if (err.code === 'ai_consent_required') {
+        return {
+          answer:
+            'The AI assistant is turned off for this profile. To use it, turn on "AI health insights" in Settings → Privacy & AI.',
+          evidence: [],
+        };
+      }
       await logEvent({ sessionId, eventType: 'error', provider: provider.name, success: false });
       return { answer: `Sorry, I ran into a problem answering that: ${err.message}`, evidence: [] };
     }

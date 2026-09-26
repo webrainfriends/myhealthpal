@@ -105,7 +105,7 @@ jobs:
           username: ${{ env.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: 15m
-          envs: APP_DIR,BRANCH,REPO_URL,APP_PORT,NGINX_PORT,PUBLIC_HOST,ANTHROPIC_API_KEY,GOOGLE_CLIENT_ID,APPLE_CLIENT_ID
+          envs: APP_DIR,BRANCH,REPO_URL,APP_PORT,NGINX_PORT,PUBLIC_HOST,ANTHROPIC_API_KEY,GOOGLE_CLIENT_ID,APPLE_CLIENT_ID,KMS_KEY_ID,KMS_REGION
           script_stop: true
           script: |
             set -euo pipefail
@@ -114,9 +114,43 @@ jobs:
               git clone --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
             fi
             cd "$APP_DIR"
+            # Remembered so a failed security preflight below can put the
+            # previous code back before exiting - the running app (and the
+            # published web build) are only switched once it passes.
+            PREV_SHA=$(git rev-parse HEAD 2>/dev/null || echo "")
             git fetch origin "$BRANCH"
             git checkout "$BRANCH"
             git reset --hard "origin/$BRANCH"
+
+            abort_deploy() {
+              echo "::error::$1"
+              if [ -n "$PREV_SHA" ]; then
+                echo "[deploy] restoring previous code ($PREV_SHA); the running app was not touched"
+                git reset --hard "$PREV_SHA"
+                (cd server && npm ci --omit=dev) || true
+              fi
+              exit 1
+            }
+
+            # Medical reports are stored only encrypted, with per-file keys
+            # wrapped by AWS KMS (docs/security/key-management.md). The app
+            # refuses to start without it, so check before switching
+            # anything: a missing key/role fails this deploy while the
+            # current version keeps serving.
+            echo "[deploy] security preflight: encrypted vault + AWS KMS"
+            VAULT_DIR=/var/lib/myhealthpal/vault
+            sudo mkdir -p "$VAULT_DIR"
+            sudo chown "$(id -un):$(id -gn)" "$VAULT_DIR"
+            sudo chmod 700 "$VAULT_DIR"
+            if [ -z "${KMS_KEY_ID:-}" ]; then
+              abort_deploy "KMS_KEY_ID is not set. Create a KMS key, attach an EC2 instance role that can use it, and add the KMS_KEY_ID repository secret - see docs/security/key-management.md."
+            fi
+            (cd server && npm ci --omit=dev) || abort_deploy "npm ci failed"
+            if ! (cd server && NODE_ENV=production KEY_PROVIDER=aws-kms KMS_KEY_ID="$KMS_KEY_ID" KMS_REGION="${KMS_REGION:-ap-southeast-1}" \
+                  ENCRYPTED_STORE_DIR="$VAULT_DIR" JWT_SECRET=preflight-only LOCAL_DEV_MASTER_KEY= LEGACY_PLAINTEXT_READS=deny \
+                  node scripts/check-kms.js); then
+              abort_deploy "This server cannot use the KMS key. Check the instance role's kms:GenerateDataKey/Decrypt/ReEncrypt*/DescribeKey permissions - see docs/security/key-management.md."
+            fi
 
             if ! command -v docker >/dev/null 2>&1; then
               curl -fsSL https://get.docker.com | sudo sh
@@ -156,11 +190,25 @@ jobs:
 
             echo "[deploy] configuring nginx on port ${NGINX_PORT}"
             printf '%s\n' \
+              'log_format myhealthpal_noquery '"'"'$remote_addr - $remote_user [$time_local] "$request_method $uri $server_protocol" $status $body_bytes_sent "-" "$http_user_agent"'"'"';' \
+              '' \
               'server {' \
               "    listen ${NGINX_PORT};" \
               '    server_name _;' \
               '' \
               '    client_max_body_size 25m;' \
+              '' \
+              '    # Original-report links carry a short-lived token in the' \
+              '    # query string - logged without it.' \
+              '    location /api/files/ {' \
+              '        access_log /var/log/nginx/access.log myhealthpal_noquery;' \
+              "        proxy_pass http://127.0.0.1:${APP_PORT};" \
+              '        proxy_http_version 1.1;' \
+              '        proxy_set_header Host $host;' \
+              '        proxy_set_header X-Real-IP $remote_addr;' \
+              '        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' \
+              '        proxy_set_header X-Forwarded-Proto $scheme;' \
+              '    }' \
               '' \
               '    location /api/ {' \
               "        proxy_pass http://127.0.0.1:${APP_PORT};" \
@@ -284,6 +332,20 @@ jobs:
             grep -q '^APPLE_CLIENT_ID=' .env || echo 'APPLE_CLIENT_ID=' >> .env
             sed -i "s#^GOOGLE_CLIENT_ID=.*#GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}#" .env
             sed -i "s#^APPLE_CLIENT_ID=.*#APPLE_CLIENT_ID=${APPLE_CLIENT_ID:-}#" .env
+
+            # Encrypted-vault settings (checked by the preflight above and
+            # again by the app at startup). Rewritten every deploy.
+            set_env() {
+              grep -q "^$1=" .env || echo "$1=" >> .env
+              sed -i "s#^$1=.*#$1=$2#" .env
+            }
+            set_env NODE_ENV production
+            set_env KEY_PROVIDER aws-kms
+            set_env KMS_KEY_ID "$KMS_KEY_ID"
+            set_env KMS_REGION "${KMS_REGION:-ap-southeast-1}"
+            set_env ENCRYPTED_STORE_DIR "$VAULT_DIR"
+            set_env LEGACY_PLAINTEXT_READS deny
+            set_env LOCAL_DEV_MASTER_KEY ""
             cd ..
 
             echo "[deploy] installing app dependencies"
@@ -296,6 +358,13 @@ jobs:
             # insights all key off of. Safe/cheap to run on every deploy.
             npm run seed
 
+            # One-time (idempotent) encryption of reports/scans uploaded
+            # before the vault existed: encrypt -> verify -> delete the
+            # plaintext. Prints counts only. A row that fails stays as it is
+            # and is retried on the next deploy.
+            echo "[deploy] encrypting any legacy plaintext uploads"
+            node scripts/encrypt-legacy-uploads.js || echo "::warning::Some legacy uploads could not be encrypted (see counts above); they will be retried on the next deploy."
+
             pm2 describe myhealthpal-server > /dev/null 2>&1 && pm2 restart myhealthpal-server --update-env || pm2 start src/index.js --name myhealthpal-server
             pm2 save
 
@@ -307,3 +376,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           APPLE_CLIENT_ID: ${{ secrets.APPLE_CLIENT_ID }}
+          # AWS KMS key (ARN, id or alias) that wraps every medical file's
+          # data key - see docs/security/key-management.md.
+          KMS_KEY_ID: ${{ secrets.KMS_KEY_ID }}
+          KMS_REGION: ap-southeast-1

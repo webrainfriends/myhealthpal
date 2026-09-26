@@ -1,5 +1,4 @@
 const express = require('express');
-const fs = require('fs');
 const pool = require('../db/pool');
 const config = require('../config');
 const { upload, extensionOf } = require('../middleware/upload');
@@ -9,6 +8,11 @@ const { classifyValue } = require('../extraction/normalizationService');
 const { refreshSummaryForReport } = require('../extraction/reportNarrativeService');
 const { runForMeasurement, supersedeInsightsForMeasurement } = require('../insights/insightService');
 const { signReportDownloadToken } = require('../services/authService');
+const { secureStore, encryptionInsertParts, deleteStoredFile } = require('../security/secureUpload');
+const { requireConsent } = require('../security/consentService');
+const { loadOwnedReport, toPublicRecord } = require('../security/reportAccess');
+const audit = require('../security/auditLog');
+const { logError } = require('../lib/safeLog');
 
 const router = express.Router();
 
@@ -44,11 +48,7 @@ router.get('/', async (req, res, next) => {
 
 router.get('/:id', async (req, res, next) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM reports WHERE id = $1 AND user_id = $2', [
-      req.params.id,
-      currentUserId(req),
-    ]);
-    const report = rows[0];
+    const report = await loadOwnedReport(currentUserId(req), req.params.id);
     if (!report) return res.status(404).json({ error: 'Report not found' });
 
     const measurements = await pool.query(MEASUREMENT_LIST_QUERY, [req.params.id]);
@@ -64,7 +64,7 @@ router.get('/:id', async (req, res, next) => {
     );
 
     res.json({
-      report,
+      report: toPublicRecord(report),
       measurements: measurements.rows,
       dates: dates.rows,
       narrativeSummary: narrative.rows[0] || null,
@@ -82,11 +82,8 @@ router.get('/:id', async (req, res, next) => {
 // endpoint is where that still gets checked, once, right before minting.
 router.get('/:id/file-url', async (req, res, next) => {
   try {
-    const { rows } = await pool.query('SELECT id FROM reports WHERE id = $1 AND user_id = $2', [
-      req.params.id,
-      currentUserId(req),
-    ]);
-    if (rows.length === 0) return res.status(404).json({ error: 'Report not found' });
+    const report = await loadOwnedReport(currentUserId(req), req.params.id, { purpose: 'report_view' });
+    if (!report) return res.status(404).json({ error: 'Report not found' });
 
     const token = signReportDownloadToken({ userId: currentUserId(req), reportId: req.params.id });
     res.json({ url: `/api/files/report/${req.params.id}?token=${token}` });
@@ -112,23 +109,34 @@ router.post('/', (req, res, next) => {
         return res.status(400).json({ error: 'No file was provided. Attach a file under the "file" field.' });
       }
       if (req.file.size === 0) {
-        fs.unlinkSync(req.file.path);
         return res.status(400).json({ error: 'The uploaded file is empty or corrupt.' });
       }
 
+      // Storing a medical record needs the person's explicit consent
+      // (Privacy & AI screen); for a managed family profile, the caregiver
+      // gives it on their behalf.
+      await requireConsent(currentUserId(req), 'medical_record_storage');
+      await audit.record({ eventType: 'REPORT_UPLOAD_STARTED', userId: currentUserId(req), purpose: 'report_upload' });
+
+      // Validated, scanned and encrypted straight from memory - only
+      // ciphertext ever reaches disk, under an opaque random name.
       const extension = extensionOf(req.file.originalname);
+      const meta = await secureStore({ userId: currentUserId(req), buffer: req.file.buffer, extension });
+      req.file.buffer = null;
+      const enc = encryptionInsertParts(meta, 6);
       const { rows } = await pool.query(
         `INSERT INTO reports
-           (user_id, original_filename, mime_type, file_extension, file_size_bytes, storage_path)
-         VALUES ($1, $2, $3, $4, $5, $6)
+           (user_id, original_filename, mime_type, file_extension, file_size_bytes, ${enc.columns.join(', ')})
+         VALUES ($1, $2, $3, $4, $5, ${enc.placeholders.join(', ')})
          RETURNING *`,
-        [currentUserId(req), req.file.originalname, req.file.mimetype, extension, req.file.size, req.file.path]
+        [currentUserId(req), req.file.originalname, req.file.mimetype, extension, req.file.size, ...enc.values]
       );
       const report = rows[0];
+      await audit.record({ eventType: 'REPORT_ENCRYPTED', userId: report.user_id, reportId: report.id, purpose: 'report_upload' });
 
       enqueueProcessing(report.id);
 
-      res.status(201).json({ report });
+      res.status(201).json({ report: toPublicRecord(report) });
     } catch (dbErr) {
       next(dbErr);
     }
@@ -137,11 +145,7 @@ router.post('/', (req, res, next) => {
 
 router.post('/:id/retry', async (req, res, next) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM reports WHERE id = $1 AND user_id = $2', [
-      req.params.id,
-      currentUserId(req),
-    ]);
-    const report = rows[0];
+    const report = await loadOwnedReport(currentUserId(req), req.params.id, { purpose: 'report_retry' });
     if (!report) return res.status(404).json({ error: 'Report not found' });
     if (report.ingestion_status === 'Processing') {
       return res.status(409).json({ error: 'Report is already processing.' });
@@ -156,11 +160,8 @@ router.post('/:id/retry', async (req, res, next) => {
 
 router.patch('/:id', async (req, res, next) => {
   try {
-    const owned = await pool.query('SELECT * FROM reports WHERE id = $1 AND user_id = $2', [
-      req.params.id,
-      currentUserId(req),
-    ]);
-    if (owned.rows.length === 0) return res.status(404).json({ error: 'Report not found' });
+    const ownedReport = await loadOwnedReport(currentUserId(req), req.params.id);
+    if (!ownedReport) return res.status(404).json({ error: 'Report not found' });
 
     if (req.body.effective_date === undefined) {
       return res.status(400).json({ error: 'effective_date is required.' });
@@ -180,7 +181,7 @@ router.patch('/:id', async (req, res, next) => {
       [req.params.id, effectiveDate]
     );
 
-    res.json({ report: rows[0] });
+    res.json({ report: toPublicRecord(rows[0]) });
   } catch (err) {
     next(err);
   }
@@ -190,11 +191,8 @@ const EDITABLE_FIELDS = ['raw_test_name', 'raw_value', 'raw_unit', 'reference_ra
 
 router.patch('/:id/measurements/:measurementId', async (req, res, next) => {
   try {
-    const owned = await pool.query('SELECT id FROM reports WHERE id = $1 AND user_id = $2', [
-      req.params.id,
-      currentUserId(req),
-    ]);
-    if (owned.rows.length === 0) return res.status(404).json({ error: 'Report not found' });
+    const ownedReport = await loadOwnedReport(currentUserId(req), req.params.id);
+    if (!ownedReport) return res.status(404).json({ error: 'Report not found' });
 
     const current = await pool.query('SELECT * FROM health_measurements WHERE id = $1 AND report_id = $2', [
       req.params.measurementId,
@@ -328,11 +326,8 @@ router.post('/:id/measurements/:measurementId/duplicate-resolution', async (req,
       return res.status(400).json({ error: 'action must be "skip" or "keep".' });
     }
 
-    const owned = await pool.query('SELECT id FROM reports WHERE id = $1 AND user_id = $2', [
-      req.params.id,
-      currentUserId(req),
-    ]);
-    if (owned.rows.length === 0) return res.status(404).json({ error: 'Report not found' });
+    const ownedReport = await loadOwnedReport(currentUserId(req), req.params.id);
+    if (!ownedReport) return res.status(404).json({ error: 'Report not found' });
 
     const nextStatus = action === 'skip' ? 'confirmed_duplicate' : 'confirmed_distinct';
     const { rows } = await pool.query(
@@ -353,11 +348,7 @@ router.post('/:id/measurements/:measurementId/duplicate-resolution', async (req,
 
 router.post('/:id/confirm', async (req, res, next) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM reports WHERE id = $1 AND user_id = $2', [
-      req.params.id,
-      currentUserId(req),
-    ]);
-    const report = rows[0];
+    const report = await loadOwnedReport(currentUserId(req), req.params.id);
     if (!report) return res.status(404).json({ error: 'Report not found' });
     if (report.ingestion_status !== 'Needs Review') {
       return res.status(409).json({ error: `Report cannot be confirmed from status "${report.ingestion_status}".` });
@@ -398,42 +389,33 @@ router.post('/:id/confirm', async (req, res, next) => {
 
     const updated = await pool.query('SELECT * FROM reports WHERE id = $1', [req.params.id]);
 
-    res.json({ report: updated.rows[0] });
+    res.json({ report: toPublicRecord(updated.rows[0]) });
   } catch (err) {
     next(err);
   }
 });
 
-// Removes an uploaded report entirely - the whole "batch" from that upload,
-// not individual measurements within it (correcting/removing one result at
-// a time already exists via the measurement PATCH endpoint above and the
-// per-parameter mapping controls on Report Detail). Every dependent row
-// (health_measurements, ingestion_jobs, extraction_runs, measurement_sources,
-// report_dates, report_summaries) cascades via FK ON DELETE CASCADE - see
-// the reports table's migration - so this only needs to delete the report
-// row itself, plus the uploaded file on disk that nothing else references
-// once it's gone.
+// Permanently deletes an uploaded report (issue #104 §9): the encrypted
+// file, its wrapped data key and metadata (the row itself), and every
+// dependent row - health_measurements, ingestion_jobs, extraction_runs,
+// measurement_sources, report_dates, report_summaries - via FK ON DELETE
+// CASCADE. Once the row (and so the wrapped key) is gone, any copy of the
+// ciphertext left in a backup can no longer be decrypted. A non-PHI audit
+// event records the deletion.
 router.delete('/:id', async (req, res, next) => {
   try {
-    const { rows } = await pool.query('DELETE FROM reports WHERE id = $1 AND user_id = $2 RETURNING storage_path', [
-      req.params.id,
-      currentUserId(req),
-    ]);
-    if (rows.length === 0) return res.status(404).json({ error: 'Report not found' });
+    const report = await loadOwnedReport(currentUserId(req), req.params.id, { purpose: 'report_delete' });
+    if (!report) return res.status(404).json({ error: 'Report not found' });
 
-    const { storage_path: storagePath } = rows[0];
-    if (storagePath) {
-      fs.unlink(storagePath, (err) => {
-        // ENOENT (already gone) is fine; anything else is worth knowing
-        // about but must never fail a delete that already succeeded in the
-        // database - the file is orphaned disk space at worst, not a
-        // correctness problem for the user.
-        if (err && err.code !== 'ENOENT') {
-          // eslint-disable-next-line no-console
-          console.error(`Failed to remove report file ${storagePath}:`, err);
-        }
-      });
+    await pool.query('DELETE FROM reports WHERE id = $1 AND user_id = $2', [report.id, currentUserId(req)]);
+    try {
+      await deleteStoredFile(report);
+    } catch (err) {
+      // The key is already gone with the row, so the ciphertext is
+      // unreadable; a leftover object is disk space, not exposure.
+      logError(`Could not remove stored file for deleted report ${report.id}`, err);
     }
+    await audit.record({ eventType: 'REPORT_DELETED', userId: report.user_id, reportId: report.id, purpose: 'user_request' });
 
     res.status(204).send();
   } catch (err) {

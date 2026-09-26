@@ -68,8 +68,16 @@ function itemsToLines(items) {
   return lines.join('\n');
 }
 
-async function extract(filePath) {
-  const data = new Uint8Array(fs.readFileSync(filePath));
+// Refuse absurdly long documents before parsing every page - a lab report
+// is a handful of pages; thousands suggests a malformed/hostile file.
+const MAX_PDF_PAGES = 200;
+
+// `input` is the decrypted file as a Buffer (the vault never writes
+// plaintext to disk); a path is still accepted for tests and tools.
+async function extract(input) {
+  // pdfjs takes ownership of (and detaches) the array it's given, so copy
+  // rather than hand it the caller's Buffer.
+  const data = new Uint8Array(Buffer.isBuffer(input) ? input : fs.readFileSync(input));
 
   let doc;
   try {
@@ -79,6 +87,10 @@ async function extract(filePath) {
       throw new Error('PDF is password-protected and cannot be processed. Please upload an unlocked copy.');
     }
     throw new Error(`Unable to read PDF: ${err.message}`);
+  }
+
+  if (doc.numPages > MAX_PDF_PAGES) {
+    throw new Error(`PDF has ${doc.numPages} pages; the limit is ${MAX_PDF_PAGES}.`);
   }
 
   let text = '';
