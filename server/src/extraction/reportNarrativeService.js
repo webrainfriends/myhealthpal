@@ -51,7 +51,31 @@ async function buildComparisons(userId, reportId, measurements) {
   return comparisons;
 }
 
+function buildImagingHeuristicNarrative(report) {
+  const studyLabel = [report.modality, report.body_region].filter(Boolean).join(' of the ') || 'imaging study';
+  const parts = [`This is a ${studyLabel} report.`];
+
+  if (report.impression) {
+    parts.push(`Impression: ${report.impression}`);
+  } else if (report.findings) {
+    parts.push(`Findings: ${report.findings}`);
+  } else {
+    parts.push('No findings or impression text could be confidently extracted from this report.');
+  }
+
+  if (report.recommendations) {
+    parts.push(`Recommended follow-up: ${report.recommendations}`);
+  }
+
+  parts.push(SAFETY_FOOTER);
+  return parts.join(' ');
+}
+
 function buildHeuristicNarrative(report, measurements, comparisons) {
+  if (measurements.length === 0 && (report.findings || report.impression || report.modality)) {
+    return buildImagingHeuristicNarrative(report);
+  }
+
   if (measurements.length === 0) {
     return `No health parameters could be confidently extracted from this ${report.file_extension.toUpperCase()} report. ${SAFETY_FOOTER}`;
   }
@@ -95,8 +119,18 @@ function buildHeuristicNarrative(report, measurements, comparisons) {
 
 async function buildClaudeNarrative(report, measurements, comparisons, language) {
   const client = new Anthropic({ apiKey: config.anthropicApiKey });
+  const isImagingReport = measurements.length === 0 && Boolean(report.findings || report.impression || report.modality);
   const payload = {
     reportFormat: report.file_extension,
+    imagingReport: isImagingReport
+      ? {
+          modality: report.modality,
+          bodyRegion: report.body_region,
+          findings: report.findings,
+          impression: report.impression,
+          recommendations: report.recommendations,
+        }
+      : null,
     measurements: measurements.map((m) => ({
       name: m.parameter_display_name || m.raw_test_name,
       value: m.raw_value,
@@ -117,6 +151,9 @@ async function buildClaudeNarrative(report, measurements, comparisons, language)
         'State only what the data shows. Never invent a diagnosis, treatment recommendation, or clinical certainty not present in the input.',
         'Clearly distinguish the source report\'s own statements (e.g. its flags) from any comparison you make to prior results.',
         'If something could not be confidently read, say so plainly rather than guessing.',
+        'If "imagingReport" is present, this is a radiology/imaging report (X-ray, CT, MRI, ultrasound, etc.) rather than a ' +
+          'lab report: summarize its findings and impression in plain language, and mention any stated recommendations, ' +
+          'without adding a diagnosis or interpretation beyond what is stated.',
         `Always end with exactly this sentence, translated if you are writing in another language: "${SAFETY_FOOTER}"`,
       ].join(' ') + languageInstruction(language),
     messages: [{ role: 'user', content: JSON.stringify(payload) }],

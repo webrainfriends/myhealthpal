@@ -34,4 +34,25 @@ function generateSummary(measurements) {
   return parts.join(' ');
 }
 
-module.exports = { generateSummary };
+// Heuristic summary for an imaging/radiology report (X-ray, CT, MRI, ...),
+// which has narrative findings/impression rather than discrete parameters.
+function generateImagingSummary(docInfo) {
+  const studyLabel = [docInfo?.modality, docInfo?.bodyRegion].filter(Boolean).join(' — ') || 'Imaging study';
+  const parts = [`${studyLabel} report processed.`];
+
+  if (docInfo?.impression) {
+    parts.push('See Impression and Findings below for the reported results.');
+  } else if (docInfo?.findings) {
+    parts.push('See Findings below for the reported results.');
+  } else {
+    parts.push('No findings or impression text could be automatically extracted. Please review the original document.');
+  }
+
+  if (docInfo?.recommendations) {
+    parts.push('A follow-up recommendation was noted - see Recommendations below.');
+  }
+
+  return parts.join(' ');
+}
+
+module.exports = { generateSummary, generateImagingSummary };
