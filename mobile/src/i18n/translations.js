@@ -280,6 +280,9 @@ export const TRANSLATIONS = {
       alerts: 'Alerts',
       summary: 'Summary',
       notes: 'Notes',
+      findings: 'Findings',
+      impression: 'Impression',
+      recommendations: 'Recommendations',
       duplicateWarning:
         'Some values look like they may already be recorded from an earlier confirmed report — check the highlighted rows below. Unresolved ones are skipped automatically when you confirm.',
       extractedParameters: 'Extracted parameters',
@@ -496,7 +499,7 @@ export const TRANSLATIONS = {
       autoReadHint: 'Voice Mode reads each answer aloud automatically',
     },
     upload: {
-      title: 'Upload a health report',
+      title: 'Upload a health report or scan',
       subtitleBase: 'PDF, JPG/PNG scans, DOCX, CSV, XLS, and XLSX are supported',
       subtitleMax: ' — up to {{mb}}MB per file',
       chooseFile: 'Choose a file',
@@ -732,6 +735,9 @@ export const TRANSLATIONS = {
       alerts: 'Alertas',
       summary: 'Resumen',
       notes: 'Notas',
+      findings: 'Hallazgos',
+      impression: 'Impresión',
+      recommendations: 'Recomendaciones',
       duplicateWarning:
         'Algunos valores parecen ya estar registrados en un informe confirmado anterior — revisa las filas resaltadas abajo. Las no resueltas se omiten automáticamente al confirmar.',
       extractedParameters: 'Parámetros extraídos',
@@ -940,7 +946,7 @@ export const TRANSLATIONS = {
       autoReadHint: 'El Modo voz lee cada respuesta en voz alta automáticamente',
     },
     upload: {
-      title: 'Subir un informe de salud',
+      title: 'Subir un informe de salud o estudio de imagen',
       subtitleBase: 'Se admiten PDF, escaneos JPG/PNG, DOCX, CSV, XLS y XLSX',
       subtitleMax: ' — hasta {{mb}}MB por archivo',
       chooseFile: 'Elegir un archivo',
@@ -1176,6 +1182,9 @@ export const TRANSLATIONS = {
       alerts: 'Alertes',
       summary: 'Résumé',
       notes: 'Notes',
+      findings: 'Constatations',
+      impression: 'Impression',
+      recommendations: 'Recommandations',
       duplicateWarning:
         "Certaines valeurs semblent déjà enregistrées dans un rapport confirmé précédent — vérifiez les lignes surlignées ci-dessous. Celles non résolues sont ignorées automatiquement lors de la confirmation.",
       extractedParameters: 'Paramètres extraits',
@@ -1384,7 +1393,7 @@ export const TRANSLATIONS = {
       autoReadHint: 'Le Mode voix lit chaque réponse à voix haute automatiquement',
     },
     upload: {
-      title: 'Importer un rapport de santé',
+      title: 'Importer un rapport de santé ou d\'imagerie',
       subtitleBase: 'PDF, scans JPG/PNG, DOCX, CSV, XLS et XLSX sont pris en charge',
       subtitleMax: ' — jusqu\'à {{mb}} Mo par fichier',
       chooseFile: 'Choisir un fichier',
@@ -1620,6 +1629,9 @@ export const TRANSLATIONS = {
       alerts: 'Warnungen',
       summary: 'Zusammenfassung',
       notes: 'Notizen',
+      findings: 'Befunde',
+      impression: 'Beurteilung',
+      recommendations: 'Empfehlungen',
       duplicateWarning:
         'Einige Werte scheinen bereits in einem früheren bestätigten Bericht erfasst zu sein — prüfe die hervorgehobenen Zeilen unten. Ungelöste werden beim Bestätigen automatisch übersprungen.',
       extractedParameters: 'Extrahierte Parameter',
@@ -1828,7 +1840,7 @@ export const TRANSLATIONS = {
       autoReadHint: 'Der Sprachmodus liest jede Antwort automatisch vor',
     },
     upload: {
-      title: 'Gesundheitsbericht hochladen',
+      title: 'Gesundheitsbericht oder Bildgebung hochladen',
       subtitleBase: 'PDF, JPG/PNG-Scans, DOCX, CSV, XLS und XLSX werden unterstützt',
       subtitleMax: ' — bis zu {{mb}} MB pro Datei',
       chooseFile: 'Datei auswählen',
@@ -2064,6 +2076,9 @@ export const TRANSLATIONS = {
       alerts: 'Alertas',
       summary: 'Resumo',
       notes: 'Notas',
+      findings: 'Achados',
+      impression: 'Impressão',
+      recommendations: 'Recomendações',
       duplicateWarning:
         'Alguns valores parecem já estar registrados em um relatório confirmado anterior — verifique as linhas destacadas abaixo. As não resolvidas são ignoradas automaticamente ao confirmar.',
       extractedParameters: 'Parâmetros extraídos',
@@ -2272,7 +2287,7 @@ export const TRANSLATIONS = {
       autoReadHint: 'O Modo de voz lê cada resposta em voz alta automaticamente',
     },
     upload: {
-      title: 'Enviar um relatório de saúde',
+      title: 'Enviar um relatório de saúde ou exame de imagem',
       subtitleBase: 'PDF, digitalizações JPG/PNG, DOCX, CSV, XLS e XLSX são suportados',
       subtitleMax: ' — até {{mb}}MB por arquivo',
       chooseFile: 'Escolher um arquivo',
@@ -2508,6 +2523,9 @@ export const TRANSLATIONS = {
       alerts: 'Оповещения',
       summary: 'Сводка',
       notes: 'Заметки',
+      findings: 'Результаты',
+      impression: 'Заключение',
+      recommendations: 'Рекомендации',
       duplicateWarning:
         'Некоторые значения, похоже, уже записаны в более раннем подтверждённом отчёте — проверьте выделенные строки ниже. Неразрешённые будут автоматически пропущены при подтверждении.',
       extractedParameters: 'Извлечённые параметры',
@@ -2716,7 +2734,7 @@ export const TRANSLATIONS = {
       autoReadHint: 'Голосовой режим автоматически читает каждый ответ вслух',
     },
     upload: {
-      title: 'Загрузить отчёт о здоровье',
+      title: 'Загрузить отчёт о здоровье или снимок',
       subtitleBase: 'Поддерживаются PDF, сканы JPG/PNG, DOCX, CSV, XLS и XLSX',
       subtitleMax: ' — до {{mb}} МБ на файл',
       chooseFile: 'Выбрать файл',
@@ -3044,6 +3062,9 @@ export const TRANSLATIONS = {
       alerts: 'अलर्ट',
       summary: 'सारांश',
       notes: 'नोट्स',
+      findings: 'निष्कर्ष',
+      impression: 'राय',
+      recommendations: 'सिफ़ारिशें',
       duplicateWarning:
         'कुछ मान पहले से किसी पुष्ट रिपोर्ट में दर्ज लग रहे हैं — नीचे हाइलाइट की गई पंक्तियां जांचें। अनसुलझी पंक्तियां पुष्टि करने पर अपने आप छोड़ दी जाती हैं।',
       extractedParameters: 'निकाले गए पैरामीटर',
@@ -3249,7 +3270,7 @@ export const TRANSLATIONS = {
       autoReadHint: 'वॉइस मोड हर जवाब अपने आप ज़ोर से पढ़ता है',
     },
     upload: {
-      title: 'स्वास्थ्य रिपोर्ट अपलोड करें',
+      title: 'स्वास्थ्य रिपोर्ट या स्कैन अपलोड करें',
       subtitleBase: 'PDF, JPG/PNG स्कैन, DOCX, CSV, XLS, और XLSX समर्थित हैं',
       subtitleMax: ' — प्रति फ़ाइल {{mb}}MB तक',
       chooseFile: 'फ़ाइल चुनें',
@@ -3483,6 +3504,9 @@ export const TRANSLATIONS = {
       alerts: '警报',
       summary: '摘要',
       notes: '备注',
+      findings: '检查所见',
+      impression: '印象',
+      recommendations: '建议',
       duplicateWarning: '部分数值可能已在之前确认的报告中记录过 — 请查看下方高亮的行。未处理的行在您确认时会自动跳过。',
       extractedParameters: '提取的参数',
       tapToCorrect: '（点击某个字段进行更正）',
@@ -3686,7 +3710,7 @@ export const TRANSLATIONS = {
       autoReadHint: '语音模式会自动朗读每条回复',
     },
     upload: {
-      title: '上传健康报告',
+      title: '上传健康报告或扫描影像',
       subtitleBase: '支持 PDF、JPG/PNG 扫描件、DOCX、CSV、XLS 和 XLSX',
       subtitleMax: ' — 每个文件最大 {{mb}}MB',
       chooseFile: '选择文件',
@@ -3920,6 +3944,9 @@ export const TRANSLATIONS = {
       alerts: 'アラート',
       summary: '要約',
       notes: 'メモ',
+      findings: '所見',
+      impression: '印象',
+      recommendations: '推奨事項',
       duplicateWarning:
         '一部の値は、以前確定したレポートにすでに記録されている可能性があります。下のハイライトされた行を確認してください。未対応のものは、確定時に自動的にスキップされます。',
       extractedParameters: '抽出されたパラメータ',
@@ -4124,7 +4151,7 @@ export const TRANSLATIONS = {
       autoReadHint: '音声モードでは各回答が自動的に読み上げられます',
     },
     upload: {
-      title: '健康レポートをアップロード',
+      title: '健康レポートまたは画像診断をアップロード',
       subtitleBase: 'PDF、JPG/PNGスキャン、DOCX、CSV、XLS、XLSXに対応しています',
       subtitleMax: '（1ファイルあたり最大{{mb}}MB）',
       chooseFile: 'ファイルを選択',
@@ -4360,6 +4387,9 @@ export const TRANSLATIONS = {
       alerts: 'تنبيهات',
       summary: 'الملخص',
       notes: 'ملاحظات',
+      findings: 'النتائج',
+      impression: 'الانطباع',
+      recommendations: 'التوصيات',
       duplicateWarning:
         '.تبدو بعض القيم مسجلة مسبقًا في تقرير مؤكد سابق — راجع الصفوف المميزة أدناه. يتم تخطي غير المحلولة تلقائيًا عند التأكيد',
       extractedParameters: 'المعايير المستخرجة',
@@ -4565,7 +4595,7 @@ export const TRANSLATIONS = {
       autoReadHint: 'وضع الصوت يقرأ كل رد بصوت عالٍ تلقائيًا',
     },
     upload: {
-      title: 'رفع تقرير صحي',
+      title: 'رفع تقرير صحي أو صورة أشعة',
       subtitleBase: 'PDF وصور JPG/PNG الممسوحة وDOCX وCSV وXLS وXLSX مدعومة',
       subtitleMax: ' — حتى {{mb}} ميغابايت لكل ملف',
       chooseFile: 'اختيار ملف',
@@ -4893,6 +4923,9 @@ export const TRANSLATIONS = {
       alerts: 'எச்சரிக்கைகள்',
       summary: 'சுருக்கம்',
       notes: 'குறிப்புகள்',
+      findings: 'கண்டறிதல்கள்',
+      impression: 'அபிப்ராயம்',
+      recommendations: 'பரிந்துரைகள்',
       duplicateWarning:
         'சில மதிப்புகள் ஏற்கனவே முந்தைய உறுதிப்படுத்தப்பட்ட அறிக்கையில் பதிவு செய்யப்பட்டிருக்கலாம் — கீழே சிறப்பிக்கப்பட்ட வரிசைகளைச் சரிபார்க்கவும். தீர்க்கப்படாதவை உறுதிப்படுத்தும்போது தானாக தவிர்க்கப்படும்.',
       extractedParameters: 'பிரித்தெடுக்கப்பட்ட அளவுருக்கள்',
@@ -5101,7 +5134,7 @@ export const TRANSLATIONS = {
       autoReadHint: 'குரல் பயன்முறை ஒவ்வொரு பதிலையும் தானாக உரக்கப் படிக்கும்',
     },
     upload: {
-      title: 'ஆரோக்கிய அறிக்கையை பதிவேற்று',
+      title: 'ஆரோக்கிய அறிக்கை அல்லது ஸ்கேனை பதிவேற்று',
       subtitleBase: 'PDF, JPG/PNG ஸ்கேன்கள், DOCX, CSV, XLS மற்றும் XLSX ஆதரிக்கப்படுகின்றன',
       subtitleMax: ' — ஒரு கோப்புக்கு {{mb}}MB வரை',
       chooseFile: 'ஒரு கோப்பைத் தேர்வு செய்',
@@ -5429,6 +5462,9 @@ export const TRANSLATIONS = {
       alerts: 'హెచ్చరికలు',
       summary: 'సారాంశం',
       notes: 'గమనికలు',
+      findings: 'పరిశోధనలు',
+      impression: 'అభిప్రాయం',
+      recommendations: 'సిఫార్సులు',
       duplicateWarning:
         'కొన్ని విలువలు ఇప్పటికే మునుపటి ధృవీకరించబడిన నివేదికలో నమోదు చేయబడి ఉండవచ్చు — దిగువ హైలైట్ చేయబడిన అడ్డు వరుసలను తనిఖీ చేయండి. పరిష్కరించని వాటిని మీరు ధృవీకరించినప్పుడు స్వయంచాలకంగా దాటవేయబడతాయి.',
       extractedParameters: 'సేకరించిన పారామితులు',
@@ -5637,7 +5673,7 @@ export const TRANSLATIONS = {
       autoReadHint: 'వాయిస్ మోడ్ ప్రతి సమాధానాన్ని స్వయంచాలకంగా బిగ్గరగా చదువుతుంది',
     },
     upload: {
-      title: 'ఆరోగ్య నివేదికను అప్‌లోడ్ చేయండి',
+      title: 'ఆరోగ్య నివేదిక లేదా స్కాన్‌ను అప్‌లోడ్ చేయండి',
       subtitleBase: 'PDF, JPG/PNG స్కాన్‌లు, DOCX, CSV, XLS మరియు XLSX మద్దతు ఉంది',
       subtitleMax: ' — ఒక్కో ఫైల్‌కు {{mb}}MB వరకు',
       chooseFile: 'ఫైల్‌ను ఎంచుకోండి',
@@ -5873,6 +5909,9 @@ export const TRANSLATIONS = {
       alerts: 'Amaran',
       summary: 'Ringkasan',
       notes: 'Nota',
+      findings: 'Penemuan',
+      impression: 'Kesan',
+      recommendations: 'Cadangan',
       duplicateWarning:
         'Sesetengah nilai kelihatan seperti sudah direkodkan daripada laporan yang disahkan sebelum ini — semak baris yang diserlahkan di bawah. Yang belum diselesaikan akan dilangkau secara automatik apabila anda mengesahkan.',
       extractedParameters: 'Parameter yang diekstrak',
@@ -6081,7 +6120,7 @@ export const TRANSLATIONS = {
       autoReadHint: 'Mod Suara membacakan setiap jawapan secara automatik',
     },
     upload: {
-      title: 'Muat naik laporan kesihatan',
+      title: 'Muat naik laporan kesihatan atau imbasan',
       subtitleBase: 'PDF, imbasan JPG/PNG, DOCX, CSV, XLS dan XLSX disokong',
       subtitleMax: ' — sehingga {{mb}}MB setiap fail',
       chooseFile: 'Pilih fail',
