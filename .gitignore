@@ -7,6 +7,7 @@ npm-debug.log*
 server/uploads/*
 !server/uploads/.gitkeep
 server/test-fixtures/
+server/vault/
 
 # expo / react native
 mobile/.expo/

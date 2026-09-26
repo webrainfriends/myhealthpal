@@ -9,6 +9,7 @@ import { cardShadow, colors, radii, spacing, typography } from '../theme/theme';
 import { fetchReports, fetchSupportedFormats, uploadReport } from '../api/client';
 import { useT } from '../i18n/I18nContext';
 import { showAlert } from '../utils/alert';
+import { openPrivacyIfConsentNeeded } from '../utils/consent';
 import { formatCalendarDate } from '../utils/date';
 
 function formatDate(value, t) {
@@ -71,6 +72,7 @@ export default function UploadScreen({ navigation }) {
       await loadReports();
       showAlert(t('upload.uploaded'), t('upload.uploadedMessage'));
     } catch (err) {
+      if (openPrivacyIfConsentNeeded(err, navigation)) return;
       showAlert(t('upload.uploadFailed'), err.message);
     } finally {
       setUploading(false);

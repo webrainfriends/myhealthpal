@@ -16,6 +16,7 @@ import {
 } from '../api/client';
 import { useT } from '../i18n/I18nContext';
 import { showAlert } from '../utils/alert';
+import { openPrivacyIfConsentNeeded } from '../utils/consent';
 
 const MACRO_LABELS = [
   { key: 'protein_g', labelKey: 'diet.macroProtein', suffix: 'g' },
@@ -117,6 +118,7 @@ export default function DietScreen({ navigation }) {
       const data = await uploadDietScan(file, new Date().toISOString());
       navigation.navigate('DietScanReview', { scanId: data.scan.id });
     } catch (err) {
+      if (openPrivacyIfConsentNeeded(err, navigation)) return;
       showAlert(t('diet.scanFailed'), err.message);
     } finally {
       setScanning(false);

@@ -248,14 +248,19 @@ test('db: maintenance jobs', async (t) => {
     try {
       const dry = await maintenance.rewrapKeys({ dryRun: true });
       assert.ok(dry.reports.toRewrap >= 1);
-      const result = await maintenance.rewrapKeys();
-      assert.equal(result.reports.failed, 0);
+      // (Counts span the whole shared test database; assertions below are
+      // about this test's own row.)
+      await maintenance.rewrapKeys();
       const { rows } = await pool.query('SELECT * FROM reports WHERE id = $1', [report.id]);
       assert.equal(rows[0].key_version, 'local-dev-v2');
       assert.notDeepEqual(rows[0].encrypted_data_key, report.encrypted_data_key);
       assert.deepEqual(fs.readFileSync(path.join(tempDir, report.storage_object_key)), before);
       assert.equal((await store.readDecrypted(rows[0])).toString(), 'Ferritin,40,ng/mL');
-      assert.equal((await maintenance.rewrapKeys({ dryRun: true })).reports.toRewrap, 0);
+      const remaining = await pool.query(
+        `SELECT count(*)::int AS n FROM reports WHERE user_id = $1 AND encryption_version IS NOT NULL AND key_version IS DISTINCT FROM 'local-dev-v2'`,
+        [dbUserId]
+      );
+      assert.equal(remaining.rows[0].n, 0, 'every key of this user re-wrapped');
     } finally {
       setKeyProvider(provider());
     }

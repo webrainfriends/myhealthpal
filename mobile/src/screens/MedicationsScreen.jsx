@@ -9,6 +9,7 @@ import { alertSeverityColors, colors, radii, spacing, typography } from '../them
 import { dismissMedicationAlert, fetchMedicationAlerts, fetchMedications, uploadMedicationScan } from '../api/client';
 import { useT } from '../i18n/I18nContext';
 import { showAlert } from '../utils/alert';
+import { openPrivacyIfConsentNeeded } from '../utils/consent';
 
 function AlertBanner({ alert, onDismiss, onPress }) {
   const palette = alertSeverityColors[alert.severity] || alertSeverityColors.info;
@@ -62,6 +63,7 @@ export default function MedicationsScreen({ navigation }) {
       const data = await uploadMedicationScan(file, scanType);
       navigation.navigate('MedicationScanReview', { scanId: data.scan.id });
     } catch (err) {
+      if (openPrivacyIfConsentNeeded(err, navigation)) return;
       showAlert(t('medications.scanFailed'), err.message);
     } finally {
       setScanning(false);

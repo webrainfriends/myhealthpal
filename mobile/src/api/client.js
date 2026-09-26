@@ -65,6 +65,11 @@ async function handleResponse(response) {
   if (!response.ok) {
     const error = new Error(body?.error || `Request failed with status ${response.status}`);
     error.status = response.status;
+    // e.g. 'consent_required' / 'ai_consent_required' / 'upload_rejected'
+    // - lets screens react (open the Privacy & AI screen) instead of only
+    // showing the message.
+    error.code = body?.code || null;
+    error.consentType = body?.consentType || null;
     throw error;
   }
   return body;
@@ -342,6 +347,22 @@ export async function registerPushToken(token, platform) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token, platform }),
+  });
+  return handleResponse(response);
+}
+
+// Privacy & AI consents for the active profile (the signed-in account, or
+// a managed family member the caregiver decides for).
+export async function fetchConsents() {
+  const response = await apiFetch('/api/consents');
+  return handleResponse(response);
+}
+
+export async function setConsent(type, granted) {
+  const response = await apiFetch(`/api/consents/${type}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ granted, platform: Platform.OS }),
   });
   return handleResponse(response);
 }

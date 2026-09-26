@@ -29,6 +29,11 @@ covering:
   It can add a "managed" profile for someone who won't use the app, or
   follow another account that shares itself with an invite code (view-only
   or full access). Caregivers get that person's recheck reminders too.
+- An encrypted medical-record vault: every uploaded report, scan, and photo is
+  stored only as AES-256-GCM ciphertext under a per-file key wrapped by AWS
+  KMS. Consent choices are explicit (storage, AI document reading, AI
+  insights), every AI call goes through one privacy gateway, access is
+  audited, and deletion is permanent (see "Security & privacy" below).
 - Guest, Google, and Apple sign-in, with every user's reports, timeline,
   dashboard, insights, and chat history strictly scoped to their own signed-in
   session and never visible to anyone else.
@@ -44,6 +49,9 @@ covering:
 ```bash
 cd server
 cp .env.example .env   # adjust DATABASE_URL if needed
+# Local dev: files are encrypted with a dev-only key provider
+echo "KEY_PROVIDER=local-dev" >> .env
+echo "LOCAL_DEV_MASTER_KEY=$(openssl rand -hex 32)" >> .env
 npm install
 npm run migrate        # creates schema
 npm run seed           # (re)seeds the Health Parameter Registry
@@ -668,6 +676,29 @@ Retest Radar's **Book test** button opens `LAB_BOOKING_URL_TEMPLATE`, with
 point it at a lab partner's booking page when you have one. The button shows
 prominently once a recheck is 14 days away or less.
 
+### Security & privacy
+
+Medical files are never stored as plaintext. Uploads stay in memory until
+they are validated, then encrypted into `ENCRYPTED_STORE_DIR`:
+- AES-256-GCM, with a per-file data key
+- the data key is wrapped by AWS KMS in production, or by the `local-dev`
+  provider in development
+
+Consent is recorded separately for storage, AI document processing and AI
+insights, and enforced at upload and in the AI privacy gateway
+(`server/src/ai/privacyGateway.js`). Access, AI processing and deletions are
+written to an append-only `security_audit_events` table, which holds no PHI.
+
+Scripts, all idempotent, with `--dry-run` printing counts only:
+- `npm run check-kms`
+- `npm run encrypt-legacy-uploads`
+- `npm run rewrap-keys`
+- `npm run reencrypt-files`
+
+Production setup (KMS key, EC2 instance role, `KMS_KEY_ID` secret), the
+threat model, and the AI data flows are documented in
+[`docs/security/`](docs/security/medical-report-security.md).
+
 ### Known scope limits
 
 - `generateSummary` (`src/services/summaryService.js`) is a heuristic,
@@ -729,7 +760,21 @@ phrasing, the chat orchestrator's non-LLM paths, and — the most
 safety-critical one — `chatTools.security.test.js`, which creates two real
 database users and asserts one cannot retrieve the other's report through
 any tool, including a deliberately smuggled `userId` argument. These need a
-reachable `DATABASE_URL` (same as the server itself).
+reachable `DATABASE_URL` (same as the server itself), plus
+`KEY_PROVIDER=local-dev` and a `LOCAL_DEV_MASTER_KEY` (`openssl rand -hex 32`)
+for the encrypted-vault paths.
+
+The `security.*.test.js` suites cover issue #104:
+- encryption round trips and tamper detection
+- keys bound to their owner and object; no raw data keys in the database
+- key rotation and cipher-version migration
+- legacy plaintext migration
+- content, ZIP-bomb and macro checks; log redaction
+- consent enforcement in the AI gateway, including a check that nothing
+  bypasses it
+- end-to-end HTTP tests: another user can't reach any report route;
+  swapped, forged, expired or reused download links fail; permanent
+  deletion works
 
 ## Mobile app
 
