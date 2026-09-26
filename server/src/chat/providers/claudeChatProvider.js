@@ -1,5 +1,6 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const config = require('../../config');
+const { recordAiUsage, FEATURES } = require('../../services/aiUsageService');
 
 // Translates the generic {systemPrompt, messages, tools} contract to and
 // from the Anthropic Messages/tool-use API. This file is the ONLY place
@@ -55,6 +56,7 @@ async function converse({ systemPrompt, messages, tools }) {
     },
     { timeout: 30_000 }
   );
+  recordAiUsage(FEATURES.CHAT, response);
 
   const toolUseBlocks = response.content.filter((block) => block.type === 'tool_use');
   const usage = { tokensIn: response.usage?.input_tokens ?? null, tokensOut: response.usage?.output_tokens ?? null };

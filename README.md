@@ -1,4 +1,4 @@
-# MyHealthPal
+# EyeMyHealth
 
 A light-themed React Native (Expo) app on top of an Express + PostgreSQL API,
 covering:
@@ -21,6 +21,14 @@ covering:
   calories/macros, auto-tagged by meal (breakfast/lunch/snack/dinner/supper)
   from the time logged, plus a pattern analysis with recommendations that
   considers the user's confirmed lab results and active medications.
+- Retest Radar: a "check again by" countdown for every out-of-range result
+  and every medicine linked to a lab value, a small weekly action to tick
+  off until then, and push reminders two weeks before and on the date
+  (see "Retest Radar" below).
+- Family Health Eye: one account looks after parents and family members.
+  It can add a "managed" profile for someone who won't use the app, or
+  follow another account that shares itself with an invite code (view-only
+  or full access). Caregivers get that person's recheck reminders too.
 - Guest, Google, and Apple sign-in, with every user's reports, timeline,
   dashboard, insights, and chat history strictly scoped to their own signed-in
   session and never visible to anyone else.
@@ -589,6 +597,103 @@ persisted server-side - "Log this recipe" on the mobile app is an ordinary
 `POST /api/diet/entries` using the returned nutrition, `ai_verified: true`
 since it's AI-estimated the same as any other entry.
 
+### Retest Radar
+
+Gives people a reason to open the app between lab visits. A plan in
+`retest_plans` (migration `020_retest_plans.sql`) is a "check again by" date
+for one parameter. The date is computed only by rules in
+`server/src/retest/retestRules.js`, never by an LLM:
+
+- **Out-of-range latest result:** the due date is the result date plus a
+  per-parameter cadence, for example HbA1c 90 days, lipids 180, vitamin D and
+  B12 84, TSH 42, anything else 90. A flag containing "critical" or "panic"
+  brings it down to 14 days.
+- **Linked medicine started after the latest result:** the due date is the
+  medicine's start date plus the end of its onset window
+  (`medication_parameter_links.typical_onset_weeks_*`). A result already
+  measured inside that window means the effect has been checked, so this rule
+  stops applying.
+- **Both rules apply:** the earlier date wins.
+
+Plans are recomputed on load (`GET /api/retest`) and by the reminder job, the
+same pull model as medication alerts:
+
+- A newer confirmed result for the parameter closes the plan (`done`).
+- A dismissed or snoozed plan stays that way until its situation changes.
+- Each plan carries a fixed, non-numeric weekly action (for example "15
+  minutes of morning sunlight on 3 days this week"). Ticking it records a
+  `retest_checkins` row for that week, which feeds the week streak.
+
+Endpoints, all under `requireAuth`:
+
+- `GET /api/retest`
+- `POST /api/retest/:id/snooze | dismiss | checkin`
+- `PUT /api/retest/settings` (reminders on/off)
+- `POST`/`DELETE /api/retest/push-token`
+
+How reminders are sent:
+
+- The API process runs `retestReminderService.runReminders` every hour.
+  Pushes go through Expo's push service only between 03:00 and 15:00 UTC.
+- Each user gets at most one combined push per run, covering: two weeks
+  before the date, on the date, and the weekly action.
+- Each reminder is recorded in `retest_reminders_sent`, so it is never
+  repeated.
+- Set `RETEST_REMINDERS=off` to disable the job.
+- `npm run retest-reminders` sends one pass immediately, ignoring the time
+  window.
+
+On mobile, `mobile/src/notifications/retestNotifications.js` registers the
+device's Expo push token after sign-in. Push tokens need an EAS `projectId`
+in `app.json` (`extra.eas.projectId`) and a physical device. Without them
+(web, simulator, no projectId), the same reminders are scheduled as local
+notifications instead. Tapping any of them opens the Retest Radar screen.
+
+### Family Health Eye
+
+Every family member is an ordinary `users` row, so every existing table and
+route scopes their data with no changes. Migration `021_family_profiles.sql`
+adds:
+
+- a `managed` `auth_provider`: a profile with no sign-in of its own
+- `family_links (owner_user_id, member_user_id, relation, access)`, where
+  `access` is `manage` or `view`
+- `family_invites`: single-use codes that expire after 7 days
+
+How profile switching works:
+
+- The client sends `X-Profile-Id` to act as a linked profile.
+- `requireAuth` honors the header only when a `family_links` row grants it,
+  and refuses every non-GET request on a `view` link.
+- `req.accountUser` is always the signed-in account; `req.user` is the
+  active profile.
+- `requireAccountAuth` ignores the header entirely. It covers account-level
+  routes: `/api/auth`, `/api/family`, and `/api/account` (push tokens,
+  reminder settings).
+- AI usage is always billed to the signed-in account.
+
+Family routes:
+
+- `GET /api/family`: returns this account's profiles, plus who can see its
+  own data.
+- `POST`/`PATCH`/`DELETE /api/family/members[/:id]`: create a managed
+  profile, set its name, relation or summary language, or remove it.
+  Removing the last manager of a managed profile deletes the profile and all
+  its data.
+- `POST /api/family/invites` and `POST /api/family/invites/redeem`: share or
+  join a profile by code.
+- `DELETE /api/family/shared-with/:userId`: revoke someone's access to your
+  own data.
+
+The Retest Radar reminder job notifies each profile's own devices, and every
+linked caregiver's devices too ("Time to recheck Dad's HbA1c"). Tapping a
+caregiver's reminder opens that profile.
+
+Retest Radar's **Book test** button opens `LAB_BOOKING_URL_TEMPLATE`, with
+`{test}` replaced by the test name. The default is a nearby-labs map search;
+point it at a lab partner's booking page when you have one. The button shows
+prominently once a recheck is 14 days away or less.
+
 ### Known scope limits
 
 - `generateSummary` (`src/services/summaryService.js`) is a heuristic,
@@ -622,8 +727,8 @@ since it's AI-estimated the same as any other entry.
   connector is a new writer into the same tables, not a schema change.
   Dashboard/timeline source filters are wired but only ever see one value
   today.
-- No push/local alerting — "needs attention" is a pull (dashboard) view, not
-  a background-triggered alert.
+- The only push/local alerting is Retest Radar's reminders. "Needs attention"
+  and medication alerts are still pull (on-load) views.
 - Insight thresholds (15%/30% change, 3-point trend/repeat windows) are fixed
   constants, not per-user/per-parameter configuration; exploratory
   correlations and wearable/glucose-pattern insight types from the issue's

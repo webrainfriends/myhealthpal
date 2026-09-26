@@ -1,8 +1,10 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const pool = require('../db/pool');
 const config = require('../config');
+const { recordAiUsage, FEATURES } = require('../services/aiUsageService');
 const { findKnowledgeEntry } = require('./medicationLinkingService');
 const { normalizeLanguage, languageInstruction, DEFAULT_LANGUAGE } = require('../services/languageService');
+const { SYSTEM_AUTHORITY, aiFallbackSource } = require('./citationSources');
 
 // Medicine details "irrespective of tracking list": medicationKnowledgeBase.js
 // is a small, hand-curated list (~20 chronic-disease medications with
@@ -67,6 +69,7 @@ async function describeWithClaude(medication, language) {
     tools: [KNOWLEDGE_TOOL],
     tool_choice: { type: 'tool', name: 'describe_medication' },
   });
+  recordAiUsage(FEATURES.MEDICATION_KNOWLEDGE, response);
 
   const toolUse = response.content.find((block) => block.type === 'tool_use');
   const input = toolUse?.input;
@@ -89,19 +92,33 @@ async function describeWithClaude(medication, language) {
 async function getMedicationKnowledge(medication, language = DEFAULT_LANGUAGE) {
   const curated = findKnowledgeEntry(medication);
   if (curated) {
+    const system = curated.system || 'allopathic';
+    // A curated entry can override the default per-system authority (e.g.
+    // pointing a homeopathic remedy at NCCIH's evidence page instead of
+    // CCRH's homepage) - see medicationKnowledgeBase.js and citationSources.js.
+    const authority = curated.sourceUrl ? { name: curated.sourceName, url: curated.sourceUrl } : SYSTEM_AUTHORITY[system];
     return {
+      system,
       category: curated.category,
       usage: curated.usage,
       typicalDailyDose: curated.typicalDailyDose,
       activeIngredient: curated.activeIngredient,
       commonSideEffects: curated.commonSideEffects,
       warnings: curated.warnings,
+      sourceName: authority?.name || null,
+      sourceUrl: authority?.url || null,
+      sourceIsExactCitation: true,
     };
   }
 
   const nameKey = nameKeyFor(medication);
   if (!nameKey) return null;
   const lang = normalizeLanguage(language);
+  // An AI-described medication has no single traceable citation the way a
+  // curated entry does - this links to the relevant system's official body
+  // to look the medication up independently, never claiming it's "the"
+  // source of the generated text (see sourceIsExactCitation below).
+  const fallbackAuthority = aiFallbackSource(medication.medicine_system);
 
   const { rows: cached } = await pool.query(
     `SELECT * FROM medication_knowledge_cache WHERE name_key = $1 AND language = $2`,
@@ -110,12 +127,16 @@ async function getMedicationKnowledge(medication, language = DEFAULT_LANGUAGE) {
   if (cached.length > 0) {
     const row = cached[0];
     return {
+      system: medication.medicine_system || 'allopathic',
       category: row.category,
       usage: row.usage,
       typicalDailyDose: null,
       activeIngredient: row.active_ingredient,
       commonSideEffects: row.common_side_effects,
       warnings: row.warnings,
+      sourceName: fallbackAuthority.name,
+      sourceUrl: fallbackAuthority.url,
+      sourceIsExactCitation: false,
     };
   }
 
@@ -139,12 +160,16 @@ async function getMedicationKnowledge(medication, language = DEFAULT_LANGUAGE) {
   );
   const row = rows[0];
   return {
+    system: medication.medicine_system || 'allopathic',
     category: row.category,
     usage: row.usage,
     typicalDailyDose: null,
     activeIngredient: row.active_ingredient,
     commonSideEffects: row.common_side_effects,
     warnings: row.warnings,
+    sourceName: fallbackAuthority.name,
+    sourceUrl: fallbackAuthority.url,
+    sourceIsExactCitation: false,
   };
 }
 

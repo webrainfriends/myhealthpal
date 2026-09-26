@@ -1,24 +1,40 @@
-// Light theme tokens for MyHealthPal. Every screen and component pulls
-// colors/spacing from here so the app reads as one consistent, light,
-// clinical-but-friendly system.
+// Theme tokens for EyeMyHealth. Every screen and component pulls
+// colors/spacing from here so the app reads as one consistent system: a
+// bright, energetic violet-to-pink brand over soft lavender surfaces, with
+// clear (still accessible) status colors for anything health-related.
 
 export const colors = {
-  background: '#F7F9FC',
+  background: '#F7F5FF',
   surface: '#FFFFFF',
-  surfaceMuted: '#EEF2F7',
-  border: '#E1E7EF',
-  textPrimary: '#101828',
-  textSecondary: '#475467',
-  textTertiary: '#98A2B3',
-  primary: '#2F6FED',
-  primaryMuted: '#EAF1FE',
-  success: '#12B76A',
-  successMuted: '#E7F8EF',
-  warning: '#F79009',
-  warningMuted: '#FFF4E5',
-  danger: '#F04438',
-  dangerMuted: '#FEECEC',
-  overlay: 'rgba(16, 24, 40, 0.4)',
+  surfaceMuted: '#F0EDFF',
+  border: '#E6E1FA',
+  textPrimary: '#1A1433',
+  textSecondary: '#57527A',
+  textTertiary: '#9A95B5',
+  primary: '#6C4DFF',
+  primaryMuted: '#EFEBFF',
+  accent: '#FF4F9A',
+  accentMuted: '#FFE8F2',
+  success: '#0FB981',
+  successMuted: '#E2F9F0',
+  warning: '#FF9500',
+  warningMuted: '#FFF3E0',
+  danger: '#FF3B5C',
+  dangerMuted: '#FFEBEF',
+  overlay: 'rgba(26, 20, 51, 0.45)',
+  onBrand: '#FFFFFF',
+  onBrandMuted: 'rgba(255, 255, 255, 0.82)',
+};
+
+// Multi-stop gradients (top-left -> bottom-right) rendered by
+// GradientFill. `brand` is the signature look - the login screen, the
+// dashboard hero, primary buttons and the mascot all use it so the app is
+// instantly recognisable.
+export const gradients = {
+  brand: ['#6C4DFF', '#A94BFF', '#FF4F9A'],
+  sunrise: ['#FF8A4C', '#FF4F9A'],
+  ocean: ['#1FD1C1', '#4F7BFF'],
+  lime: ['#34D399', '#0FB981'],
 };
 
 export const statusColors = {
@@ -36,6 +52,17 @@ export const medicationStatusColors = {
   active: { fg: colors.success, bg: colors.successMuted },
   completed: { fg: colors.textSecondary, bg: colors.surfaceMuted },
   discontinued: { fg: colors.textTertiary, bg: colors.surfaceMuted },
+};
+
+// A medication's system of medicine - a label, not a good/bad status (like
+// mealTypeColors below), so every entry uses a neutral tone from the
+// existing palette.
+export const medicineSystemColors = {
+  allopathic: { fg: colors.primary, bg: colors.primaryMuted },
+  ayurvedic: { fg: colors.success, bg: colors.successMuted },
+  homeopathic: { fg: '#0E9FB4', bg: '#E1F7FA' },
+  unani: { fg: colors.accent, bg: colors.accentMuted },
+  siddha: { fg: colors.warning, bg: colors.warningMuted },
 };
 
 // Medication alert severity -> color, shared by the alert banner and
@@ -64,7 +91,7 @@ export const mealTypeColors = {
   lunch: { fg: colors.success, bg: colors.successMuted },
   snack: { fg: colors.textSecondary, bg: colors.surfaceMuted },
   dinner: { fg: colors.primary, bg: colors.primaryMuted },
-  supper: { fg: '#7A5AF8', bg: '#EFE9FE' },
+  supper: { fg: '#0E9FB4', bg: '#E1F7FA' },
 };
 
 // Apple Health-style activity rings - one fixed color per ring (not a
@@ -72,19 +99,28 @@ export const mealTypeColors = {
 // palette rather than Apple's neon red/green/cyan so it still reads as part
 // of the same clinical-but-friendly system.
 export const activityRingColors = {
-  steps: { fg: colors.danger, track: colors.dangerMuted },
+  steps: { fg: colors.accent, track: colors.accentMuted },
   exerciseMinutes: { fg: colors.success, track: colors.successMuted },
   standHours: { fg: colors.primary, track: colors.primaryMuted },
 };
 
-// A soft card elevation used across the dashboard's redesigned cards - subtle
-// on both platforms rather than a hard drop-shadow.
+// A soft, violet-tinted card elevation used across the dashboard's cards -
+// subtle on both platforms rather than a hard drop-shadow.
 export const cardShadow = {
-  shadowColor: '#0B1324',
-  shadowOffset: { width: 0, height: 4 },
-  shadowOpacity: 0.06,
-  shadowRadius: 12,
-  elevation: 2,
+  shadowColor: '#4B2BD6',
+  shadowOffset: { width: 0, height: 6 },
+  shadowOpacity: 0.09,
+  shadowRadius: 16,
+  elevation: 3,
+};
+
+// A stronger glow for brand-colored surfaces (hero banners, primary buttons).
+export const brandShadow = {
+  shadowColor: '#6C4DFF',
+  shadowOffset: { width: 0, height: 10 },
+  shadowOpacity: 0.3,
+  shadowRadius: 20,
+  elevation: 6,
 };
 
 export const spacing = {
@@ -98,13 +134,14 @@ export const spacing = {
 export const radii = {
   sm: 8,
   md: 12,
-  lg: 16,
+  lg: 20,
+  xl: 28,
   pill: 999,
 };
 
 export const typography = {
-  title: { fontSize: 22, fontWeight: '700', color: colors.textPrimary },
-  heading: { fontSize: 17, fontWeight: '600', color: colors.textPrimary },
+  title: { fontSize: 24, fontWeight: '800', color: colors.textPrimary, letterSpacing: -0.3 },
+  heading: { fontSize: 17, fontWeight: '700', color: colors.textPrimary },
   body: { fontSize: 15, fontWeight: '400', color: colors.textPrimary },
   bodySecondary: { fontSize: 14, fontWeight: '400', color: colors.textSecondary },
   caption: { fontSize: 12, fontWeight: '500', color: colors.textTertiary },
@@ -112,13 +149,16 @@ export const typography = {
 
 const theme = {
   colors,
+  gradients,
   statusColors,
   healthStatusColors,
   medicationStatusColors,
+  medicineSystemColors,
   mealTypeColors,
   alertSeverityColors,
   activityRingColors,
   cardShadow,
+  brandShadow,
   spacing,
   radii,
   typography,

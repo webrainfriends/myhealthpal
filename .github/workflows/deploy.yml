@@ -1,4 +1,4 @@
-# Deploys MyHealthPal to the EC2 host below by SSHing in, pulling the
+# Deploys EyeMyHealth to the EC2 host below by SSHing in, pulling the
 # latest code, and running the API directly with Node.js + pm2 - no
 # Dockerfile/image build needed for it. mobile/ (the Expo app - otherwise a
 # phone/simulator-only React Native app) is exported as a static web build

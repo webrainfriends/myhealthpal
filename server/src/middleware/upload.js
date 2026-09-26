@@ -1,3 +1,4 @@
+const { AsyncResource } = require('async_hooks');
 const fs = require('fs');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
@@ -30,10 +31,21 @@ function fileFilter(req, file, cb) {
   cb(null, true);
 }
 
-const upload = multer({
+const multerUpload = multer({
   storage,
   fileFilter,
   limits: { fileSize: config.maxUploadBytes },
 });
+
+// multer calls its callback from request-stream events, which run outside
+// the AsyncLocalStorage context requireAuth set up - binding the callback
+// keeps the user/session attribution (lib/requestContext.js) intact for
+// the ingestion/scan work every upload route starts from inside it.
+const upload = {
+  single(fieldName) {
+    const middleware = multerUpload.single(fieldName);
+    return (req, res, next) => middleware(req, res, AsyncResource.bind(next));
+  },
+};
 
 module.exports = { upload, extensionOf };

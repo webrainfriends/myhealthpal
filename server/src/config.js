@@ -38,6 +38,19 @@ if (!gmailTokenEncryptionKey) {
   );
 }
 
+// Optional per-model price overrides for AI usage cost estimates (see
+// services/aiUsageService.js), USD per 1M tokens, e.g.
+// AI_PRICING_JSON='{"claude-sonnet-5":{"input":2,"output":10}}'. Also takes
+// optional cacheWrite/cacheRead rates. Merged over the built-in table.
+let aiPricingOverrides = {};
+if (process.env.AI_PRICING_JSON) {
+  try {
+    aiPricingOverrides = JSON.parse(process.env.AI_PRICING_JSON);
+  } catch (err) {
+    throw new Error(`AI_PRICING_JSON is not valid JSON: ${err.message}`);
+  }
+}
+
 const SUPPORTED_EXTENSIONS = {
   pdf: { mimeTypes: ['application/pdf'] },
   jpg: { mimeTypes: ['image/jpeg'] },
@@ -55,6 +68,11 @@ module.exports = {
   databaseUrl: process.env.DATABASE_URL,
   uploadDir: path.resolve(__dirname, '..', process.env.UPLOAD_DIR || 'uploads'),
   maxUploadBytes: Number(process.env.MAX_UPLOAD_BYTES) || 20 * 1024 * 1024,
+  // Retest Radar's "Book test" link. {test} is replaced with the URL-encoded
+  // test name - point this at a lab partner's search/booking page when one
+  // exists; the default is a nearby-labs map search.
+  labBookingUrlTemplate:
+    process.env.LAB_BOOKING_URL_TEMPLATE || 'https://www.google.com/maps/search/{test}+test+lab+near+me',
   supportedExtensions: SUPPORTED_EXTENSIONS,
   jwtSecret,
   googleClientId: process.env.GOOGLE_CLIENT_ID || null,
@@ -106,4 +124,5 @@ module.exports = {
   chatProvider: process.env.CHAT_PROVIDER || (process.env.ANTHROPIC_API_KEY ? 'claude' : 'unavailable'),
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || null,
   anthropicModel: process.env.ANTHROPIC_MODEL || 'claude-sonnet-5',
+  aiPricingOverrides,
 };

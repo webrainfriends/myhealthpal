@@ -3,7 +3,7 @@ const config = require('../config');
 const authService = require('../services/authService');
 const { verifyGoogleIdToken } = require('../services/googleAuthService');
 const { verifyAppleIdentityToken } = require('../services/appleAuthService');
-const { requireAuth } = require('../middleware/auth');
+const { requireAccountAuth } = require('../middleware/auth');
 const { SUPPORTED_LANGUAGES, normalizeLanguage } = require('../services/languageService');
 const pool = require('../db/pool');
 
@@ -71,8 +71,10 @@ router.post('/apple', async (req, res) => {
   }
 });
 
-router.get('/me', requireAuth, (req, res) => {
-  res.json({ user: publicUser(req.user) });
+// /me is always the signed-in account itself, never a family profile it's
+// currently acting as (X-Profile-Id) - see routes/family.js for those.
+router.get('/me', requireAccountAuth, (req, res) => {
+  res.json({ user: publicUser(req.accountUser) });
 });
 
 // Lists the languages a user can pick for AI-generated explanatory text
@@ -85,7 +87,7 @@ router.get('/languages', (req, res) => {
   res.json({ languages: SUPPORTED_LANGUAGES });
 });
 
-router.patch('/me', requireAuth, async (req, res, next) => {
+router.patch('/me', requireAccountAuth, async (req, res, next) => {
   try {
     if (req.body.preferred_language === undefined) {
       return res.status(400).json({ error: 'preferred_language is required.' });
@@ -93,7 +95,7 @@ router.patch('/me', requireAuth, async (req, res, next) => {
     const language = normalizeLanguage(req.body.preferred_language);
     const { rows } = await pool.query(
       `UPDATE users SET preferred_language = $2 WHERE id = $1 RETURNING *`,
-      [req.user.id, language]
+      [req.accountUser.id, language]
     );
     res.json({ user: publicUser(rows[0]) });
   } catch (err) {

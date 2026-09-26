@@ -10,6 +10,8 @@ import {
   fetchDietEntries,
   fetchDietRecommendations,
   fetchDietSummary,
+  fetchSavedRecipes,
+  logRecipeSuggestion,
   uploadDietScan,
 } from '../api/client';
 import { useT } from '../i18n/I18nContext';
@@ -66,26 +68,36 @@ function TipRow({ tip }) {
   );
 }
 
+// How many saved recipe ideas the quick-pick strip shows - just enough to
+// glance at without turning the Diet screen into the Recipes screen. This
+// is a free read (already-generated recipes, no AI call) - see
+// fetchSavedRecipes.
+const RECIPE_IDEAS_LIMIT = 6;
+
 export default function DietScreen({ navigation }) {
   const t = useT();
   const [summary, setSummary] = useState(null);
   const [entries, setEntries] = useState([]);
   const [recommendation, setRecommendation] = useState(null);
+  const [recipeIdeas, setRecipeIdeas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [refreshingTips, setRefreshingTips] = useState(false);
   const [showMicronutrients, setShowMicronutrients] = useState(false);
+  const [addingRecipeId, setAddingRecipeId] = useState(null);
 
   const load = useCallback(async () => {
     try {
-      const [summaryData, entriesData, recommendationData] = await Promise.all([
+      const [summaryData, entriesData, recommendationData, recipesData] = await Promise.all([
         fetchDietSummary(7),
         fetchDietEntries({ date: todayKey() }),
         fetchDietRecommendations(),
+        fetchSavedRecipes({ limit: RECIPE_IDEAS_LIMIT }),
       ]);
       setSummary(summaryData);
       setEntries(entriesData.entries);
       setRecommendation(recommendationData.recommendation);
+      setRecipeIdeas(recipesData.recipes);
     } catch (err) {
       console.warn('Failed to load diet data', err.message);
     } finally {
@@ -157,6 +169,23 @@ export default function DietScreen({ navigation }) {
     }
   }
 
+  // Logs a recipe idea straight from the Diet screen's quick-pick strip -
+  // no AI call (the nutrition was estimated when the recipe was
+  // generated) - then reloads today's totals/log so the addition shows up
+  // immediately, the same as any other way of adding a food entry.
+  async function handleAddRecipeIdea(recipe) {
+    setAddingRecipeId(recipe.id);
+    try {
+      await logRecipeSuggestion(recipe.id);
+      setRecipeIdeas((prev) => prev.map((r) => (r.id === recipe.id ? { ...r, addedAt: new Date().toISOString() } : r)));
+      await load();
+    } catch (err) {
+      showAlert('Could not add this recipe', err.message);
+    } finally {
+      setAddingRecipeId(null);
+    }
+  }
+
   function openEntry(entry) {
     if (!entry.is_confirmed && entry.source_type === 'photo_scan' && entry.scan_id) {
       navigation.navigate('DietScanReview', { scanId: entry.scan_id });
@@ -188,10 +217,38 @@ export default function DietScreen({ navigation }) {
           <TouchableOpacity onPress={() => navigation.navigate('DietEntryForm')}>
             <Text style={styles.altAction}>{t('diet.orAddManually')}</Text>
           </TouchableOpacity>
+        </View>
+
+        <View style={styles.sectionHeaderRow}>
+          <Text style={typography.heading}>AI recipe ideas</Text>
           <TouchableOpacity onPress={() => navigation.navigate('Recipes')}>
-            <Text style={styles.altAction}>Or pick from AI recipe ideas →</Text>
+            <Text style={styles.addLabel}>{recipeIdeas.length > 0 ? 'See all →' : 'Generate ideas →'}</Text>
           </TouchableOpacity>
         </View>
+        {recipeIdeas.length === 0 ? (
+          <Text style={[typography.bodySecondary, styles.empty]}>
+            No AI recipe ideas yet - tap "Generate ideas" to get personalized suggestions.
+          </Text>
+        ) : (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recipeIdeasRow}>
+            {recipeIdeas.map((recipe) => (
+              <View key={recipe.id} style={[styles.recipeIdeaCard, cardShadow]}>
+                <Text style={typography.body} numberOfLines={2}>{recipe.title}</Text>
+                {recipe.mealType && <Text style={styles.recipeIdeaMeal}>{recipe.mealType}</Text>}
+                {recipe.nutritionPerServing.calories != null && (
+                  <Text style={typography.caption}>{Math.round(recipe.nutritionPerServing.calories)} cal</Text>
+                )}
+                <PrimaryButton
+                  title={recipe.addedAt ? 'Added ✓' : 'Add'}
+                  variant="secondary"
+                  onPress={() => handleAddRecipeIdea(recipe)}
+                  loading={addingRecipeId === recipe.id}
+                  disabled={addingRecipeId === recipe.id}
+                />
+              </View>
+            ))}
+          </ScrollView>
+        )}
 
         {summary && summary.pendingReviewCount > 0 && (
           <TouchableOpacity style={styles.reviewBanner} onPress={openPendingReview}>
@@ -300,6 +357,23 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 13,
     textAlign: 'center',
+  },
+  recipeIdeasRow: {
+    gap: spacing.sm,
+    paddingBottom: spacing.xs,
+  },
+  recipeIdeaCard: {
+    width: 150,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: spacing.sm,
+    gap: 4,
+  },
+  recipeIdeaMeal: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primary,
+    textTransform: 'uppercase',
   },
   reviewBanner: {
     marginTop: spacing.md,

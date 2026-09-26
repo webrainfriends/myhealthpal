@@ -2,6 +2,7 @@ require('dotenv').config();
 const { Pool } = require('pg');
 const registryData = require('./registry-seed-data');
 const referenceRangeData = require('./reference-range-seed-data');
+const { REFERENCE_SOURCE_FALLBACK } = require('../src/medications/citationSources');
 
 async function seedRegistry(pool) {
   for (const entry of registryData) {
@@ -48,15 +49,21 @@ async function seedReferenceRanges(pool) {
     }
 
     for (const range of entry.ranges) {
+      // A range can name its own more specific source_url (e.g. a page about
+      // the exact guideline); otherwise it falls back to that source body's
+      // own homepage - always a real, verified government/WHO URL, never a
+      // guess (see citationSources.js).
+      const sourceUrl = range.sourceUrl || REFERENCE_SOURCE_FALLBACK[range.source]?.url || null;
       await pool.query(
-        `INSERT INTO reference_ranges (health_parameter_id, source, condition_label, range_low, range_high, unit, citation)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO reference_ranges (health_parameter_id, source, condition_label, range_low, range_high, unit, citation, source_url)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          ON CONFLICT (health_parameter_id, source, condition_label) DO UPDATE SET
            range_low = EXCLUDED.range_low,
            range_high = EXCLUDED.range_high,
            unit = EXCLUDED.unit,
-           citation = EXCLUDED.citation`,
-        [parameterId, range.source, range.conditionLabel, range.low, range.high, entry.unit, range.citation]
+           citation = EXCLUDED.citation,
+           source_url = EXCLUDED.source_url`,
+        [parameterId, range.source, range.conditionLabel, range.low, range.high, entry.unit, range.citation, sourceUrl]
       );
     }
   }

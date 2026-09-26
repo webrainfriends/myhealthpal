@@ -1,7 +1,7 @@
 {
   "name": "myhealthpal-server",
   "version": "1.0.0",
-  "description": "MyHealthPal ingestion API: Express + PostgreSQL service for uploading and processing health reports",
+  "description": "EyeMyHealth ingestion API: Express + PostgreSQL service for uploading and processing health reports",
   "main": "src/index.js",
   "type": "commonjs",
   "scripts": {
@@ -10,6 +10,8 @@
     "migrate": "node db/migrate.js",
     "seed": "node db/seed.js",
     "fixtures": "node scripts/generate-fixtures.js",
+    "ai-usage-report": "node scripts/ai-usage-report.js",
+    "retest-reminders": "node scripts/send-retest-reminders.js",
     "test": "node --test"
   },
   "dependencies": {

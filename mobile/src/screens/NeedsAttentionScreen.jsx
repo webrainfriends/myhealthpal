@@ -57,6 +57,12 @@ export default function NeedsAttentionScreen({ navigation }) {
             onPress={() => navigation.navigate('ReportDetail', { reportId: item.report_id })}
           />
         )}
+        ListHeaderComponent={
+          <TouchableOpacity style={[styles.radarLink, cardShadow]} onPress={() => navigation.navigate('RetestRadar')} activeOpacity={0.7}>
+            <Text style={typography.body}>📅 {t('retest.radarTitle')}</Text>
+            <Text style={typography.caption}>{t('retest.needsAttentionHint')}</Text>
+          </TouchableOpacity>
+        }
         ListEmptyComponent={
           !loading && <Text style={[typography.bodySecondary, styles.empty]}>{t('needsAttention.empty')}</Text>
         }
@@ -79,6 +85,13 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     padding: spacing.md,
     marginBottom: spacing.sm,
+    gap: 2,
+  },
+  radarLink: {
+    backgroundColor: colors.primaryMuted,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
     gap: 2,
   },
   empty: {

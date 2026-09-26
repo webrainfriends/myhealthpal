@@ -1,5 +1,6 @@
-import { ActivityIndicator, Platform, Pressable, View } from 'react-native';
-import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
+import { useEffect } from 'react';
+import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native';
+import { NavigationContainer, DefaultTheme, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import DashboardScreen from '../screens/DashboardScreen';
@@ -28,8 +29,13 @@ import GmailIntegrationScreen from '../screens/GmailIntegrationScreen';
 import LoginScreen from '../screens/LoginScreen';
 import LanguagePreferenceScreen from '../screens/LanguagePreferenceScreen';
 import VoiceAccessibilityScreen from '../screens/VoiceAccessibilityScreen';
+import AiUsageScreen from '../screens/AiUsageScreen';
+import RetestRadarScreen from '../screens/RetestRadarScreen';
+import FamilyScreen from '../screens/FamilyScreen';
+import { onRetestNotificationTap, registerForRetestPush } from '../notifications/retestNotifications';
 import { useAuth } from '../auth/AuthContext';
 import { useT } from '../i18n/I18nContext';
+import Mascot from '../components/brand/Mascot';
 import { colors } from '../theme/theme';
 
 const navigationTheme = {
@@ -69,6 +75,8 @@ const linking = {
       OrganDetail: 'organ/:organKey',
       Insights: 'insights',
       NeedsAttention: 'needs-attention',
+      RetestRadar: 'retest',
+      Family: 'family',
       MedicationDetail: 'medications/:medicationId',
       MedicationScanReview: 'medications/scans/:scanId',
       Activity: 'activity',
@@ -82,9 +90,16 @@ const linking = {
       GmailIntegration: 'settings/gmail',
       LanguagePreference: 'settings/language',
       VoiceAccessibility: 'settings/voice',
+      AiUsage: 'settings/ai-usage',
     },
   },
 };
+
+// Emoji tab icons match the emoji iconography used across the app's cards;
+// inactive tabs are dimmed rather than recolored, since emoji ignore tint.
+function tabIcon(glyph) {
+  return ({ focused }) => <Text style={{ fontSize: focused ? 22 : 20, opacity: focused ? 1 : 0.55 }}>{glyph}</Text>;
+}
 
 function Tabs() {
   const t = useT();
@@ -94,7 +109,8 @@ function Tabs() {
         headerStyle: { backgroundColor: colors.surface },
         headerTintColor: colors.textPrimary,
         headerShadowVisible: false,
-        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border },
+        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border, borderTopWidth: 1 },
+        tabBarLabelStyle: { fontWeight: '600' },
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textTertiary,
         // react-native-web's Pressable renders the `href` React Navigation
@@ -121,26 +137,61 @@ function Tabs() {
         ),
       }}
     >
-      <Tab.Screen name="DashboardTab" component={DashboardScreen} options={{ title: t('nav.dashboard'), headerShown: false }} />
+      <Tab.Screen
+        name="DashboardTab"
+        component={DashboardScreen}
+        options={{ title: t('nav.dashboard'), tabBarIcon: tabIcon('🏠'), headerShown: false }}
+      />
       <Tab.Screen
         name="MedicationsTab"
         component={MedicationsScreen}
-        options={{ title: t('nav.medications'), headerShown: false }}
+        options={{ title: t('nav.medications'), tabBarIcon: tabIcon('💊'), headerShown: false }}
       />
-      <Tab.Screen name="ChatTab" component={ChatScreen} options={{ title: t('nav.ask'), headerShown: false }} />
-      <Tab.Screen name="UploadTab" component={UploadScreen} options={{ title: t('nav.upload'), headerShown: false }} />
-      <Tab.Screen name="MoreTab" component={MoreScreen} options={{ title: t('nav.more'), headerShown: false }} />
+      <Tab.Screen
+        name="ChatTab"
+        component={ChatScreen}
+        options={{ title: t('nav.ask'), tabBarIcon: tabIcon('💬'), headerShown: false }}
+      />
+      <Tab.Screen
+        name="UploadTab"
+        component={UploadScreen}
+        options={{ title: t('nav.upload'), tabBarIcon: tabIcon('📤'), headerShown: false }}
+      />
+      <Tab.Screen
+        name="MoreTab"
+        component={MoreScreen}
+        options={{ title: t('nav.more'), tabBarIcon: tabIcon('✨'), headerShown: false }}
+      />
     </Tab.Navigator>
   );
 }
 
+const navigationRef = createNavigationContainerRef();
+
 export default function RootNavigator() {
-  const { user, loading } = useAuth();
+  const { user, loading, activeProfile, switchProfileById } = useAuth();
   const t = useT();
+  const userId = user?.id;
+
+  // Once per signed-in account on this device: let the server push Retest
+  // Radar reminders here, and open Retest Radar when one is tapped.
+  useEffect(() => {
+    if (!userId) return undefined;
+    registerForRetestPush();
+    return onRetestNotificationTap(async (screen, data) => {
+      // A caregiver's reminder is about a family member - open their
+      // profile first (the navigator remounts, so navigate after a tick).
+      if (data?.profileId !== undefined) await switchProfileById(data.profileId);
+      setTimeout(() => {
+        if (navigationRef.isReady()) navigationRef.navigate(screen);
+      }, 0);
+    });
+  }, [userId, switchProfileById]);
 
   if (loading) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, backgroundColor: colors.background }}>
+        <Mascot size={96} />
         <ActivityIndicator color={colors.primary} />
       </View>
     );
@@ -151,11 +202,14 @@ export default function RootNavigator() {
   }
 
   return (
-    <NavigationContainer theme={navigationTheme} linking={linking}>
+    // Keyed by the active profile: switching to a family member remounts
+    // every screen, so nothing shows the previous person's data.
+    <NavigationContainer key={activeProfile?.id || 'self'} ref={navigationRef} theme={navigationTheme} linking={linking}>
       <Stack.Navigator
         screenOptions={{
           headerStyle: { backgroundColor: colors.surface },
-          headerTintColor: colors.textPrimary,
+          headerTintColor: colors.primary,
+          headerTitleStyle: { color: colors.textPrimary, fontWeight: '700' },
           headerShadowVisible: false,
         }}
       >
@@ -166,6 +220,8 @@ export default function RootNavigator() {
         <Stack.Screen name="OrganDetail" component={OrganDetailScreen} options={{ title: t('nav.organHealth') }} />
         <Stack.Screen name="Insights" component={InsightsScreen} options={{ title: t('nav.insights') }} />
         <Stack.Screen name="NeedsAttention" component={NeedsAttentionScreen} options={{ title: t('nav.needsAttention') }} />
+        <Stack.Screen name="RetestRadar" component={RetestRadarScreen} options={{ title: t('nav.retestRadar') }} />
+        <Stack.Screen name="Family" component={FamilyScreen} options={{ title: t('nav.family') }} />
         <Stack.Screen name="MedicationDetail" component={MedicationDetailScreen} options={{ title: t('nav.medication') }} />
         <Stack.Screen
           name="MedicationScanReview"
@@ -208,6 +264,7 @@ export default function RootNavigator() {
           component={VoiceAccessibilityScreen}
           options={{ title: t('nav.voiceAccessibility') }}
         />
+        <Stack.Screen name="AiUsage" component={AiUsageScreen} options={{ title: t('nav.aiUsage') }} />
       </Stack.Navigator>
     </NavigationContainer>
   );

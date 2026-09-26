@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const pool = require('../db/pool');
 const config = require('../config');
@@ -8,16 +9,25 @@ const config = require('../config');
 // rotating JWT_SECRET is the only way to invalidate every session at once.
 const SESSION_TTL = '180d';
 
+// `sid` identifies this one sign-in, so AI token usage (aiUsageService.js)
+// can be broken down per session rather than only per user.
 function signSession(user) {
-  return jwt.sign({ sub: user.id }, config.jwtSecret, { expiresIn: SESSION_TTL });
+  return jwt.sign({ sub: user.id, sid: crypto.randomUUID() }, config.jwtSecret, { expiresIn: SESSION_TTL });
 }
 
 // Throws (jsonwebtoken's own error) on a missing/expired/tampered token -
 // callers (the auth middleware) turn that into a 401, never a silent
 // fallback to some default identity.
 function verifySessionUserId(token) {
+  return verifySession(token).userId;
+}
+
+// Same contract as verifySessionUserId, plus the session id. Tokens issued
+// before `sid` existed fall back to their issue time, which is still unique
+// per sign-in for a given user.
+function verifySession(token) {
   const payload = jwt.verify(token, config.jwtSecret);
-  return payload.sub;
+  return { userId: payload.sub, sessionId: payload.sid || `iat-${payload.iat}` };
 }
 
 // A file-open link (window.open/Linking.openURL, or a plain <a href>) can't
@@ -105,6 +115,7 @@ function verifyGmailOAuthState(token) {
 module.exports = {
   signSession,
   verifySessionUserId,
+  verifySession,
   signReportDownloadToken,
   verifyReportDownloadToken,
   signGmailOAuthState,

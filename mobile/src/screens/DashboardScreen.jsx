@@ -8,14 +8,19 @@ import ActivityCard from '../components/ActivityCard';
 import DietCard from '../components/DietCard';
 import SpeakButton from '../components/SpeakButton';
 import SummaryCard from '../components/SummaryCard';
-import { cardShadow, colors, healthStatusColors, radii, spacing, typography } from '../theme/theme';
+import RetestPlanCard from '../components/RetestPlanCard';
+import GradientFill from '../components/brand/GradientFill';
+import Mascot from '../components/brand/Mascot';
+import { brandShadow, cardShadow, colors, healthStatusColors, radii, spacing, typography } from '../theme/theme';
 import {
   fetchActivitySummary,
   fetchCustomCards,
   fetchDashboardSnapshot,
   fetchDietSummary,
   fetchOrganHealth,
+  fetchRetestPlans,
   pinParameter,
+  setRetestCheckin,
   unpinParameter,
 } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
@@ -97,7 +102,7 @@ function TrackedMetricCard({ metric, onPress, onUnpin, t }) {
 }
 
 export default function DashboardScreen({ navigation }) {
-  const { user, signOut } = useAuth();
+  const { user, signOut, activeProfile } = useAuth();
   const t = useT();
   const [loading, setLoading] = useState(true);
   const [snapshot, setSnapshot] = useState({ trackedMetrics: [], needsAttention: [], insights: [] });
@@ -105,6 +110,7 @@ export default function DashboardScreen({ navigation }) {
   const [customCards, setCustomCards] = useState(null);
   const [activity, setActivity] = useState(null);
   const [diet, setDiet] = useState(null);
+  const [retestPlans, setRetestPlans] = useState([]);
   const [pickerVisible, setPickerVisible] = useState(false);
 
   const load = useCallback(async () => {
@@ -114,7 +120,7 @@ export default function DashboardScreen({ navigation }) {
     // entire dashboard (organ grid, insights/attention counts, tracked
     // metrics, activity, diet - everything), not just its own card.
     // allSettled lets each section populate independently of the others.
-    const [snapshotResult, organResult, customCardResult, activityResult, dietResult] = await Promise.allSettled([
+    const [snapshotResult, organResult, customCardResult, activityResult, dietResult, retestResult] = await Promise.allSettled([
       fetchDashboardSnapshot(),
       fetchOrganHealth(),
       // Results a report contained that matched nothing in the Health
@@ -127,6 +133,7 @@ export default function DashboardScreen({ navigation }) {
       // rarely includes literally today.
       fetchActivitySummary(7),
       fetchDietSummary(1),
+      fetchRetestPlans(),
     ]);
 
     if (snapshotResult.status === 'fulfilled') setSnapshot(snapshotResult.value);
@@ -147,6 +154,9 @@ export default function DashboardScreen({ navigation }) {
     if (dietResult.status === 'fulfilled') setDiet(dietResult.value);
     else console.warn('Failed to load diet summary', dietResult.reason?.message);
 
+    if (retestResult.status === 'fulfilled') setRetestPlans(retestResult.value.plans);
+    else console.warn('Failed to load retest plans', retestResult.reason?.message);
+
     setLoading(false);
   }, []);
 
@@ -162,6 +172,15 @@ export default function DashboardScreen({ navigation }) {
       await load();
     } catch (err) {
       showAlert(t('dashboard.couldNotPin'), err.message);
+    }
+  }
+
+  async function handleToggleCheckin(plan) {
+    try {
+      const { plan: updated } = await setRetestCheckin(plan.id, !plan.checkedInThisWeek);
+      if (updated) setRetestPlans((current) => current.map((p) => (p.id === updated.id ? updated : p)));
+    } catch (err) {
+      showAlert(t('retest.couldNotUpdate'), err.message);
     }
   }
 
@@ -185,31 +204,86 @@ export default function DashboardScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.accountRow}>
-          <View style={styles.greetingBlock}>
-            <View style={styles.greetingRow}>
-              <Text style={typography.title}>
-                {greetingForNow(t)}, {firstName(user, t)}
-              </Text>
-              <SpeakButton text={buildDashboardSpeech(snapshot, organs, t)} label={t('dashboard.readSummary')} />
+        <View style={styles.hero}>
+          <GradientFill />
+          <View style={[styles.heroBubble, styles.heroBubbleOne]} />
+          <View style={[styles.heroBubble, styles.heroBubbleTwo]} />
+          <View style={styles.heroTopRow}>
+            <Text style={styles.heroBrand}>
+              <Text style={styles.heroBrandAccent}>Eye</Text>MyHealth
+            </Text>
+            <View style={styles.accountActions}>
+              <TouchableOpacity
+                style={styles.heroChip}
+                onPress={() => navigation.navigate('Family')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.heroChipLabel} numberOfLines={1}>
+                  👪 {activeProfile ? activeProfile.displayName : t('family.title')} ▾
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.heroChip}
+                onPress={() => navigation.navigate('Settings')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.heroChipLabel}>⚙️ {t('common.settings')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.heroChip} onPress={signOut} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={styles.heroChipLabel} numberOfLines={1}>
+                  {user?.authProvider === 'guest' ? t('common.guest') : user?.email || t('common.account')} ·{' '}
+                  {t('common.signOut')}
+                </Text>
+              </TouchableOpacity>
             </View>
-            <Text style={typography.bodySecondary}>{t('dashboard.subtitle')}</Text>
           </View>
-          <View style={styles.accountActions}>
-            <TouchableOpacity
-              onPress={() => navigation.navigate('Settings')}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Text style={styles.accountLabel}>{t('common.settings')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={signOut} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Text style={styles.accountLabel}>
-                {user?.authProvider === 'guest' ? t('common.guest') : user?.email || t('common.account')} ·{' '}
-                {t('common.signOut')}
+          <View style={styles.heroBody}>
+            <View style={styles.greetingBlock}>
+              <View style={styles.greetingRow}>
+                <Text style={styles.heroGreeting}>
+                  {activeProfile
+                    ? t('family.lookingAfter', { name: activeProfile.displayName })
+                    : `${greetingForNow(t)}, ${firstName(user, t)}`}
+                </Text>
+                <SpeakButton
+                  text={buildDashboardSpeech(snapshot, organs, t)}
+                  label={t('dashboard.readSummary')}
+                  style={styles.heroSpeak}
+                />
+              </View>
+              <Text style={styles.heroSubtitle}>
+                {activeProfile
+                  ? activeProfile.access === 'view'
+                    ? t('family.heroSubtitleViewOnly', { name: activeProfile.displayName })
+                    : t('family.heroSubtitle', { name: activeProfile.displayName })
+                  : t('dashboard.subtitle')}
               </Text>
-            </TouchableOpacity>
+            </View>
+            <Mascot size={92} />
           </View>
         </View>
+
+        {retestPlans.length > 0 && (
+          <>
+            <View style={[styles.sectionHeaderRow, styles.sectionSpacing]}>
+              <Text style={typography.heading}>{t('retest.title')}</Text>
+              <TouchableOpacity onPress={() => navigation.navigate('RetestRadar')}>
+                <Text style={styles.addLabel}>{t('retest.seeAll', { count: retestPlans.length })}</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.retestList}>
+              {retestPlans.slice(0, 2).map((plan) => (
+                <RetestPlanCard
+                  key={plan.id}
+                  plan={plan}
+                  t={t}
+                  onToggleCheckin={handleToggleCheckin}
+                  onPress={() => navigation.navigate('RetestRadar')}
+                />
+              ))}
+            </View>
+          </>
+        )}
 
         {activity && (
           <View style={styles.sectionSpacing}>
@@ -329,15 +403,72 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.xl,
   },
-  accountRow: {
+  hero: {
+    borderRadius: radii.xl,
+    padding: spacing.lg,
+    paddingBottom: spacing.md,
+    overflow: 'hidden',
+    backgroundColor: colors.primary,
+    gap: spacing.md,
+    ...brandShadow,
+  },
+  heroBubble: {
+    position: 'absolute',
+    borderRadius: radii.pill,
+    backgroundColor: 'rgba(255, 255, 255, 0.14)',
+  },
+  heroBubbleOne: { width: 180, height: 180, top: -70, right: -50 },
+  heroBubbleTwo: { width: 110, height: 110, bottom: -50, left: -30, backgroundColor: 'rgba(255, 226, 122, 0.2)' },
+  heroTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     gap: spacing.sm,
   },
+  heroBrand: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: colors.onBrand,
+    letterSpacing: -0.3,
+  },
+  heroBrandAccent: {
+    color: '#FFE27A',
+  },
+  heroChip: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: radii.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    maxWidth: 220,
+  },
+  heroChipLabel: {
+    color: colors.onBrand,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  heroBody: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  heroGreeting: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: colors.onBrand,
+    letterSpacing: -0.3,
+    flexShrink: 1,
+  },
+  heroSubtitle: {
+    fontSize: 15,
+    color: colors.onBrandMuted,
+    fontWeight: '500',
+  },
+  heroSpeak: {
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+  },
   greetingBlock: {
     flex: 1,
-    gap: 2,
+    gap: 4,
   },
   greetingRow: {
     flexDirection: 'row',
@@ -348,10 +479,6 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     gap: spacing.xs,
   },
-  accountLabel: {
-    color: colors.textSecondary,
-    fontSize: 13,
-  },
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -360,6 +487,10 @@ const styles = StyleSheet.create({
   },
   sectionSpacing: {
     marginTop: spacing.lg,
+  },
+  retestList: {
+    gap: spacing.sm,
+    marginTop: spacing.sm,
   },
   sectionSubtitle: {
     marginTop: 2,

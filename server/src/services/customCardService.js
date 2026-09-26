@@ -1,6 +1,7 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const pool = require('../db/pool');
 const config = require('../config');
+const { recordAiUsage, FEATURES } = require('./aiUsageService');
 const { normalizeLanguage, languageInstruction, DEFAULT_LANGUAGE } = require('./languageService');
 
 // Groups a confirmed lab result whose test name never matched anything in
@@ -135,6 +136,7 @@ async function classifyWithClaude(testNames, language) {
     tools: [GROUPING_TOOL],
     tool_choice: { type: 'tool', name: 'group_test_names' },
   });
+  recordAiUsage(FEATURES.CUSTOM_CARDS, response);
 
   const toolUse = response.content.find((block) => block.type === 'tool_use');
   const groups = toolUse?.input?.groups;

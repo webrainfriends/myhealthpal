@@ -1,6 +1,7 @@
 const fs = require('fs');
 const Anthropic = require('@anthropic-ai/sdk');
 const config = require('../../config');
+const { recordAiUsage, FEATURES } = require('../../services/aiUsageService');
 
 const SYSTEM_PROMPT = [
   'You are a precise medical document data-extraction engine.',
@@ -16,7 +17,10 @@ const DOCUMENT_INSTRUCTION =
   'record_health_parameters once. Put every result in "parameters" (one entry per result) and everything about the ' +
   'report as a whole - the issuing lab/facility name, the overall panel/report type, its date, any free-text notes ' +
   '(e.g. fasting status, specimen condition, physician remarks), and any critical/panic-value or other alert text - in ' +
-  '"document". If the document is unreadable or contains no test results, still call it, with an empty parameters array.';
+  '"document". If the document is unreadable or contains no test results, still call it, with an empty parameters array. ' +
+  'If this document is instead a radiology/imaging report (e.g. X-ray, CT, MRI, ultrasound, mammogram, ECG/echocardiogram) ' +
+  'rather than a lab test report, leave "parameters" empty and fill in "document"\'s modality, body_region, findings, ' +
+  'impression, and recommendations fields instead.';
 
 const EXTRACTION_TOOL = {
   name: 'record_health_parameters',
@@ -59,6 +63,37 @@ const EXTRACTION_TOOL = {
             description:
               'Any critical/panic-value flags or other explicit alert/warning text printed on the report, exactly as ' +
               'stated. Omit if none - do not infer an alert merely from an out-of-range value.',
+          },
+          modality: {
+            type: ['string', 'null'],
+            description:
+              'Only for a radiology/imaging report: the imaging modality or study type exactly as printed (e.g. "X-Ray", ' +
+              '"CT", "MRI", "Ultrasound", "Mammogram", "ECG", "Echocardiogram"), or null if this is not an imaging report.',
+          },
+          body_region: {
+            type: ['string', 'null'],
+            description:
+              'Only for a radiology/imaging report: the body part/region examined as printed (e.g. "Chest", "Left Knee", ' +
+              '"Abdomen and Pelvis"), or null.',
+          },
+          findings: {
+            type: ['string', 'null'],
+            description:
+              'Only for a radiology/imaging report: the Findings/Observations section, transcribed as printed (formatting ' +
+              'may be tidied into readable prose/paragraphs, but never add or omit clinical content), or null if this is ' +
+              'not an imaging report or it has no findings section.',
+          },
+          impression: {
+            type: ['string', 'null'],
+            description:
+              'Only for a radiology/imaging report: the Impression/Conclusion/Diagnosis section as printed, or null.',
+          },
+          recommendations: {
+            type: ['string', 'null'],
+            description:
+              'Only for a radiology/imaging report: any follow-up or recommendation text explicitly printed (e.g. ' +
+              '"Recommend follow-up CT in 3 months", "Correlate clinically"), or null. Never invent a recommendation that ' +
+              'is not stated in the source.',
           },
         },
       },
@@ -174,6 +209,7 @@ async function extract(document, context = {}) {
       messages: [{ role: 'user', content }],
     })
     .finalMessage();
+  recordAiUsage(FEATURES.REPORT_EXTRACTION, response);
 
   const warnings = [];
   if (response.stop_reason === 'max_tokens') {
@@ -212,6 +248,11 @@ async function extract(document, context = {}) {
     reportDate: doc.report_date || null,
     notes: Array.isArray(doc.notes) ? doc.notes.filter((n) => typeof n === 'string' && n.trim()) : [],
     alerts: Array.isArray(doc.alerts) ? doc.alerts.filter((a) => typeof a === 'string' && a.trim()) : [],
+    modality: doc.modality || null,
+    bodyRegion: doc.body_region || null,
+    findings: doc.findings || null,
+    impression: doc.impression || null,
+    recommendations: doc.recommendations || null,
   };
 
   return { candidates, warnings, rawModelOutput: toolUse.input, document: documentInfo, ocrAttempted: isVisionRequest };

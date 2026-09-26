@@ -27,6 +27,16 @@ export function setUnauthorizedHandler(handler) {
   onUnauthorized = handler;
 }
 
+// The family member's profile currently being viewed (Family Health Eye),
+// or null for the signed-in account's own. Set by AuthContext; sent as
+// X-Profile-Id, which the server only honors for a profile this account has
+// been granted (and ignores on account routes like /api/auth and
+// /api/family).
+let activeProfileId = null;
+export function setActiveProfileId(profileId) {
+  activeProfileId = profileId || null;
+}
+
 // Every authenticated call funnels through here so the session token is
 // attached exactly once, in one place, rather than at each of the 20+ call
 // sites below - and so a 401 (expired/invalid/revoked session) is handled
@@ -36,6 +46,7 @@ async function apiFetch(path, options = {}) {
   const token = loadToken();
   const headers = { ...(options.headers || {}) };
   if (token) headers.Authorization = `Bearer ${token}`;
+  if (activeProfileId) headers['X-Profile-Id'] = activeProfileId;
 
   // Belt-and-suspenders alongside the server's own Cache-Control: no-store -
   // every call here is a signed-in user's current data (report processing
@@ -94,6 +105,13 @@ export async function signInApple(identityToken, fullName) {
 
 export async function fetchMe() {
   const response = await apiFetch('/api/auth/me');
+  return handleResponse(response);
+}
+
+// The signed-in user's AI token usage - this session, the last `days`
+// days, and all-time - for Settings > AI usage.
+export async function fetchAiUsage(days = 30) {
+  const response = await apiFetch(`/api/ai-usage?days=${encodeURIComponent(days)}`);
   return handleResponse(response);
 }
 
@@ -279,6 +297,103 @@ export async function sendInsightFeedback(insightId, feedback) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ feedback }),
   });
+  return handleResponse(response);
+}
+
+export async function fetchRetestPlans() {
+  const response = await apiFetch('/api/retest');
+  return handleResponse(response);
+}
+
+export async function snoozeRetestPlan(planId, days = 7) {
+  const response = await apiFetch(`/api/retest/${planId}/snooze`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ days }),
+  });
+  return handleResponse(response);
+}
+
+export async function dismissRetestPlan(planId) {
+  const response = await apiFetch(`/api/retest/${planId}/dismiss`, { method: 'POST' });
+  return handleResponse(response);
+}
+
+export async function setRetestCheckin(planId, done) {
+  const response = await apiFetch(`/api/retest/${planId}/checkin`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ done }),
+  });
+  return handleResponse(response);
+}
+
+export async function updateRetestSettings(remindersEnabled) {
+  const response = await apiFetch('/api/account/retest-settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ remindersEnabled }),
+  });
+  return handleResponse(response);
+}
+
+export async function registerPushToken(token, platform) {
+  const response = await apiFetch('/api/account/push-token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, platform }),
+  });
+  return handleResponse(response);
+}
+
+export async function fetchFamily() {
+  const response = await apiFetch('/api/family');
+  return handleResponse(response);
+}
+
+export async function createFamilyMember(displayName, relation) {
+  const response = await apiFetch('/api/family/members', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ displayName, relation }),
+  });
+  return handleResponse(response);
+}
+
+export async function updateFamilyMember(memberId, changes) {
+  const response = await apiFetch(`/api/family/members/${memberId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(changes),
+  });
+  return handleResponse(response);
+}
+
+export async function removeFamilyMember(memberId) {
+  const response = await apiFetch(`/api/family/members/${memberId}`, { method: 'DELETE' });
+  return handleResponse(response);
+}
+
+export async function createFamilyInvite({ profileId, access }) {
+  const response = await apiFetch('/api/family/invites', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ profileId, access }),
+  });
+  return handleResponse(response);
+}
+
+export async function redeemFamilyInvite(code) {
+  const response = await apiFetch('/api/family/invites/redeem', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
+  });
+  return handleResponse(response);
+}
+
+export async function revokeFamilyAccess(userId) {
+  const response = await apiFetch(`/api/family/shared-with/${userId}`, { method: 'DELETE' });
   return handleResponse(response);
 }
 
@@ -480,14 +595,44 @@ export async function generateDietRecipe(fields) {
   return handleResponse(response);
 }
 
-// Auto-generated, paginated recipe feed for the standalone Recipes screen.
-// excludeTitles carries every title already shown so far so a "Load more"
-// call doesn't repeat them.
-export async function fetchDietRecipeFeed({ mealType, excludeTitles = [], limit = 5 } = {}) {
+// The signed-in user's already-generated recipe suggestions (see
+// dietRecipeService.saveRecipeSuggestions server-side) - a free read, no AI
+// call. Backs both the Recipes screen on open and the Diet screen's
+// quick-pick list, so returning to either never re-spends tokens on ideas
+// already generated.
+export async function fetchSavedRecipes({ mealType, limit } = {}) {
+  const params = new URLSearchParams();
+  if (mealType) params.set('meal_type', mealType);
+  if (limit) params.set('limit', String(limit));
+  const query = params.toString();
+  const response = await apiFetch(`/api/diet/recipes/feed${query ? `?${query}` : ''}`);
+  return handleResponse(response);
+}
+
+// Generates a new batch of AI recipe ideas - this is the only diet-recipe
+// call that spends AI tokens, so it only ever fires from an explicit
+// "Generate" tap, never automatically. Every recipe returned is already
+// saved server-side (it comes back with an id) - see fetchSavedRecipes
+// above to read it back later at no cost. excludeTitles carries every
+// title already shown so the new batch doesn't repeat them.
+export async function generateRecipeFeed({ mealType, excludeTitles = [], limit = 5 } = {}) {
   const response = await apiFetch('/api/diet/recipes/feed', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ meal_type: mealType || undefined, exclude_titles: excludeTitles, limit }),
+  });
+  return handleResponse(response);
+}
+
+// Logs a saved recipe suggestion as a food_entries row - the "select this
+// as my diet" action, used from both the Recipes screen and the Diet
+// screen's quick-pick list. No AI call: the nutrition was already
+// estimated when the recipe was generated.
+export async function logRecipeSuggestion(recipeSuggestionId, { consumedAt } = {}) {
+  const response = await apiFetch(`/api/diet/recipes/${recipeSuggestionId}/log`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ consumed_at: consumedAt || undefined }),
   });
   return handleResponse(response);
 }

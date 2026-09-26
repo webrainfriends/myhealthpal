@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const config = require('./config');
-const { requireAuth } = require('./middleware/auth');
+const { requireAuth, requireAccountAuth } = require('./middleware/auth');
 const authRouter = require('./routes/auth');
 const reportsRouter = require('./routes/reports');
 const healthParametersRouter = require('./routes/healthParameters');
@@ -15,8 +15,12 @@ const activityRouter = require('./routes/activity');
 const dietRouter = require('./routes/diet');
 const recipePreferencesRouter = require('./routes/recipePreferences');
 const weightGoalRouter = require('./routes/weightGoal');
+const aiUsageRouter = require('./routes/aiUsage');
 const filesRouter = require('./routes/files');
 const integrationsGmailRouter = require('./routes/integrationsGmail');
+const retestRouter = require('./routes/retest');
+const familyRouter = require('./routes/family');
+const accountRouter = require('./routes/account');
 
 const app = express();
 
@@ -49,6 +53,10 @@ app.use('/api/activity', requireAuth, activityRouter);
 app.use('/api/diet', requireAuth, dietRouter);
 app.use('/api/recipe-preferences', requireAuth, recipePreferencesRouter);
 app.use('/api/weight-goal', requireAuth, weightGoalRouter);
+app.use('/api/ai-usage', requireAuth, aiUsageRouter);
+app.use('/api/retest', requireAuth, retestRouter);
+app.use('/api/family', requireAccountAuth, familyRouter);
+app.use('/api/account', requireAccountAuth, accountRouter);
 // Not wrapped in requireAuth - see routes/files.js for why (a plain link
 // open can't carry an Authorization header, so a short-lived scoped token
 // is the credential here instead).
