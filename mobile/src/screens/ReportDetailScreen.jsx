@@ -47,6 +47,12 @@ function buildReportSpeech(report, measurements, narrativeSummary, t) {
     const flag = m.status_flag ? `, ${m.status_flag}` : '';
     parts.push(`${name}: ${value}${flag}.`);
   }
+  // Imaging reports (X-ray/CT/MRI/...) have no measurement rows to read out -
+  // read the narrative findings/impression/recommendations instead, the same
+  // content the sections below show a sighted user.
+  if (report.findings) parts.push(`${t('reportDetail.findings')}: ${report.findings}`);
+  if (report.impression) parts.push(`${t('reportDetail.impression')}: ${report.impression}`);
+  if (report.recommendations) parts.push(`${t('reportDetail.recommendations')}: ${report.recommendations}`);
   return parts.join(' ');
 }
 
@@ -284,9 +290,9 @@ export default function ReportDetailScreen({ route, navigation }) {
           loading={openingFile}
         />
 
-        {(report.source_provider || report.report_type) && (
+        {(report.source_provider || report.modality || report.body_region || report.report_type) && (
           <Text style={[typography.bodySecondary, styles.labLine]}>
-            {[report.source_provider, report.report_type].filter(Boolean).join(' — ')}
+            {[report.source_provider, report.modality, report.body_region, report.report_type].filter(Boolean).join(' — ')}
           </Text>
         )}
 
@@ -317,6 +323,27 @@ export default function ReportDetailScreen({ route, navigation }) {
             <Text style={[typography.bodySecondary, styles.summaryText]}>
               {narrativeSummary?.summary_text || report.generated_summary}
             </Text>
+          </View>
+        )}
+
+        {report.impression && (
+          <View style={styles.impressionBox}>
+            <Text style={typography.heading}>{t('reportDetail.impression')}</Text>
+            <Text style={[typography.body, styles.impressionText]}>{report.impression}</Text>
+          </View>
+        )}
+
+        {report.findings && (
+          <View style={styles.findingsBox}>
+            <Text style={typography.heading}>{t('reportDetail.findings')}</Text>
+            <Text style={[typography.bodySecondary, styles.findingsText]}>{report.findings}</Text>
+          </View>
+        )}
+
+        {report.recommendations && (
+          <View style={styles.recommendationsBox}>
+            <Text style={[typography.heading, styles.recommendationsHeading]}>{t('reportDetail.recommendations')}</Text>
+            <Text style={[typography.body, styles.recommendationsText]}>{report.recommendations}</Text>
           </View>
         )}
 
@@ -461,6 +488,32 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   notesText: {},
+  impressionBox: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: spacing.md,
+    gap: spacing.xs,
+  },
+  impressionText: {},
+  findingsBox: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 12,
+    padding: spacing.md,
+    gap: spacing.xs,
+  },
+  findingsText: {},
+  recommendationsBox: {
+    backgroundColor: colors.warningMuted,
+    borderRadius: 12,
+    padding: spacing.md,
+    gap: spacing.xs,
+  },
+  recommendationsHeading: {
+    color: colors.warning,
+  },
+  recommendationsText: {},
   summaryBox: {
     backgroundColor: colors.surface,
     borderWidth: 1,

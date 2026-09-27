@@ -1,9 +1,11 @@
 const pool = require('../db/pool');
-const { evaluateRules, isAbnormalFlag } = require('./insightRules');
+const { evaluateRules, isOutOfRange } = require('./insightRules');
+const { evaluateResult } = require('../services/organHealthService');
+const { getAllReferenceRangesByCode } = require('../medications/referenceRangeService');
 const { generateExplanation } = require('./insightExplanationService');
 
 const RULE_VERSION = 'v1';
-const POINT_IN_TIME_TYPES = new Set(['new_result', 'change_from_previous', 'new_abnormal_flag']);
+const POINT_IN_TIME_TYPES = new Set(['change_from_previous', 'new_abnormal_flag']);
 
 function buildDedupKey(candidate, healthParameterId) {
   if (POINT_IN_TIME_TYPES.has(candidate.type)) {
@@ -21,7 +23,7 @@ function sameEvidence(a, b) {
 
 async function fetchConfirmedSeries(userId, healthParameterId) {
   const { rows } = await pool.query(
-    `SELECT hm.id AS measurement_id, hm.report_id, hp.display_name AS parameter_display_name,
+    `SELECT hm.id AS measurement_id, hm.report_id, hp.code, hp.display_name AS parameter_display_name, hm.reference_range_raw,
             hm.numeric_value, hm.normalized_value, hm.normalized_unit, hm.raw_unit, hm.qualitative_value,
             hm.status_flag, COALESCE(r.effective_date, hm.sample_datetime::date, r.created_at::date) AS effective_date
      FROM health_measurements hm
@@ -31,7 +33,23 @@ async function fetchConfirmedSeries(userId, healthParameterId) {
      ORDER BY effective_date ASC, hm.created_at ASC`,
     [userId, healthParameterId]
   );
-  return rows.map((row) => ({
+  const standardRangesByCode = await getAllReferenceRangesByCode();
+  return rows.map((row) => {
+    // Judged exactly like the dashboard's organ cards (the report's printed
+    // flag or range, else the standard range), so a result with no
+    // High/Low flag printed still counts as out of range when its value is.
+    const evaluation = evaluateResult(
+      {
+        code: row.code,
+        statusFlag: row.status_flag,
+        referenceRangeRaw: row.reference_range_raw,
+        numericValue: row.numeric_value === null ? null : Number(row.numeric_value),
+        normalizedValue: row.normalized_value === null ? null : Number(row.normalized_value),
+        qualitativeValue: row.qualitative_value,
+      },
+      standardRangesByCode.get(row.code)
+    );
+    return {
     measurementId: row.measurement_id,
     reportId: row.report_id,
     parameterDisplayName: row.parameter_display_name,
@@ -43,7 +61,10 @@ async function fetchConfirmedSeries(userId, healthParameterId) {
     statusFlag: row.status_flag,
     effectiveDate: row.effective_date,
     value: row.qualitative_value ?? row.normalized_value ?? row.numeric_value,
-  }));
+    outOfRange: evaluation.status === 'unknown' ? undefined : evaluation.status === 'abnormal',
+    direction: evaluation.direction,
+    };
+  });
 }
 
 function buildEvidence(candidate) {
@@ -94,7 +115,7 @@ async function persistInsight({ userId, healthParameterId, candidate, dedupKey, 
 }
 
 async function autoResolveIfNormal(userId, healthParameterId, current) {
-  if (isAbnormalFlag(current.statusFlag)) return;
+  if (isOutOfRange(current)) return;
   await pool.query(
     `UPDATE insights
      SET lifecycle_state = 'resolved', updated_at = now()
