@@ -68,6 +68,11 @@ export default function SettingsScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
+        <SettingsRow
+          title={t('privacy.settingsTitle')}
+          subtitle={t('privacy.settingsSubtitle')}
+          onPress={() => navigation.navigate('PrivacyConsent')}
+        />
         <RetestRemindersRow t={t} />
         <SettingsRow
           title="Recipe recommendations"

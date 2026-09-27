@@ -1,4 +1,4 @@
-const Anthropic = require('@anthropic-ai/sdk');
+const { getAiClient, isAllowed } = require('../ai/privacyGateway');
 const pool = require('../db/pool');
 const config = require('../config');
 const { recordAiUsage, FEATURES } = require('../services/aiUsageService');
@@ -190,7 +190,14 @@ async function generateReportSummary({ report, measurements, sourceDataVersion, 
   }
 
   const comparisons = await buildComparisons(report.user_id, report.id, measurements);
-  const provider = config.summaryProvider === 'claude' && config.anthropicApiKey ? 'claude' : 'heuristic';
+  // AI wording only with the report owner's AI-insights consent; otherwise
+  // the local template summary.
+  const provider =
+    config.summaryProvider === 'claude' &&
+    config.anthropicApiKey &&
+    (await isAllowed({ subjectUserId: report.user_id, purpose: 'report_summary' }))
+      ? 'claude'
+      : 'heuristic';
   const summaryText =
     provider === 'claude'
       ? await buildClaudeNarrative(report, measurements, comparisons, lang)

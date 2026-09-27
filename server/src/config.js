@@ -75,6 +75,34 @@ module.exports = {
     process.env.LAB_BOOKING_URL_TEMPLATE || 'https://www.google.com/maps/search/{test}+test+lab+near+me',
   supportedExtensions: SUPPORTED_EXTENSIONS,
   jwtSecret,
+  nodeEnv: process.env.NODE_ENV || 'development',
+  // Encrypted medical-file vault (issue #104, docs/security/). Every
+  // uploaded report/scan is stored only as AES-256-GCM ciphertext under
+  // encryptedStoreDir; its per-file key is wrapped by the key provider
+  // (AWS KMS in production). See security/configValidation.js for what
+  // production refuses to start without.
+  security: {
+    keyProvider: process.env.KEY_PROVIDER || null,
+    kmsKeyId: process.env.KMS_KEY_ID || null,
+    kmsRegion: process.env.KMS_REGION || process.env.AWS_REGION || 'ap-southeast-1',
+    localDevMasterKey: process.env.LOCAL_DEV_MASTER_KEY || null,
+    encryptedStoreDir: process.env.ENCRYPTED_STORE_DIR
+      ? path.resolve(process.env.ENCRYPTED_STORE_DIR)
+      : path.resolve(__dirname, '..', 'vault'),
+    downloadTokenTtlSeconds: Number(process.env.DOWNLOAD_TOKEN_TTL_SECONDS) || 300,
+    downloadTokenSingleUse: process.env.DOWNLOAD_TOKEN_SINGLE_USE === 'true',
+    // 'allow' only while legacy plaintext uploads still exist (before
+    // scripts/encrypt-legacy-uploads.js has run); deploy.yml sets 'deny'.
+    legacyPlaintextReads: process.env.LEGACY_PLAINTEXT_READS === 'allow' ? 'allow' : 'deny',
+    malwareScanner: process.env.MALWARE_SCANNER || 'none',
+    clamdHost: process.env.CLAMD_HOST || '127.0.0.1',
+    clamdPort: Number(process.env.CLAMD_PORT) || 3310,
+    parserTimeoutMs: Number(process.env.PARSER_TIMEOUT_MS) || 60000,
+    retentionUnconfirmedScanDays: Number(process.env.RETENTION_UNCONFIRMED_SCAN_DAYS) || null,
+    // Keys the privacy-safe IP hash in audit events; derived from
+    // JWT_SECRET when unset so it's stable across restarts.
+    auditHashKey: process.env.AUDIT_HASH_KEY || null,
+  },
   googleClientId: process.env.GOOGLE_CLIENT_ID || null,
   // Gmail integration (issue #54) - a *separate* OAuth client from
   // GOOGLE_CLIENT_ID above: that one only verifies a client-issued identity

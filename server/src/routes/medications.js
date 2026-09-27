@@ -1,8 +1,11 @@
 const express = require('express');
-const fs = require('fs');
 const pool = require('../db/pool');
 const config = require('../config');
 const { upload, extensionOf } = require('../middleware/upload');
+const { secureStore, encryptionInsertParts, deleteStoredFile } = require('../security/secureUpload');
+const { requireConsent } = require('../security/consentService');
+const { toPublicRecord } = require('../security/reportAccess');
+const audit = require('../security/auditLog');
 const { enqueueMedicationScanProcessing, computeEndDate } = require('../medications/medicationScanService');
 const { syncParameterLinks, findKnowledgeEntry } = require('../medications/medicationLinkingService');
 const { getMedicationKnowledge } = require('../medications/medicationKnowledgeService');
@@ -92,27 +95,29 @@ router.post('/scans', (req, res, next) => {
 
       const extension = extensionOf(req.file.originalname);
       if (!SCAN_EXTENSIONS.has(extension)) {
-        fs.unlinkSync(req.file.path);
         return res.status(400).json({ error: 'Unsupported file type. Use a JPG/PNG photo or a PDF scan.' });
       }
       if (req.file.size === 0) {
-        fs.unlinkSync(req.file.path);
         return res.status(400).json({ error: 'The uploaded file is empty or corrupt.' });
       }
 
       const scanType = req.body.scan_type === 'tablet_photo' ? 'tablet_photo' : 'prescription';
+      await requireConsent(currentUserId(req), 'medical_record_storage');
+      const meta = await secureStore({ userId: currentUserId(req), buffer: req.file.buffer, extension });
+      req.file.buffer = null;
+      const enc = encryptionInsertParts(meta, 7);
       const { rows } = await pool.query(
         `INSERT INTO medication_scans
-           (user_id, scan_type, original_filename, mime_type, file_extension, file_size_bytes, storage_path)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+           (user_id, scan_type, original_filename, mime_type, file_extension, file_size_bytes, ${enc.columns.join(', ')})
+         VALUES ($1, $2, $3, $4, $5, $6, ${enc.placeholders.join(', ')})
          RETURNING *`,
-        [currentUserId(req), scanType, req.file.originalname, req.file.mimetype, extension, req.file.size, req.file.path]
+        [currentUserId(req), scanType, req.file.originalname, req.file.mimetype, extension, req.file.size, ...enc.values]
       );
       const scan = rows[0];
 
       enqueueMedicationScanProcessing(scan.id);
 
-      res.status(201).json({ scan });
+      res.status(201).json({ scan: toPublicRecord(scan) });
     } catch (dbErr) {
       next(dbErr);
     }
@@ -131,7 +136,29 @@ router.get('/scans/:id', async (req, res, next) => {
     const medications = await pool.query('SELECT * FROM medications WHERE scan_id = $1 ORDER BY created_at ASC', [
       req.params.id,
     ]);
-    res.json({ scan, medications: medications.rows });
+    res.json({ scan: toPublicRecord(scan), medications: medications.rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Permanently deletes a scan's photo/document (encrypted object and its
+// wrapped key) plus any not-yet-confirmed items read from it. Confirmed
+// items the person already kept stay (their scan link is cleared by
+// ON DELETE SET NULL).
+router.delete('/scans/:id', async (req, res, next) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM medication_scans WHERE id = $1 AND user_id = $2', [
+      req.params.id,
+      currentUserId(req),
+    ]);
+    const scan = rows[0];
+    if (!scan) return res.status(404).json({ error: 'Scan not found' });
+    await pool.query('DELETE FROM medications WHERE scan_id = $1 AND is_confirmed = false', [scan.id]);
+    await pool.query('DELETE FROM medication_scans WHERE id = $1', [scan.id]);
+    await deleteStoredFile(scan).catch(() => {});
+    await audit.record({ eventType: 'REPORT_DELETED', userId: scan.user_id, resourceType: 'medication_scan', purpose: 'user_request' });
+    res.status(204).send();
   } catch (err) {
     next(err);
   }

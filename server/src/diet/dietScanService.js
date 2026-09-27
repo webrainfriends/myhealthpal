@@ -1,5 +1,9 @@
 const pool = require('../db/pool');
 const { getAdapter } = require('../adapters');
+const { loadFileBuffer } = require('../security/secureUpload');
+const { withTimeout } = require('../lib/withTimeout');
+const { logError } = require('../lib/safeLog');
+const config = require('../config');
 const provider = require('../extraction/providers/dietPhotoProvider');
 
 // In-process async runner, the same pattern as medicationScanService.js's
@@ -8,8 +12,7 @@ const provider = require('../extraction/providers/dietPhotoProvider');
 function enqueueDietScanProcessing(scanId) {
   setImmediate(() => {
     processDietScan(scanId).catch((err) => {
-      // eslint-disable-next-line no-console
-      console.error(`Unhandled error processing diet scan ${scanId}:`, err);
+      logError(`Unhandled error processing diet scan ${scanId}`, err);
     });
   });
 }
@@ -54,9 +57,12 @@ async function processDietScan(scanId) {
       throw new Error(`No ingestion adapter registered for .${scan.file_extension} files`);
     }
 
-    const document = await adapter.extract(scan.storage_path);
+    // Decrypted into memory only while processing (never written to disk).
+    const fileBuffer = await loadFileBuffer(scan, { purpose: 'diet_photo', resourceType: 'diet_scan' });
+    const document = await withTimeout(adapter.extract(fileBuffer), config.security.parserTimeoutMs, 'Reading the scan');
     const { items, rawModelOutput } = await provider.extract(document, {
-      filePath: scan.storage_path,
+      fileBuffer,
+      userId: scan.user_id,
       mimeType: scan.mime_type,
     });
 
@@ -109,9 +115,15 @@ async function processDietScan(scanId) {
       [scanId, items.length > 0 ? 'Needs Review' : 'Completed', rawModelOutput ? JSON.stringify(rawModelOutput) : null]
     );
   } catch (err) {
+    // Reading a photo needs the AI provider; without the person's consent
+    // the scan stops here with an explanation instead of being sent.
+    const message =
+      err.code === 'ai_consent_required'
+        ? 'AI photo reading is turned off for this profile. Turn on "AI document processing" in Settings → Privacy & AI, then retry - or enter the details manually.'
+        : err.message;
     await pool.query(
       `UPDATE diet_scans SET ingestion_status = 'Failed', processing_error = $2, updated_at = now() WHERE id = $1`,
-      [scanId, err.message]
+      [scanId, message]
     );
   }
 }

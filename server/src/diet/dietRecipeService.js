@@ -1,4 +1,4 @@
-const Anthropic = require('@anthropic-ai/sdk');
+const { getAiClient } = require('../ai/privacyGateway');
 const pool = require('../db/pool');
 const config = require('../config');
 const { recordAiUsage, FEATURES } = require('../services/aiUsageService');
@@ -142,7 +142,7 @@ async function generateRecipe(userId, { mealType, preferences } = {}) {
   ]);
   const considerations = computeConsiderations(medications, abnormalLabs);
 
-  const client = new Anthropic({ apiKey: config.anthropicApiKey });
+  const client = await getAiClient({ subjectUserId: userId, purpose: 'recipe' });
   const response = await client.messages.create({
     model: config.anthropicModel,
     max_tokens: 2048,
@@ -378,13 +378,12 @@ async function generateRecipeFeed(userId, { mealType, count = FEED_MAX_COUNT, ex
   const considerations = computeConsiderations(medications, abnormalLabs);
   const activity = describeActivity(activityRows);
 
-  const client = new Anthropic({ apiKey: config.anthropicApiKey });
+  const client = await getAiClient({ subjectUserId: userId, purpose: 'recipe' });
   // Streamed rather than .create(): if the output does hit max_tokens, the
   // SDK's stream still partially parses the cut-off tool input, so every
   // recipe finished before the cutoff is kept (see completeRecipesFrom)
   // instead of the whole paid-for batch coming back empty.
-  const response = await client.messages
-    .stream({
+  const response = await client.messages.streamFinal({
       model: config.anthropicModel,
       max_tokens: FEED_OUTPUT_TOKENS_PER_RECIPE * count + 512,
       system: FEED_SYSTEM_PROMPT,
@@ -396,8 +395,7 @@ async function generateRecipeFeed(userId, { mealType, count = FEED_MAX_COUNT, ex
           content: buildFeedUserMessage({ mealType, count, considerations, activity, weightGoal, preferences, excludeTitles }),
         },
       ],
-    })
-    .finalMessage();
+    });
   recordAiUsage(FEATURES.RECIPES, response);
 
   const excludeTitlesLower = new Set(excludeTitles.map((t) => t.toLowerCase().trim()));

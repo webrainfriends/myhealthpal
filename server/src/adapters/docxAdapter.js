@@ -1,7 +1,9 @@
 const mammoth = require('mammoth');
 
-async function extract(filePath) {
-  const result = await mammoth.extractRawText({ path: filePath });
+// `input` is the decrypted file as a Buffer (the vault never writes
+// plaintext to disk); a path is still accepted for tests and tools.
+async function extract(input) {
+  const result = await mammoth.extractRawText(Buffer.isBuffer(input) ? { buffer: input } : { path: input });
   const text = (result.value || '').trim();
   if (!text) {
     throw new Error('Document contains no extractable text');

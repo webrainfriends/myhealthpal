@@ -1,4 +1,4 @@
-const Anthropic = require('@anthropic-ai/sdk');
+const { getAiClient } = require('../ai/privacyGateway');
 const pool = require('../db/pool');
 const config = require('../config');
 const { recordAiUsage, FEATURES } = require('./aiUsageService');
@@ -118,8 +118,10 @@ const GROUPING_TOOL = {
   },
 };
 
-async function classifyWithClaude(testNames, language) {
-  const client = new Anthropic({ apiKey: config.anthropicApiKey });
+async function classifyWithClaude(testNames, language, userId) {
+  // Only test names are sent (no values), but they still reveal what a
+  // person was tested for - so it's gated on their AI-insights consent.
+  const client = await getAiClient({ subjectUserId: userId, purpose: 'custom_card_grouping' });
   const response = await client.messages.create({
     model: config.anthropicModel,
     max_tokens: 1024,
@@ -162,7 +164,7 @@ async function classifyWithClaude(testNames, language) {
 // defaults to English. Returns Map<normalizedTestNameKey, { label, icon,
 // description }> covering every one of them - never partial, so a caller
 // building cards never silently drops a result for lack of a group.
-async function groupTestNames(rawTestNames, language = DEFAULT_LANGUAGE) {
+async function groupTestNames(rawTestNames, language = DEFAULT_LANGUAGE, userId = null) {
   const lang = normalizeLanguage(language);
   const keys = [...new Set(rawTestNames.map(normalizeTestNameKey))].filter(Boolean);
   const resultMap = new Map();
@@ -183,7 +185,7 @@ async function groupTestNames(rawTestNames, language = DEFAULT_LANGUAGE) {
   let aiClassifications = null;
   if (config.customCardProvider === 'claude' && config.anthropicApiKey) {
     try {
-      aiClassifications = await classifyWithClaude(missingKeys, lang);
+      aiClassifications = await classifyWithClaude(missingKeys, lang, userId);
     } catch (err) {
       aiClassifications = null;
     }

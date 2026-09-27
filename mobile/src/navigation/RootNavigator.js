@@ -32,6 +32,7 @@ import VoiceAccessibilityScreen from '../screens/VoiceAccessibilityScreen';
 import AiUsageScreen from '../screens/AiUsageScreen';
 import RetestRadarScreen from '../screens/RetestRadarScreen';
 import FamilyScreen from '../screens/FamilyScreen';
+import PrivacyConsentScreen from '../screens/PrivacyConsentScreen';
 import { onRetestNotificationTap, registerForRetestPush } from '../notifications/retestNotifications';
 import { useAuth } from '../auth/AuthContext';
 import { useT } from '../i18n/I18nContext';
@@ -77,6 +78,7 @@ const linking = {
       NeedsAttention: 'needs-attention',
       RetestRadar: 'retest',
       Family: 'family',
+      PrivacyConsent: 'privacy',
       MedicationDetail: 'medications/:medicationId',
       MedicationScanReview: 'medications/scans/:scanId',
       Activity: 'activity',
@@ -222,6 +224,7 @@ export default function RootNavigator() {
         <Stack.Screen name="NeedsAttention" component={NeedsAttentionScreen} options={{ title: t('nav.needsAttention') }} />
         <Stack.Screen name="RetestRadar" component={RetestRadarScreen} options={{ title: t('nav.retestRadar') }} />
         <Stack.Screen name="Family" component={FamilyScreen} options={{ title: t('nav.family') }} />
+        <Stack.Screen name="PrivacyConsent" component={PrivacyConsentScreen} options={{ title: t('nav.privacy') }} />
         <Stack.Screen name="MedicationDetail" component={MedicationDetailScreen} options={{ title: t('nav.medication') }} />
         <Stack.Screen
           name="MedicationScanReview"

@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const authService = require('../services/authService');
 const { runWithContext } = require('../lib/requestContext');
 const familyService = require('../services/familyService');
@@ -58,7 +59,19 @@ function authenticate({ allowProfile }) {
       // it kicks off - is attributed to the signed-in account and session
       // for AI usage tracking (see services/aiUsageService.js), even while
       // acting as a family member's profile.
-      runWithContext({ userId: user.id, sessionId }, () => next());
+      runWithContext(
+        {
+          userId: user.id,
+          sessionId,
+          // Request metadata for security audit events - kept in memory for
+          // the request only; auditLog stores just a keyed hash of the IP
+          // and a coarse client category.
+          requestId: crypto.randomUUID(),
+          clientIp: req.ip,
+          userAgent: req.get('user-agent'),
+        },
+        () => next()
+      );
     } catch (err) {
       next(err);
     }

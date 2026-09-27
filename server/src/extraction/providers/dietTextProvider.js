@@ -1,4 +1,4 @@
-const Anthropic = require('@anthropic-ai/sdk');
+const { getAiClient } = require('../../ai/privacyGateway');
 const config = require('../../config');
 const { recordAiUsage, FEATURES } = require('../../services/aiUsageService');
 const { NUTRIENT_FIELDS, nutrientToolProperties } = require('./nutrientFields');
@@ -112,7 +112,7 @@ function mapEstimateResult(input) {
 // Provider-agnostic contract: estimate(description, {quantityAmount,
 // quantityUnit}) -> { recognized, matchedFoodDescription, quantityAmount,
 // quantityUnit, servingSizeGrams, nutrients, confidence, warnings }.
-async function estimate(description, { quantityAmount, quantityUnit } = {}) {
+async function estimate(description, { quantityAmount, quantityUnit, userId } = {}) {
   if (!config.anthropicApiKey) {
     throw new Error('AI nutrition estimation requires ANTHROPIC_API_KEY to be set.');
   }
@@ -120,7 +120,7 @@ async function estimate(description, { quantityAmount, quantityUnit } = {}) {
     return { ...EMPTY_RESULT, warnings: ['No food description was given.'] };
   }
 
-  const client = new Anthropic({ apiKey: config.anthropicApiKey });
+  const client = await getAiClient({ subjectUserId: userId, purpose: 'diet_text_estimate' });
   const response = await client.messages.create({
     model: config.anthropicModel,
     max_tokens: 1024,

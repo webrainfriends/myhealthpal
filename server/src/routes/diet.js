@@ -1,8 +1,11 @@
 const express = require('express');
-const fs = require('fs');
 const pool = require('../db/pool');
 const config = require('../config');
 const { upload, extensionOf } = require('../middleware/upload');
+const { secureStore, encryptionInsertParts, deleteStoredFile } = require('../security/secureUpload');
+const { requireConsent } = require('../security/consentService');
+const { toPublicRecord } = require('../security/reportAccess');
+const audit = require('../security/auditLog');
 const { enqueueDietScanProcessing, classifyMealType } = require('../diet/dietScanService');
 const { getOrGenerateRecommendations, generateRecommendations } = require('../diet/dietInsightService');
 const dietTextProvider = require('../extraction/providers/dietTextProvider');
@@ -48,27 +51,29 @@ router.post('/scans', (req, res, next) => {
 
       const extension = extensionOf(req.file.originalname);
       if (!SCAN_EXTENSIONS.has(extension)) {
-        fs.unlinkSync(req.file.path);
         return res.status(400).json({ error: 'Unsupported file type. Use a JPG or PNG photo.' });
       }
       if (req.file.size === 0) {
-        fs.unlinkSync(req.file.path);
         return res.status(400).json({ error: 'The uploaded file is empty or corrupt.' });
       }
 
       const consumedAt = parseConsumedAt(req.body.consumed_at);
+      await requireConsent(currentUserId(req), 'medical_record_storage');
+      const meta = await secureStore({ userId: currentUserId(req), buffer: req.file.buffer, extension });
+      req.file.buffer = null;
+      const enc = encryptionInsertParts(meta, 7);
       const { rows } = await pool.query(
         `INSERT INTO diet_scans
-           (user_id, original_filename, mime_type, file_extension, file_size_bytes, storage_path, consumed_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+           (user_id, original_filename, mime_type, file_extension, file_size_bytes, consumed_at, ${enc.columns.join(', ')})
+         VALUES ($1, $2, $3, $4, $5, $6, ${enc.placeholders.join(', ')})
          RETURNING *`,
-        [currentUserId(req), req.file.originalname, req.file.mimetype, extension, req.file.size, req.file.path, consumedAt]
+        [currentUserId(req), req.file.originalname, req.file.mimetype, extension, req.file.size, consumedAt, ...enc.values]
       );
       const scan = rows[0];
 
       enqueueDietScanProcessing(scan.id);
 
-      res.status(201).json({ scan });
+      res.status(201).json({ scan: toPublicRecord(scan) });
     } catch (dbErr) {
       next(dbErr);
     }
@@ -87,7 +92,29 @@ router.get('/scans/:id', async (req, res, next) => {
     const entries = await pool.query('SELECT * FROM food_entries WHERE scan_id = $1 ORDER BY created_at ASC', [
       req.params.id,
     ]);
-    res.json({ scan, entries: entries.rows });
+    res.json({ scan: toPublicRecord(scan), entries: entries.rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Permanently deletes a scan's photo/document (encrypted object and its
+// wrapped key) plus any not-yet-confirmed items read from it. Confirmed
+// items the person already kept stay (their scan link is cleared by
+// ON DELETE SET NULL).
+router.delete('/scans/:id', async (req, res, next) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM diet_scans WHERE id = $1 AND user_id = $2', [
+      req.params.id,
+      currentUserId(req),
+    ]);
+    const scan = rows[0];
+    if (!scan) return res.status(404).json({ error: 'Scan not found' });
+    await pool.query('DELETE FROM food_entries WHERE scan_id = $1 AND is_confirmed = false', [scan.id]);
+    await pool.query('DELETE FROM diet_scans WHERE id = $1', [scan.id]);
+    await deleteStoredFile(scan).catch(() => {});
+    await audit.record({ eventType: 'REPORT_DELETED', userId: scan.user_id, resourceType: 'diet_scan', purpose: 'user_request' });
+    res.status(204).send();
   } catch (err) {
     next(err);
   }
@@ -192,9 +219,9 @@ function validateEntryBody(body) {
 // ...nutrient fields}) containing only what was confidently estimated -
 // never a quantity_amount/quantity_unit pair when the caller already gave
 // one (the estimate was scaled to that quantity, not a replacement for it).
-async function estimateNutrition(name, brand, quantityAmount, quantityUnit) {
+async function estimateNutrition(userId, name, brand, quantityAmount, quantityUnit) {
   const description = brand ? `${name} (${brand})` : name;
-  const result = await dietTextProvider.estimate(description, { quantityAmount, quantityUnit });
+  const result = await dietTextProvider.estimate(description, { quantityAmount, quantityUnit, userId });
   if (!result.recognized) {
     return { recognized: false, matchedFoodDescription: null, confidence: 0, patch: {} };
   }
@@ -233,13 +260,19 @@ router.post('/entries/estimate', async (req, res, next) => {
       ? Number(body.quantity_amount)
       : null;
     const { recognized, matchedFoodDescription, confidence, patch } = await estimateNutrition(
-      body.name, body.brand || null, quantityAmount, body.quantity_unit || null
+      req.user.id, body.name, body.brand || null, quantityAmount, body.quantity_unit || null
     );
 
     res.json({ recognized, matched_food_description: matchedFoodDescription, confidence, ...patch });
   } catch (err) {
     if (err.message && err.message.includes('ANTHROPIC_API_KEY')) {
       return res.status(503).json({ error: err.message });
+    }
+    if (err.code === 'ai_consent_required') {
+      return res.status(409).json({
+        code: 'ai_consent_required',
+        error: 'AI nutrition estimates are turned off for this profile (Settings → Privacy & AI).',
+      });
     }
     next(err);
   }
@@ -265,7 +298,7 @@ router.post('/entries', async (req, res, next) => {
     if (body.calories == null && body.name) {
       try {
         const quantityAmount = body.quantity_amount != null ? Number(body.quantity_amount) : null;
-        const result = await estimateNutrition(body.name, body.brand, quantityAmount, body.quantity_unit || null);
+        const result = await estimateNutrition(req.user.id, body.name, body.brand, quantityAmount, body.quantity_unit || null);
         if (result.recognized) {
           for (const [key, value] of Object.entries(result.patch)) {
             if (body[key] == null) body[key] = value;

@@ -1,4 +1,5 @@
 const express = require('express');
+const { redactString } = require('../lib/safeLog');
 const pool = require('../db/pool');
 const config = require('../config');
 const { requireAuth } = require('../middleware/auth');
@@ -154,7 +155,7 @@ router.get('/callback', async (req, res) => {
     res.status(200).send(resultPage('Gmail connected', `${emailAddress} is now connected to EyeMyHealth.`));
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('Gmail OAuth callback failed:', err.message);
+    console.error('Gmail OAuth callback failed:', redactString(err.message));
     await logGmailAction(userId, 'error', { detail: { action: 'connect', message: err.message } });
     res.status(200).send(resultPage('Gmail connection failed', err.message || 'Something went wrong connecting Gmail.'));
   }
@@ -280,7 +281,7 @@ router.delete('/disconnect', requireAuth, async (req, res, next) => {
       const refreshToken = gmailConnectionService.decryptedRefreshToken(connection);
       await gmailClient.revokeToken(refreshToken).catch((err) => {
         // eslint-disable-next-line no-console
-        console.error('Failed to revoke Gmail token with Google (disconnecting locally anyway):', err.message);
+        console.error('Failed to revoke Gmail token with Google (disconnecting locally anyway):', redactString(err.message));
       });
     }
     await gmailConnectionService.disconnect(connection.id);

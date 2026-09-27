@@ -225,7 +225,8 @@ async function classifyUnmappedMeasurements(userId, language) {
   const rows = await fetchLatestUnmappedMeasurements(userId);
   const groupByKey = await groupTestNames(
     rows.map((row) => row.raw_test_name),
-    language
+    language,
+    userId
   );
   return rows.map((row) => ({
     row,

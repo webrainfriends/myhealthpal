@@ -1,4 +1,4 @@
-const Anthropic = require('@anthropic-ai/sdk');
+const { getAiClient } = require('../ai/privacyGateway');
 const pool = require('../db/pool');
 const config = require('../config');
 const { recordAiUsage, FEATURES } = require('../services/aiUsageService');
@@ -55,7 +55,9 @@ const KNOWLEDGE_TOOL = {
 };
 
 async function describeWithClaude(medication, language) {
-  const client = new Anthropic({ apiKey: config.anthropicApiKey });
+  // Generic reference lookup: only the medicine's name is sent - no person,
+  // dose or health data - so it needs no consent (purpose reference_lookup).
+  const client = await getAiClient({ subjectUserId: null, purpose: 'reference_lookup' });
   const label = [medication.name, medication.generic_name, medication.brand_name].filter(Boolean).join(' / ');
   const response = await client.messages.create({
     model: config.anthropicModel,
