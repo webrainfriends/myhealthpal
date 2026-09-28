@@ -333,6 +333,12 @@ export async function setRetestCheckin(planId, done) {
   return handleResponse(response);
 }
 
+export async function deleteAccount() {
+  const response = await apiFetch('/api/account', { method: 'DELETE' });
+  if (!response.ok) return handleResponse(response);
+  return null;
+}
+
 export async function updateRetestSettings(remindersEnabled) {
   const response = await apiFetch('/api/account/retest-settings', {
     method: 'PUT',

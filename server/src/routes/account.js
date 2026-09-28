@@ -1,5 +1,6 @@
 const express = require('express');
 const pool = require('../db/pool');
+const { deleteAccount } = require('../services/accountDeletionService');
 
 // Settings that belong to the signed-in account (its devices, its
 // notification preferences), mounted with requireAccountAuth so they are
@@ -43,6 +44,20 @@ router.post('/push-token', async (req, res, next) => {
 router.delete('/push-token', async (req, res, next) => {
   try {
     await pool.query('DELETE FROM push_tokens WHERE token = $1 AND user_id = $2', [req.body.token, req.accountUser.id]);
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Permanently deletes the signed-in account and everything that belongs to
+// it (reports, medications, diet/activity history, chat, family links, and
+// any managed profile only this account looked after). There is no
+// recovery - a later sign-in (guest, or the same Google/Apple identity)
+// creates a brand-new account with none of this history.
+router.delete('/', async (req, res, next) => {
+  try {
+    await deleteAccount(req.accountUser.id);
     res.status(204).end();
   } catch (err) {
     next(err);

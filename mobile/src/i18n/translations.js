@@ -124,6 +124,17 @@ export const TRANSLATIONS = {
       voiceSubtitle: 'Have lab results, insights, and recommendations read aloud',
       aiUsageTitle: 'AI usage',
       aiUsageSubtitle: 'AI tokens used by this session and your account, by feature, with estimated cost',
+      deleteAccountTitle: 'Delete account',
+      deleteAccountSubtitle: 'Permanently delete your account and all of its data',
+      deleteAccountConfirmTitle: 'Delete your account?',
+      deleteAccountConfirmMessage:
+        'This permanently deletes your reports, medications, diet and activity history, chat, and any family member profile only you manage. This cannot be undone.',
+      deleteAccountFinalTitle: 'Are you absolutely sure?',
+      deleteAccountFinalMessage: 'There is no way to recover this account or its data once deleted. Signing in again starts a brand-new account.',
+      deleteAccountCancel: 'Cancel',
+      deleteAccountContinue: 'Continue',
+      deleteAccountConfirm: 'Delete forever',
+      deleteAccountFailedTitle: 'Could not delete account',
     },
     aiUsage: {
       intro:

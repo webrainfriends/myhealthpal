@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 're
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { cardShadow, colors, radii, spacing, typography } from '../theme/theme';
 import { useT } from '../i18n/I18nContext';
-import { fetchRetestPlans, updateRetestSettings } from '../api/client';
+import { deleteAccount, fetchRetestPlans, updateRetestSettings } from '../api/client';
 import { syncLocalRetestReminders } from '../notifications/retestNotifications';
 import { showAlert } from '../utils/alert';
 import { useAuth } from '../auth/AuthContext';
@@ -63,6 +63,56 @@ function RetestRemindersRow({ t }) {
   );
 }
 
+// Destructive, so it's styled apart from the ordinary nav rows above it and
+// asks twice before doing anything - there's no undo once the account and
+// everything in it (reports, medications, diet/activity history, chat, any
+// managed family profile only this account looked after) is gone.
+function DeleteAccountRow({ t }) {
+  const { signOut } = useAuth();
+  const [busy, setBusy] = useState(false);
+
+  function confirmDelete() {
+    showAlert(t('settings.deleteAccountConfirmTitle'), t('settings.deleteAccountConfirmMessage'), [
+      { text: t('settings.deleteAccountCancel'), style: 'cancel' },
+      { text: t('settings.deleteAccountContinue'), style: 'destructive', onPress: confirmDeleteFinal },
+    ]);
+  }
+
+  function confirmDeleteFinal() {
+    showAlert(t('settings.deleteAccountFinalTitle'), t('settings.deleteAccountFinalMessage'), [
+      { text: t('settings.deleteAccountCancel'), style: 'cancel' },
+      { text: t('settings.deleteAccountConfirm'), style: 'destructive', onPress: performDelete },
+    ]);
+  }
+
+  async function performDelete() {
+    setBusy(true);
+    try {
+      await deleteAccount();
+      // The account is already gone server-side; sign out drops the local
+      // token and user state so the app falls back to the login screen.
+      signOut();
+    } catch (err) {
+      setBusy(false);
+      showAlert(t('settings.deleteAccountFailedTitle'), err.message);
+    }
+  }
+
+  return (
+    <TouchableOpacity
+      style={[styles.row, styles.dangerRow, cardShadow]}
+      onPress={confirmDelete}
+      activeOpacity={0.7}
+      disabled={busy}
+    >
+      <View style={styles.rowText}>
+        <Text style={[typography.body, styles.dangerText]}>{t('settings.deleteAccountTitle')}</Text>
+        <Text style={typography.caption}>{t('settings.deleteAccountSubtitle')}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
 export default function SettingsScreen({ navigation }) {
   const t = useT();
   return (
@@ -99,6 +149,7 @@ export default function SettingsScreen({ navigation }) {
           subtitle={t('settings.aiUsageSubtitle')}
           onPress={() => navigation.navigate('AiUsage')}
         />
+        <DeleteAccountRow t={t} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -125,6 +176,15 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: spacing.md,
     gap: 2,
+  },
+  dangerRow: {
+    marginTop: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.dangerMuted,
+  },
+  dangerText: {
+    color: colors.danger,
+    fontWeight: '700',
   },
   chevron: {
     fontSize: 20,
