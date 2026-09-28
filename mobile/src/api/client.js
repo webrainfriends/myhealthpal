@@ -858,6 +858,42 @@ export async function fetchDietScheduleImpact(scheduleId, { refresh } = {}) {
   return handleResponse(response);
 }
 
+// --- Water intake ---
+
+export async function fetchWaterSummary(date) {
+  const response = await apiFetch(`/api/water/summary${date ? `?date=${date}` : ''}`);
+  return handleResponse(response);
+}
+
+export async function logWaterEntry(amountMl, loggedAt) {
+  const response = await apiFetch('/api/water/entries', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ amount_ml: amountMl, logged_at: loggedAt || undefined }),
+  });
+  return handleResponse(response);
+}
+
+export async function deleteWaterEntry(entryId) {
+  const response = await apiFetch(`/api/water/entries/${entryId}`, { method: 'DELETE' });
+  if (!response.ok) return handleResponse(response);
+  return null;
+}
+
+export async function refreshWaterTarget() {
+  const response = await apiFetch('/api/water/target/refresh', { method: 'POST' });
+  return handleResponse(response);
+}
+
+export async function updateWaterSettings(remindersEnabled) {
+  const response = await apiFetch('/api/account/water-settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ remindersEnabled }),
+  });
+  return handleResponse(response);
+}
+
 // --- Recipe reactions (Love/Like/Unlike) ---
 
 export async function fetchRecipeReactions(recipeSuggestionIds) {

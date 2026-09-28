@@ -21,6 +21,21 @@ router.put('/retest-settings', async (req, res, next) => {
   }
 });
 
+router.put('/water-settings', async (req, res, next) => {
+  try {
+    if (typeof req.body.remindersEnabled !== 'boolean') {
+      return res.status(400).json({ error: 'remindersEnabled must be true or false.' });
+    }
+    await pool.query('UPDATE users SET water_reminders_enabled = $2 WHERE id = $1', [
+      req.accountUser.id,
+      req.body.remindersEnabled,
+    ]);
+    res.json({ remindersEnabled: req.body.remindersEnabled });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Registers (or re-assigns) this device's Expo push token to the signed-in
 // user - a token moves with whoever last signed in on that device.
 router.post('/push-token', async (req, res, next) => {

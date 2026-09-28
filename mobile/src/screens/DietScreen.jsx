@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import FoodEntryCard from '../components/FoodEntryCard';
@@ -11,12 +11,24 @@ import {
   fetchDietRecommendations,
   fetchDietSummary,
   fetchSavedRecipes,
+  fetchWaterSummary,
   logRecipeSuggestion,
+  logWaterEntry,
+  refreshWaterTarget,
+  updateWaterSettings,
   uploadDietScan,
 } from '../api/client';
+import { syncWaterReminder } from '../notifications/waterNotifications';
 import { useT } from '../i18n/I18nContext';
 import { showAlert } from '../utils/alert';
 import { openPrivacyIfConsentNeeded } from '../utils/consent';
+
+// Quick-add amounts for the water counter, in milliliters.
+const WATER_QUICK_ADD_ML = [250, 500, 1000, 2000];
+
+function formatWaterAmount(ml) {
+  return ml >= 1000 ? `${ml / 1000}L` : `${ml}ml`;
+}
 
 const MACRO_LABELS = [
   { key: 'protein_g', labelKey: 'diet.macroProtein', suffix: 'g' },
@@ -86,19 +98,25 @@ export default function DietScreen({ navigation }) {
   const [refreshingTips, setRefreshingTips] = useState(false);
   const [showMicronutrients, setShowMicronutrients] = useState(false);
   const [addingRecipeId, setAddingRecipeId] = useState(null);
+  const [water, setWater] = useState(null);
+  const [loggingWaterMl, setLoggingWaterMl] = useState(null);
+  const [refreshingWaterTarget, setRefreshingWaterTarget] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [summaryData, entriesData, recommendationData, recipesData] = await Promise.all([
+      const [summaryData, entriesData, recommendationData, recipesData, waterData] = await Promise.all([
         fetchDietSummary(7),
         fetchDietEntries({ date: todayKey() }),
         fetchDietRecommendations(),
         fetchSavedRecipes({ limit: RECIPE_IDEAS_LIMIT }),
+        fetchWaterSummary(),
       ]);
       setSummary(summaryData);
       setEntries(entriesData.entries);
       setRecommendation(recommendationData.recommendation);
       setRecipeIdeas(recipesData.recipes);
+      setWater(waterData);
+      syncWaterReminder(waterData.remindersEnabled);
     } catch (err) {
       console.warn('Failed to load diet data', err.message);
     } finally {
@@ -185,6 +203,47 @@ export default function DietScreen({ navigation }) {
       showAlert('Could not add this recipe', err.message);
     } finally {
       setAddingRecipeId(null);
+    }
+  }
+
+  // Quick-add a water entry, then reload today's summary so the running
+  // total, target comparison, and alert all reflect it immediately.
+  async function handleLogWater(amountMl) {
+    setLoggingWaterMl(amountMl);
+    try {
+      await logWaterEntry(amountMl);
+      const data = await fetchWaterSummary();
+      setWater(data);
+    } catch (err) {
+      showAlert('Could not log water', err.message);
+    } finally {
+      setLoggingWaterMl(null);
+    }
+  }
+
+  async function handleRefreshWaterTarget() {
+    setRefreshingWaterTarget(true);
+    try {
+      const data = await refreshWaterTarget();
+      setWater((prev) => (prev ? { ...prev, target: data.target } : prev));
+    } catch (err) {
+      showAlert('Could not refresh your water target', err.message);
+    } finally {
+      setRefreshingWaterTarget(false);
+    }
+  }
+
+  // Persists the toggle server-side (mirrors updateRetestSettings), then
+  // re-syncs the local daily notification to match - optimistic update with
+  // a rollback if the save fails, the same pattern RecipeReactionRow uses.
+  async function handleToggleWaterReminders(next) {
+    setWater((prev) => (prev ? { ...prev, remindersEnabled: next } : prev));
+    try {
+      await updateWaterSettings(next);
+      await syncWaterReminder(next);
+    } catch (err) {
+      setWater((prev) => (prev ? { ...prev, remindersEnabled: !next } : prev));
+      showAlert('Could not update reminder setting', err.message);
     }
   }
 
@@ -303,6 +362,57 @@ export default function DietScreen({ navigation }) {
                 ))}
               </View>
             )}
+          </View>
+        )}
+
+        <View style={styles.sectionHeaderRow}>
+          <Text style={typography.heading}>Water intake</Text>
+          <TouchableOpacity onPress={handleRefreshWaterTarget} disabled={refreshingWaterTarget}>
+            <Text style={styles.addLabel}>{refreshingWaterTarget ? 'Refreshing…' : 'Refresh target'}</Text>
+          </TouchableOpacity>
+        </View>
+        {water && (
+          <View style={[styles.totalsCard, cardShadow]}>
+            <Text style={styles.caloriesValue}>
+              {water.totalMl} <Text style={styles.caloriesUnit}>ml today</Text>
+            </Text>
+            <Text style={typography.bodySecondary}>
+              Target: {water.target.min_ml}-{water.target.max_ml}ml/day (ideal {water.target.ideal_ml}ml)
+            </Text>
+
+            {water.alert && water.alert.status !== 'ok' && (
+              <View style={[styles.waterAlert, water.alert.status === 'over' ? styles.waterAlertOver : styles.waterAlertUnder]}>
+                <Text style={styles.waterAlertText}>
+                  {water.alert.status === 'over' ? '⚠️' : 'ℹ️'} {water.alert.message}
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.waterQuickAddRow}>
+              {WATER_QUICK_ADD_ML.map((amount) => (
+                <TouchableOpacity
+                  key={amount}
+                  style={styles.waterQuickAddButton}
+                  onPress={() => handleLogWater(amount)}
+                  disabled={loggingWaterMl != null}
+                >
+                  <Text style={styles.waterQuickAddText}>+{formatWaterAmount(amount)}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {water.target.summary && <Text style={[typography.caption, styles.waterSummary]}>{water.target.summary}</Text>}
+
+            <View style={styles.waterReminderRow}>
+              <Text style={typography.bodySecondary}>Daily reminder to log water</Text>
+              <Switch
+                value={Boolean(water.remindersEnabled)}
+                onValueChange={handleToggleWaterReminders}
+                trackColor={{ false: colors.border, true: colors.primaryMuted }}
+                thumbColor={water.remindersEnabled ? colors.primary : undefined}
+                accessibilityLabel="Daily reminder to log water"
+              />
+            </View>
           </View>
         )}
 
@@ -448,6 +558,46 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   empty: {
+    marginTop: spacing.xs,
+  },
+  waterAlert: {
+    borderRadius: radii.md,
+    padding: spacing.sm,
+  },
+  waterAlertUnder: {
+    backgroundColor: colors.primaryMuted,
+  },
+  waterAlertOver: {
+    backgroundColor: colors.warningMuted,
+  },
+  waterAlertText: {
+    color: colors.textPrimary,
+    fontSize: 13,
+  },
+  waterQuickAddRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  waterQuickAddButton: {
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  waterQuickAddText: {
+    color: colors.primary,
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  waterSummary: {
+    fontStyle: 'italic',
+  },
+  waterReminderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginTop: spacing.xs,
   },
 });

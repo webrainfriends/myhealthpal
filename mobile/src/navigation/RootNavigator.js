@@ -38,6 +38,7 @@ import RetestRadarScreen from '../screens/RetestRadarScreen';
 import FamilyScreen from '../screens/FamilyScreen';
 import PrivacyConsentScreen from '../screens/PrivacyConsentScreen';
 import { onRetestNotificationTap, registerForRetestPush } from '../notifications/retestNotifications';
+import { onWaterNotificationTap } from '../notifications/waterNotifications';
 import { useAuth } from '../auth/AuthContext';
 import { useT } from '../i18n/I18nContext';
 import Mascot from '../components/brand/Mascot';
@@ -197,6 +198,16 @@ export default function RootNavigator() {
       }, 0);
     });
   }, [userId, switchProfileById]);
+
+  // Opens the Diet screen when the daily water-reminder notification is
+  // tapped (see notifications/waterNotifications.js - local-only, no server
+  // push registration needed for this one).
+  useEffect(() => {
+    if (!userId) return undefined;
+    return onWaterNotificationTap((screen) => {
+      if (navigationRef.isReady()) navigationRef.navigate(screen);
+    });
+  }, [userId]);
 
   if (loading) {
     return (
