@@ -115,7 +115,7 @@ jobs:
           username: ${{ env.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: 15m
-          envs: APP_DIR,BRANCH,REPO_URL,APP_PORT,NGINX_PORT,APP_DOMAIN,LETSENCRYPT_EMAIL,PUBLIC_HOST,ANTHROPIC_API_KEY,GOOGLE_CLIENT_ID,APPLE_CLIENT_ID
+          envs: APP_DIR,BRANCH,REPO_URL,APP_PORT,NGINX_PORT,APP_DOMAIN,LETSENCRYPT_EMAIL,PUBLIC_HOST,ANTHROPIC_API_KEY,GOOGLE_CLIENT_ID,APPLE_CLIENT_ID,KMS_KEY_ID,KMS_REGION
           script_stop: true
           script: |
             set -euo pipefail
@@ -398,3 +398,11 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           APPLE_CLIENT_ID: ${{ secrets.APPLE_CLIENT_ID }}
           LETSENCRYPT_EMAIL: ${{ secrets.LETSENCRYPT_EMAIL }}
+          # AWS KMS key (ARN, id or alias) that wraps every medical file's
+          # data key - see docs/security/key-management.md. Listed above in
+          # `envs:` too: that's what actually forwards it into the SSH
+          # session: a variable missing from BOTH this env: block (which
+          # sources it from the secret) and envs: (which forwards it) stays
+          # unset on the remote host even once the secret itself is set.
+          KMS_KEY_ID: ${{ secrets.KMS_KEY_ID }}
+          KMS_REGION: ap-southeast-1
