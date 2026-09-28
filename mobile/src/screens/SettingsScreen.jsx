@@ -125,6 +125,11 @@ export default function SettingsScreen({ navigation }) {
         />
         <RetestRemindersRow t={t} />
         <SettingsRow
+          title={t('settings.healthProfileTitle')}
+          subtitle={t('settings.healthProfileSubtitle')}
+          onPress={() => navigation.navigate('HealthProfile')}
+        />
+        <SettingsRow
           title="Recipe recommendations"
           subtitle="Diet, cuisine, and weight-goal preferences used to suggest recipes"
           onPress={() => navigation.navigate('RecipePreferences')}
