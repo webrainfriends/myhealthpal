@@ -23,6 +23,10 @@ import DietScanReviewScreen from '../screens/DietScanReviewScreen';
 import DietEntryFormScreen from '../screens/DietEntryFormScreen';
 import DietStatsScreen from '../screens/DietStatsScreen';
 import RecipesScreen from '../screens/RecipesScreen';
+import DietSchedulesScreen from '../screens/DietSchedulesScreen';
+import DietScheduleFormScreen from '../screens/DietScheduleFormScreen';
+import DietScheduleDetailScreen from '../screens/DietScheduleDetailScreen';
+import KitchenScreen from '../screens/KitchenScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import RecipePreferencesScreen from '../screens/RecipePreferencesScreen';
 import GmailIntegrationScreen from '../screens/GmailIntegrationScreen';
@@ -87,6 +91,10 @@ const linking = {
       DietEntryForm: 'diet/entries/:entryId?',
       DietStats: 'diet/stats',
       Recipes: 'recipes',
+      DietSchedules: 'diet/schedules',
+      DietScheduleForm: 'diet/schedules/new',
+      DietScheduleDetail: 'diet/schedules/:scheduleId',
+      Kitchen: 'kitchen',
       Settings: 'settings',
       RecipePreferences: 'settings/recipe-preferences',
       GmailIntegration: 'settings/gmail',
@@ -246,6 +254,14 @@ export default function RootNavigator() {
         />
         <Stack.Screen name="DietStats" component={DietStatsScreen} options={{ title: 'Diet stats' }} />
         <Stack.Screen name="Recipes" component={RecipesScreen} options={{ title: 'AI recipe ideas' }} />
+        <Stack.Screen name="DietSchedules" component={DietSchedulesScreen} options={{ title: 'Diet schedules' }} />
+        <Stack.Screen name="DietScheduleForm" component={DietScheduleFormScreen} options={{ title: 'New diet schedule' }} />
+        <Stack.Screen
+          name="DietScheduleDetail"
+          component={DietScheduleDetailScreen}
+          options={{ title: 'Diet schedule' }}
+        />
+        <Stack.Screen name="Kitchen" component={KitchenScreen} options={{ title: 'Mini kitchen' }} />
         <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
         <Stack.Screen
           name="RecipePreferences"

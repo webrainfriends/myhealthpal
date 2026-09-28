@@ -252,6 +252,13 @@ export default function DietScreen({ navigation }) {
           </ScrollView>
         )}
 
+        <View style={styles.sectionHeaderRow}>
+          <Text style={typography.heading}>Diet schedules</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('DietSchedules')}>
+            <Text style={styles.addLabel}>See all →</Text>
+          </TouchableOpacity>
+        </View>
+
         {summary && summary.pendingReviewCount > 0 && (
           <TouchableOpacity style={styles.reviewBanner} onPress={openPendingReview}>
             <Text style={[typography.body, styles.reviewBannerText]}>

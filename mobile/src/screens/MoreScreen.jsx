@@ -47,6 +47,18 @@ export default function MoreScreen({ navigation }) {
           onPress={() => navigation.navigate('Recipes')}
         />
         <MoreRow
+          icon="🗓️"
+          title="Diet schedules"
+          subtitle="Plan up to 15 days of meals, manually or imported"
+          onPress={() => navigation.navigate('DietSchedules')}
+        />
+        <MoreRow
+          icon="🧺"
+          title="Mini kitchen"
+          subtitle="Track what's on hand and build a schedule around it"
+          onPress={() => navigation.navigate('Kitchen')}
+        />
+        <MoreRow
           icon="⚙️"
           title={t('nav.settings')}
           subtitle="Recipe preferences, connected sources, language, voice"

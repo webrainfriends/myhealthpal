@@ -449,6 +449,30 @@ function mapSuggestionRow(row) {
   };
 }
 
+async function insertOneSuggestion(userId, recipe, requestedMealType) {
+  const values = [
+    userId,
+    requestedMealType || null,
+    recipe.title,
+    recipe.mealType,
+    recipe.description,
+    recipe.servings,
+    recipe.prepTimeMinutes,
+    recipe.cookTimeMinutes,
+    JSON.stringify(recipe.ingredients),
+    JSON.stringify(recipe.instructions),
+    JSON.stringify(recipe.dietaryTags),
+    recipe.whyThisRecipe,
+    ...NUTRIENT_FIELDS.map((f) => recipe.nutritionPerServing[f] ?? null),
+  ];
+  const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
+  const { rows } = await pool.query(
+    `INSERT INTO recipe_suggestions (user_id, ${SUGGESTION_COLUMNS.join(', ')}) VALUES (${placeholders}) RETURNING id, created_at`,
+    values
+  );
+  return { ...recipe, id: rows[0].id, addedAt: null, createdAt: rows[0].created_at };
+}
+
 // Persists every recipe from a just-generated batch, then trims the
 // user's saved suggestions back down to the cap (oldest, never-added ones
 // first). Returns the same recipes with their new database ids attached,
@@ -457,27 +481,7 @@ function mapSuggestionRow(row) {
 async function saveRecipeSuggestions(userId, recipes, requestedMealType) {
   const saved = [];
   for (const recipe of recipes) {
-    const values = [
-      userId,
-      requestedMealType || null,
-      recipe.title,
-      recipe.mealType,
-      recipe.description,
-      recipe.servings,
-      recipe.prepTimeMinutes,
-      recipe.cookTimeMinutes,
-      JSON.stringify(recipe.ingredients),
-      JSON.stringify(recipe.instructions),
-      JSON.stringify(recipe.dietaryTags),
-      recipe.whyThisRecipe,
-      ...NUTRIENT_FIELDS.map((f) => recipe.nutritionPerServing[f] ?? null),
-    ];
-    const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
-    const { rows } = await pool.query(
-      `INSERT INTO recipe_suggestions (user_id, ${SUGGESTION_COLUMNS.join(', ')}) VALUES (${placeholders}) RETURNING id, created_at`,
-      values
-    );
-    saved.push({ ...recipe, id: rows[0].id, addedAt: null, createdAt: rows[0].created_at });
+    saved.push(await insertOneSuggestion(userId, recipe, requestedMealType));
   }
 
   await pool.query(
@@ -490,6 +494,17 @@ async function saveRecipeSuggestions(userId, recipes, requestedMealType) {
   );
 
   return saved;
+}
+
+// Same single-row insert as saveRecipeSuggestions, without the trim: a diet
+// schedule entry (diet_schedule_entries.recipe_suggestion_id) references its
+// recipe permanently, unlike a browsable feed suggestion that's expected to
+// eventually age out - trimming it out from under an active schedule would
+// silently orphan the entry (ON DELETE SET NULL). Used by
+// recipeBackfillService.js and scheduleGenerationService.js instead of
+// saveRecipeSuggestions for exactly this reason.
+async function saveScheduleRecipeSuggestion(userId, recipe, requestedMealType) {
+  return insertOneSuggestion(userId, recipe, requestedMealType);
 }
 
 // The user's saved recipe suggestions - a free, non-AI read, so the
@@ -558,6 +573,7 @@ module.exports = {
   generateRecipeFeed,
   completeRecipesFrom,
   saveRecipeSuggestions,
+  saveScheduleRecipeSuggestion,
   listSavedRecipeSuggestions,
   logRecipeSuggestion,
   FEED_MAX_COUNT,
@@ -565,4 +581,9 @@ module.exports = {
   buildUserMessage,
   buildFeedUserMessage,
   describeActivity,
+  // Reused by scheduleGenerationService.js so a kitchen-generated schedule
+  // respects the same saved cuisine/diet-type preferences (and defaults) a
+  // recipe feed does - one source of truth, not a second query duplicating it.
+  fetchRecipePreferences,
+  describePreferencesForPrompt,
 };
