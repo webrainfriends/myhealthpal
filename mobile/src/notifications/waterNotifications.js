@@ -47,7 +47,7 @@ export async function syncWaterReminder(enabled) {
       content: {
         title: 'Time for a water check-in',
         body: "Log how much water you've had today.",
-        data: { screen: 'Diet' },
+        data: { screen: 'DashboardTab' },
       },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.CALENDAR, hour: REMINDER_HOUR, minute: 0, repeats: true },
     });
@@ -56,13 +56,13 @@ export async function syncWaterReminder(enabled) {
   }
 }
 
-// Opens the Diet screen when the user taps the reminder. Returns an
-// unsubscribe function.
+// Opens the Dashboard tab (the water bottle tracker's home) when the user
+// taps the reminder. Returns an unsubscribe function.
 export function onWaterNotificationTap(navigate) {
   if (Platform.OS === 'web') return () => {};
   const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
     const data = response.notification.request.content.data;
-    if (data?.screen === 'Diet') navigate('Diet');
+    if (data?.screen === 'DashboardTab') navigate('DashboardTab');
   });
   return () => subscription.remove();
 }

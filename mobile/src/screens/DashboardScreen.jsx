@@ -9,17 +9,22 @@ import DietCard from '../components/DietCard';
 import SpeakButton from '../components/SpeakButton';
 import SummaryCard from '../components/SummaryCard';
 import RetestPlanCard from '../components/RetestPlanCard';
+import WaterBottleTracker from '../components/WaterBottleTracker';
 import GradientFill from '../components/brand/GradientFill';
 import Mascot from '../components/brand/Mascot';
 import { brandShadow, cardShadow, colors, healthStatusColors, radii, spacing, typography } from '../theme/theme';
 import {
+  deleteWaterEntry,
   fetchActivitySummary,
   fetchCustomCards,
   fetchDashboardSnapshot,
   fetchDietSummary,
   fetchOrganHealth,
   fetchRetestPlans,
+  fetchWaterSummary,
+  logWaterEntry,
   pinParameter,
+  refreshWaterTarget,
   setRetestCheckin,
   unpinParameter,
 } from '../api/client';
@@ -28,6 +33,10 @@ import { useT } from '../i18n/I18nContext';
 import { showAlert } from '../utils/alert';
 import { formatCalendarDate } from '../utils/date';
 import { fetchLocationWeather } from '../utils/weather';
+
+// The dashboard's own fixed quick-add amount - one big, obvious CTA rather
+// than the Diet screen's old row of four amounts, per the redesign.
+const WATER_QUICK_ADD_ML = 250;
 
 function formatDate(value, t) {
   if (!value) return t('common.unknownDate');
@@ -114,6 +123,10 @@ export default function DashboardScreen({ navigation }) {
   const [retestPlans, setRetestPlans] = useState([]);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [weather, setWeather] = useState(null);
+  const [water, setWater] = useState(null);
+  const [loggingWater, setLoggingWater] = useState(false);
+  const [undoingWater, setUndoingWater] = useState(false);
+  const [refreshingWaterTarget, setRefreshingWaterTarget] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -137,7 +150,7 @@ export default function DashboardScreen({ navigation }) {
     // entire dashboard (organ grid, insights/attention counts, tracked
     // metrics, activity, diet - everything), not just its own card.
     // allSettled lets each section populate independently of the others.
-    const [snapshotResult, organResult, customCardResult, activityResult, dietResult, retestResult] = await Promise.allSettled([
+    const [snapshotResult, organResult, customCardResult, activityResult, dietResult, retestResult, waterResult] = await Promise.allSettled([
       fetchDashboardSnapshot(),
       fetchOrganHealth(),
       // Results a report contained that matched nothing in the Health
@@ -151,6 +164,7 @@ export default function DashboardScreen({ navigation }) {
       fetchActivitySummary(7),
       fetchDietSummary(1),
       fetchRetestPlans(),
+      fetchWaterSummary(),
     ]);
 
     if (snapshotResult.status === 'fulfilled') setSnapshot(snapshotResult.value);
@@ -173,6 +187,9 @@ export default function DashboardScreen({ navigation }) {
 
     if (retestResult.status === 'fulfilled') setRetestPlans(retestResult.value.plans);
     else console.warn('Failed to load retest plans', retestResult.reason?.message);
+
+    if (waterResult.status === 'fulfilled') setWater(waterResult.value);
+    else console.warn('Failed to load water summary', waterResult.reason?.message);
 
     setLoading(false);
   }, []);
@@ -207,6 +224,55 @@ export default function DashboardScreen({ navigation }) {
       await load();
     } catch (err) {
       showAlert(t('dashboard.couldNotUnpin'), err.message);
+    }
+  }
+
+  // Quick-add the fixed 250ml amount, then reload today's summary so the
+  // bottle's fill level, running total, and alert all reflect it
+  // immediately. fetchWaterSummary (not the wider dashboard load()) keeps
+  // this snappy - the Diet screen re-fetches its own calorie/macro totals
+  // independently the next time it comes into focus, so nothing there goes
+  // stale either.
+  async function handleLogWater() {
+    setLoggingWater(true);
+    try {
+      await logWaterEntry(WATER_QUICK_ADD_ML);
+      const data = await fetchWaterSummary();
+      setWater(data);
+    } catch (err) {
+      showAlert('Could not log water', err.message);
+    } finally {
+      setLoggingWater(false);
+    }
+  }
+
+  // Undoes the most recently logged entry today - a mis-tap on +250ml
+  // shouldn't require a support ticket to fix.
+  async function handleUndoWater() {
+    const entries = water?.entries || [];
+    if (entries.length === 0) return;
+    const last = entries[entries.length - 1];
+    setUndoingWater(true);
+    try {
+      await deleteWaterEntry(last.id);
+      const data = await fetchWaterSummary();
+      setWater(data);
+    } catch (err) {
+      showAlert('Could not undo that entry', err.message);
+    } finally {
+      setUndoingWater(false);
+    }
+  }
+
+  async function handleRefreshWaterTarget() {
+    setRefreshingWaterTarget(true);
+    try {
+      const data = await refreshWaterTarget();
+      setWater((prev) => (prev ? { ...prev, target: data.target } : prev));
+    } catch (err) {
+      showAlert('Could not refresh your water target', err.message);
+    } finally {
+      setRefreshingWaterTarget(false);
     }
   }
 
@@ -336,6 +402,23 @@ export default function DashboardScreen({ navigation }) {
               today={diet.today}
               pendingReviewCount={diet.pendingReviewCount}
               onPress={() => navigation.navigate('Diet')}
+            />
+          </View>
+        )}
+
+        {water && (
+          <View style={styles.sectionSpacing}>
+            <WaterBottleTracker
+              totalMl={water.totalMl}
+              target={water.target}
+              alert={water.alert}
+              onAdd={handleLogWater}
+              onUndo={handleUndoWater}
+              onRefreshTarget={handleRefreshWaterTarget}
+              adding={loggingWater}
+              undoing={undoingWater}
+              refreshingTarget={refreshingWaterTarget}
+              canUndo={(water.entries || []).length > 0}
             />
           </View>
         )}
