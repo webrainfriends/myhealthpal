@@ -273,6 +273,82 @@ async function purgeExpiredScans({ days = config.security.retentionUnconfirmedSc
   return summary;
 }
 
+// ---- Closed-beta guest cleanup ----------------------------------------------
+
+// Permanently deletes guest accounts (auth_provider = 'guest') created
+// before `before`, and everything that hangs off them via FK ON DELETE
+// CASCADE (reports, measurements, medications, diet/activity logs, chat,
+// insights, AI usage, family_links, ...). A guest has no credential to
+// recover the account with, so this is the only way a stale beta tester
+// frees up a slot in the closed-beta cap (config.maxRegisteredUsers) - see
+// authService.withRegistrationCap. Does NOT touch managed family profiles a
+// deleted guest created (each is its own `users` row and may still be
+// wanted) - decide separately whether those should go too.
+//
+// The delete is one statement in one transaction: if any row it would
+// remove is still referenced elsewhere without ON DELETE CASCADE/SET NULL
+// (e.g. measurement_corrections.corrected_by pointing at one of these
+// guests from someone else's report), the whole batch fails and nothing is
+// deleted - never a partial cleanup.
+async function deleteStaleGuestAccounts({ before, dryRun = true } = {}) {
+  if (!before) throw new Error('deleteStaleGuestAccounts requires a `before` cutoff date');
+  const cutoff = before instanceof Date ? before : new Date(before);
+  if (Number.isNaN(cutoff.getTime())) throw new Error(`Invalid cutoff date: ${before}`);
+
+  const { rows: guests } = await pool.query(
+    `SELECT id FROM users WHERE auth_provider = 'guest' AND created_at < $1 ORDER BY created_at`,
+    [cutoff]
+  );
+  const summary = { cutoff: cutoff.toISOString(), matched: guests.length, deleted: 0, filesRemoved: 0, filesFailed: 0 };
+  if (dryRun || guests.length === 0) return summary;
+
+  const ids = guests.map((g) => g.id);
+
+  // Collected before the delete, since the cascade removes these rows too -
+  // needed afterward to clean their files out of the encrypted store/disk.
+  const fileRows = [];
+  for (const { table } of FILE_TABLES) {
+    const { rows } = await pool.query(`SELECT * FROM ${table} WHERE user_id = ANY($1::uuid[])`, [ids]);
+    fileRows.push(...rows);
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const deleted = await client.query('DELETE FROM users WHERE id = ANY($1::uuid[])', [ids]);
+    await client.query('COMMIT');
+    summary.deleted = deleted.rowCount;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  for (const row of fileRows) {
+    try {
+      if (row.storage_object_key) await store.remove(row);
+      if (row.storage_path) {
+        await fs.promises.unlink(row.storage_path).catch((err) => {
+          if (err.code !== 'ENOENT') throw err;
+        });
+      }
+      summary.filesRemoved += 1;
+    } catch (err) {
+      // The row (and its wrapped key) is already gone with the account, so
+      // a leftover ciphertext object is disk space, not exposure - never
+      // fail the run over it.
+      summary.filesFailed += 1;
+    }
+  }
+
+  for (const id of ids) {
+    await audit.record({ eventType: 'ACCOUNT_DELETED', userId: id, purpose: 'stale_guest_cleanup', actorType: 'system' });
+  }
+
+  return summary;
+}
+
 // ---- Key service health check ---------------------------------------------
 
 // Round-trips a data key through the configured provider - used by deploys
@@ -289,4 +365,12 @@ async function checkKeyProvider() {
   return { provider: provider.name, keyReference: await provider.currentKeyReference() };
 }
 
-module.exports = { encryptLegacyUploads, rewrapKeys, reencryptFiles, purgeExpiredScans, checkKeyProvider, FILE_TABLES };
+module.exports = {
+  encryptLegacyUploads,
+  rewrapKeys,
+  reencryptFiles,
+  purgeExpiredScans,
+  deleteStaleGuestAccounts,
+  checkKeyProvider,
+  FILE_TABLES,
+};

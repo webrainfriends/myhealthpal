@@ -497,4 +497,16 @@ module.exports = {
   // pattern-analysis tips are - one query, one source of truth.
   fetchActiveMedications,
   fetchAbnormalDietRelevantLabs,
+  // Reused by scheduleImpactService.js so a schedule's worsens/improves
+  // verdict is judged against the exact same daily-intake thresholds these
+  // pattern tips already use - one set of numbers, not two that can drift.
+  SODIUM_DAILY_LIMIT_MG,
+  SUGAR_DAILY_LIMIT_G,
+  FIBER_DAILY_TARGET_G,
+  IRON_DAILY_TARGET_MG,
+  CHOLESTEROL_DAILY_LIMIT_MG,
+  // Reused by scheduleImpactService.js for the same hallucination guard on
+  // any Claude-rephrased impact-flag text.
+  allowedNumbersFromEvidence,
+  textOnlyReferencesAllowedNumbers,
 };

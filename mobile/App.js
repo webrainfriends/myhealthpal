@@ -5,6 +5,7 @@ import { AuthProvider } from './src/auth/AuthContext';
 import { I18nProvider } from './src/i18n/I18nContext';
 import { VoiceProvider } from './src/voice/VoiceContext';
 import ErrorBoundary from './src/components/ErrorBoundary';
+import AlertHost from './src/components/AlertHost';
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
             <ErrorBoundary>
               <RootNavigator />
             </ErrorBoundary>
+            <AlertHost />
           </VoiceProvider>
         </I18nProvider>
       </AuthProvider>

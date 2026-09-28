@@ -767,4 +767,197 @@ export async function saveWeightGoal({ currentWeightKg, targetWeightKg, targetDa
   return handleResponse(response);
 }
 
+// --- Mini kitchen (pantry) ---
+
+export async function fetchKitchenItems({ category, search, availableOnly } = {}) {
+  const params = new URLSearchParams();
+  if (category) params.set('category', category);
+  if (search) params.set('search', search);
+  if (availableOnly) params.set('available_only', 'true');
+  const query = params.toString();
+  const response = await apiFetch(`/api/kitchen/items${query ? `?${query}` : ''}`);
+  return handleResponse(response);
+}
+
+export async function addKitchenItem(fields) {
+  const response = await apiFetch('/api/kitchen/items', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  });
+  return handleResponse(response);
+}
+
+export async function updateKitchenItem(itemId, fields) {
+  const response = await apiFetch(`/api/kitchen/items/${itemId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  });
+  return handleResponse(response);
+}
+
+export async function deleteKitchenItem(itemId) {
+  const response = await apiFetch(`/api/kitchen/items/${itemId}`, { method: 'DELETE' });
+  if (!response.ok) return handleResponse(response);
+  return null;
+}
+
+// --- Diet schedules ---
+
+export async function fetchDietSchedules() {
+  const response = await apiFetch('/api/diet-schedules');
+  return handleResponse(response);
+}
+
+export async function fetchDietSchedule(scheduleId) {
+  const response = await apiFetch(`/api/diet-schedules/${scheduleId}`);
+  return handleResponse(response);
+}
+
+export async function createManualDietSchedule({ title, durationDays, startDate, entries }) {
+  const response = await apiFetch('/api/diet-schedules', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title,
+      duration_days: durationDays,
+      start_date: startDate,
+      entries: entries.map((e) => ({ day_number: e.dayNumber, meal_type: e.mealType, dish_name: e.dishName })),
+    }),
+  });
+  return handleResponse(response);
+}
+
+export async function generateDietScheduleFromKitchen({ title, durationDays, startDate, kitchenItemIds, mealTypesPerDay }) {
+  const response = await apiFetch('/api/diet-schedules/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title,
+      duration_days: durationDays,
+      start_date: startDate,
+      kitchen_item_ids: kitchenItemIds,
+      meal_types_per_day: mealTypesPerDay,
+    }),
+  });
+  return handleResponse(response);
+}
+
+// Same {uri, name, mimeType, file} shape the document/image pickers hand
+// back everywhere else (see uploadReport/uploadDietScan above) - any format
+// the report pipeline already reads (PDF/DOCX/XLSX/CSV/photo) works here too.
+export async function importDietSchedule(file, { durationDays, startDate }) {
+  const formData = new FormData();
+  if (file.file) {
+    formData.append('file', file.file, file.name);
+  } else {
+    formData.append('file', { uri: file.uri, name: file.name, type: file.mimeType || 'application/octet-stream' });
+  }
+  formData.append('duration_days', String(durationDays));
+  formData.append('start_date', startDate);
+
+  const response = await apiFetch('/api/diet-schedules/import', { method: 'POST', body: formData });
+  return handleResponse(response);
+}
+
+export async function fetchDietScheduleImport(importId) {
+  const response = await apiFetch(`/api/diet-schedules/imports/${importId}`);
+  return handleResponse(response);
+}
+
+export async function deleteDietSchedule(scheduleId) {
+  const response = await apiFetch(`/api/diet-schedules/${scheduleId}`, { method: 'DELETE' });
+  if (!response.ok) return handleResponse(response);
+  return null;
+}
+
+export async function updateDietScheduleEntry(entryId, { dishName, mealType }) {
+  const response = await apiFetch(`/api/diet-schedules/entries/${entryId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dish_name: dishName, meal_type: mealType }),
+  });
+  return handleResponse(response);
+}
+
+export async function logDietScheduleEntry(entryId, consumedAt) {
+  const response = await apiFetch(`/api/diet-schedules/entries/${entryId}/log`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ consumed_at: consumedAt || undefined }),
+  });
+  return handleResponse(response);
+}
+
+export async function retryDietScheduleEntryRecipe(entryId) {
+  const response = await apiFetch(`/api/diet-schedules/entries/${entryId}/retry-recipe`, { method: 'POST' });
+  return handleResponse(response);
+}
+
+export async function fetchDietScheduleImpact(scheduleId, { refresh } = {}) {
+  const path = refresh ? `/api/diet-schedules/${scheduleId}/impact/refresh` : `/api/diet-schedules/${scheduleId}/impact`;
+  const response = await apiFetch(path, refresh ? { method: 'POST' } : undefined);
+  return handleResponse(response);
+}
+
+// --- Water intake ---
+
+export async function fetchWaterSummary(date) {
+  const response = await apiFetch(`/api/water/summary${date ? `?date=${date}` : ''}`);
+  return handleResponse(response);
+}
+
+export async function logWaterEntry(amountMl, loggedAt) {
+  const response = await apiFetch('/api/water/entries', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ amount_ml: amountMl, logged_at: loggedAt || undefined }),
+  });
+  return handleResponse(response);
+}
+
+export async function deleteWaterEntry(entryId) {
+  const response = await apiFetch(`/api/water/entries/${entryId}`, { method: 'DELETE' });
+  if (!response.ok) return handleResponse(response);
+  return null;
+}
+
+export async function refreshWaterTarget() {
+  const response = await apiFetch('/api/water/target/refresh', { method: 'POST' });
+  return handleResponse(response);
+}
+
+export async function updateWaterSettings(remindersEnabled) {
+  const response = await apiFetch('/api/account/water-settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ remindersEnabled }),
+  });
+  return handleResponse(response);
+}
+
+// --- Recipe reactions (Love/Like/Unlike) ---
+
+export async function fetchRecipeReactions(recipeSuggestionIds) {
+  if (!recipeSuggestionIds || recipeSuggestionIds.length === 0) return { reactions: {} };
+  const response = await apiFetch(`/api/recipe-reactions?ids=${recipeSuggestionIds.join(',')}`);
+  return handleResponse(response);
+}
+
+export async function setRecipeReaction(recipeSuggestionId, reactionType) {
+  const response = await apiFetch(`/api/recipe-reactions/${recipeSuggestionId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reactionType }),
+  });
+  return handleResponse(response);
+}
+
+export async function clearRecipeReaction(recipeSuggestionId) {
+  const response = await apiFetch(`/api/recipe-reactions/${recipeSuggestionId}`, { method: 'DELETE' });
+  if (!response.ok) return handleResponse(response);
+  return null;
+}
+
 export { API_BASE_URL };

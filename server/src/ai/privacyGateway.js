@@ -21,6 +21,10 @@ const PURPOSES = {
   chat: 'ai_health_insights',
   diet_insight: 'ai_health_insights',
   recipe: 'ai_health_insights',
+  // Reading a diet schedule out of an uploaded document (PDF/DOCX/XLSX/CSV/
+  // photo) - same consent type as report_extraction/diet_photo since it's
+  // the same kind of "read my uploaded document" AI processing.
+  diet_schedule_import: 'ai_document_processing',
   custom_card_grouping: 'ai_health_insights',
   // A medicine's generic reference description - the request carries only
   // the medicine's name, no personal data, so no consent is needed.
