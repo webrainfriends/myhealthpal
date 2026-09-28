@@ -25,7 +25,13 @@
       "apiBaseUrl": null
     },
     "plugins": [
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "EyeMyHealth uses your location to show the local weather and air quality on your dashboard."
+        }
+      ]
     ]
   }
 }

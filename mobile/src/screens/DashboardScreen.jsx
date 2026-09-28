@@ -27,6 +27,7 @@ import { useAuth } from '../auth/AuthContext';
 import { useT } from '../i18n/I18nContext';
 import { showAlert } from '../utils/alert';
 import { formatCalendarDate } from '../utils/date';
+import { fetchLocationWeather } from '../utils/weather';
 
 function formatDate(value, t) {
   if (!value) return t('common.unknownDate');
@@ -112,6 +113,22 @@ export default function DashboardScreen({ navigation }) {
   const [diet, setDiet] = useState(null);
   const [retestPlans, setRetestPlans] = useState([]);
   const [pickerVisible, setPickerVisible] = useState(false);
+  const [weather, setWeather] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    // Fetched once per app open, not on every focus - the location prompt
+    // and two network calls it takes aren't worth repeating each time the
+    // user tabs back to this screen.
+    fetchLocationWeather()
+      .then((result) => {
+        if (!cancelled) setWeather(result);
+      })
+      .catch((err) => console.warn('Failed to load local weather', err?.message));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const load = useCallback(async () => {
     // Promise.all rejects (and skips every setter below, including ones
@@ -258,6 +275,24 @@ export default function DashboardScreen({ navigation }) {
                     : t('family.heroSubtitle', { name: activeProfile.displayName })
                   : t('dashboard.subtitle')}
               </Text>
+              {weather && (
+                <View style={styles.weatherRow}>
+                  {weather.temperature !== undefined && (
+                    <View style={styles.weatherChip}>
+                      <Text style={styles.weatherChipText}>
+                        {weather.weatherIcon} {weather.temperature}°
+                      </Text>
+                    </View>
+                  )}
+                  {weather.aqi !== undefined && (
+                    <View style={styles.weatherChip}>
+                      <Text style={styles.weatherChipText}>
+                        💨 {t('dashboard.aqiLabel')} {weather.aqi} · {t(`dashboard.aqi.${weather.aqiCategory}`)}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              )}
             </View>
             <Mascot size={92} />
           </View>
@@ -469,6 +504,23 @@ const styles = StyleSheet.create({
   greetingBlock: {
     flex: 1,
     gap: 4,
+  },
+  weatherRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: 6,
+  },
+  weatherChip: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: radii.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  weatherChipText: {
+    color: colors.onBrand,
+    fontSize: 12,
+    fontWeight: '600',
   },
   greetingRow: {
     flexDirection: 'row',
