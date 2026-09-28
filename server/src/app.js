@@ -101,6 +101,9 @@ app.use((err, req, res, next) => {
   if (err.code === 'upload_rejected') {
     return res.status(400).json({ code: 'upload_rejected', error: err.message });
   }
+  if (err.code === 'registration_closed') {
+    return res.status(403).json({ code: 'registration_closed', error: err.message });
+  }
   logError(`${req.method} ${req.baseUrl || ''}${req.route?.path || ''}`, err);
   res.status(500).json({ error: 'Internal server error' });
 });

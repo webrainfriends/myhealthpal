@@ -68,6 +68,9 @@ module.exports = {
   databaseUrl: process.env.DATABASE_URL,
   uploadDir: path.resolve(__dirname, '..', process.env.UPLOAD_DIR || 'uploads'),
   maxUploadBytes: Number(process.env.MAX_UPLOAD_BYTES) || 20 * 1024 * 1024,
+  // Closed-beta ceiling on total `users` rows (guest, Google, Apple, and
+  // managed family profiles all count) - see authService.withRegistrationCap.
+  maxRegisteredUsers: Number(process.env.MAX_REGISTERED_USERS) || 20,
   // Retest Radar's "Book test" link. {test} is replaced with the URL-encoded
   // test name - point this at a lab partner's search/booking page when one
   // exists; the default is a nearby-labs map search.

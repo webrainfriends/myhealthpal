@@ -1,6 +1,8 @@
 const crypto = require('crypto');
 const pool = require('../db/pool');
+const config = require('../config');
 const { normalizeLanguage } = require('./languageService');
+const { RegistrationClosedError, REGISTRATION_CAP_LOCK_KEY } = require('./authService');
 
 const INVITE_TTL_DAYS = 7;
 // No 0/O/1/I/L - codes are read out over the phone to a parent or sibling.
@@ -94,6 +96,14 @@ async function createManagedProfile(account, { displayName, relation }) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    // Same advisory lock authService.withRegistrationCap uses - a managed
+    // profile is still a new `users` row, so it counts against the
+    // closed-beta cap just like a guest/Google/Apple sign-up does.
+    await client.query('SELECT pg_advisory_xact_lock($1)', [REGISTRATION_CAP_LOCK_KEY]);
+    const { rows: countRows } = await client.query('SELECT COUNT(*)::int AS count FROM users');
+    if (countRows[0].count >= config.maxRegisteredUsers) {
+      throw new RegistrationClosedError();
+    }
     // A managed profile starts in the caregiver's language (AI summaries,
     // voice readout); it can be changed while acting as that profile.
     const { rows } = await client.query(
