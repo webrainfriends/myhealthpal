@@ -94,17 +94,21 @@ export default function LoginScreen() {
   const { t } = useI18n();
   const [authConfig, setAuthConfig] = useState(null);
   const [busy, setBusy] = useState(false);
-  // Closed-beta cap reached - set from GET /auth/config on load, or from any
-  // sign-in attempt's 403 registration_closed response (the config could
-  // have said "open" a moment before the last slot filled).
-  const [registrationClosed, setRegistrationClosed] = useState(false);
+  // Closed-beta cap reached - set from GET /auth/config on load, or from a
+  // guest sign-in's 403 registration_closed response (the config could have
+  // said "open" a moment before the last slot filled). This only ever gates
+  // *new* guest accounts (every "Continue as Guest" tap creates a fresh
+  // row) - it must never hide the Google/Apple options, since an existing
+  // account always signs back in fine regardless of how full the cap is
+  // (see authService.upsertOAuthUser).
+  const [guestClosed, setGuestClosed] = useState(false);
   const googleButtonRef = useRef(null);
 
   useEffect(() => {
     fetchAuthConfig()
       .then((cfg) => {
         setAuthConfig(cfg);
-        if (cfg.registrationOpen === false) setRegistrationClosed(true);
+        if (cfg.registrationOpen === false) setGuestClosed(true);
       })
       // Fail open on a transient config-fetch error - the server still
       // enforces the cap regardless of what the client believes here.
@@ -112,7 +116,7 @@ export default function LoginScreen() {
   }, []);
 
   useEffect(() => {
-    if (!authConfig?.googleClientId || registrationClosed || Platform.OS !== 'web' || !googleButtonRef.current) return;
+    if (!authConfig?.googleClientId || Platform.OS !== 'web' || !googleButtonRef.current) return;
     renderGoogleButton({
       clientId: authConfig.googleClientId,
       container: googleButtonRef.current,
@@ -121,8 +125,12 @@ export default function LoginScreen() {
         try {
           await signInWithGoogle(idToken);
         } catch (err) {
+          // A 403 here means this Google identity has never signed in before
+          // and the beta cap is full - it's a one-off failure for this
+          // attempt, not a reason to hide the button for everyone else
+          // (an existing account always signs back in fine).
           if (err.code === 'registration_closed') {
-            setRegistrationClosed(true);
+            showAlert(t('login.signInFailedTitle'), t('login.registrationClosed'));
           } else {
             showAlert(t('login.signInFailedTitle'), err.message);
           }
@@ -135,7 +143,7 @@ export default function LoginScreen() {
         console.warn('Google Sign-In unavailable:', err.message);
       },
     });
-  }, [authConfig, registrationClosed, signInWithGoogle, t]);
+  }, [authConfig, signInWithGoogle, t]);
 
   async function handleGuest() {
     setBusy(true);
@@ -143,7 +151,7 @@ export default function LoginScreen() {
       await signInAsGuest();
     } catch (err) {
       if (err.code === 'registration_closed') {
-        setRegistrationClosed(true);
+        setGuestClosed(true);
       } else {
         showAlert(t('login.couldNotContinueGuest'), err.message);
       }
@@ -158,8 +166,10 @@ export default function LoginScreen() {
       const { identityToken, fullName } = await signInWithApple({ clientId: authConfig.appleClientId });
       await completeAppleSignIn(identityToken, fullName);
     } catch (err) {
+      // Same as the Google case above: only a brand-new Apple identity can
+      // ever hit the cap, so this never disables sign-in for anyone else.
       if (err.code === 'registration_closed') {
-        setRegistrationClosed(true);
+        showAlert(t('login.signInFailedTitle'), t('login.registrationClosed'));
       } else {
         showAlert(t('login.signInFailedTitle'), err.message);
       }
@@ -168,8 +178,8 @@ export default function LoginScreen() {
     }
   }
 
-  const showApple = !!authConfig?.appleClientId && isAppleSignInEligible() && !registrationClosed;
-  const showGoogle = !!authConfig?.googleClientId && Platform.OS === 'web' && !registrationClosed;
+  const showApple = !!authConfig?.appleClientId && isAppleSignInEligible();
+  const showGoogle = !!authConfig?.googleClientId && Platform.OS === 'web';
 
   return (
     <View style={styles.container}>
@@ -198,7 +208,7 @@ export default function LoginScreen() {
           <View style={styles.sheet}>
             <Text style={styles.sheetTitle}>{t('login.getStarted')}</Text>
             <Text style={[typography.bodySecondary, styles.subtitle]}>{t('login.subtitle')}</Text>
-            {registrationClosed && <BetaCapacityBanner />}
+            {guestClosed && <BetaCapacityBanner />}
 
             <View style={styles.actions}>
               {busy && <ActivityIndicator color={colors.primary} style={styles.spinner} />}
@@ -209,7 +219,7 @@ export default function LoginScreen() {
                 title={t('login.continueAsGuest')}
                 variant={showApple || showGoogle ? 'secondary' : 'primary'}
                 onPress={handleGuest}
-                disabled={busy || registrationClosed}
+                disabled={busy || guestClosed}
               />
             </View>
 
