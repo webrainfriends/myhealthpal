@@ -3,8 +3,9 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ChipSelect from '../components/ChipSelect';
 import PrimaryButton from '../components/PrimaryButton';
+import RecipeReactionRow from '../components/RecipeReactionRow';
 import { cardShadow, colors, radii, spacing, typography } from '../theme/theme';
-import { fetchSavedRecipes, generateRecipeFeed, logRecipeSuggestion } from '../api/client';
+import { fetchRecipeReactions, fetchSavedRecipes, generateRecipeFeed, logRecipeSuggestion } from '../api/client';
 import { showAlert } from '../utils/alert';
 
 // Matches the server's per-generation cap (dietRecipeService FEED_MAX_COUNT).
@@ -54,6 +55,7 @@ export default function RecipesScreen() {
   const [error, setError] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
   const [addingId, setAddingId] = useState(null);
+  const [reactions, setReactions] = useState({});
 
   const loadSaved = useCallback(async (type) => {
     setLoading(true);
@@ -61,6 +63,8 @@ export default function RecipesScreen() {
     try {
       const data = await fetchSavedRecipes({ mealType: type });
       setRecipes(data.recipes);
+      const reactionData = await fetchRecipeReactions(data.recipes.map((r) => r.id));
+      setReactions(reactionData.reactions || {});
     } catch (err) {
       setError(err.message);
     } finally {
@@ -201,6 +205,14 @@ export default function RecipesScreen() {
                 </View>
               )}
 
+              <View style={styles.footerRow}>
+                <RecipeReactionRow
+                  recipeSuggestionId={recipe.id}
+                  reaction={reactions[recipe.id] || null}
+                  onChange={(next) => setReactions((prev) => ({ ...prev, [recipe.id]: next }))}
+                />
+              </View>
+
               <PrimaryButton
                 title={recipe.addedAt ? 'Add to diet again' : 'Add to diet'}
                 variant={recipe.addedAt ? 'secondary' : 'primary'}
@@ -282,6 +294,10 @@ const styles = StyleSheet.create({
   },
   nutritionItem: {
     minWidth: 70,
+  },
+  footerRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
   },
   expandHint: {
     color: colors.primary,
