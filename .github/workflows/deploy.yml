@@ -155,6 +155,14 @@ jobs:
             if [ -z "${KMS_KEY_ID:-}" ]; then
               abort_deploy "KMS_KEY_ID is not set. Create a KMS key, attach an EC2 instance role that can use it, and add the KMS_KEY_ID repository secret - see docs/security/key-management.md."
             fi
+            # A GitHub secret can carry an invisible trailing newline/CR
+            # depending on how it was originally pasted in; KMS rejects a
+            # keyId with one attached as NotFoundException, which looks
+            # identical in the logs to a real permissions problem. Strip
+            # whitespace here so a correct value behaves the same whether
+            # typed by hand or sourced from the secret.
+            KMS_KEY_ID="$(printf '%s' "$KMS_KEY_ID" | tr -d '\r\n' | xargs)"
+            KMS_REGION="$(printf '%s' "${KMS_REGION:-ap-southeast-1}" | tr -d '\r\n' | xargs)"
             (cd server && npm ci --omit=dev) || abort_deploy "npm ci failed"
             if ! (cd server && NODE_ENV=production KEY_PROVIDER=aws-kms KMS_KEY_ID="$KMS_KEY_ID" KMS_REGION="${KMS_REGION:-ap-southeast-1}" \
                   ENCRYPTED_STORE_DIR="$VAULT_DIR" JWT_SECRET=preflight-only LOCAL_DEV_MASTER_KEY= LEGACY_PLAINTEXT_READS=deny \
