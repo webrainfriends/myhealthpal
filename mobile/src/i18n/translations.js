@@ -75,6 +75,7 @@ export const TRANSLATIONS = {
         'Guest access is tied to this device/browser only — sign in with Google or Apple to keep your data if you switch devices or clear browser storage.',
       signInFailedTitle: 'Sign-in failed',
       couldNotContinueGuest: 'Could not continue as guest',
+      registrationClosed: 'This app is under beta testing — see you soon!',
     },
     dashboard: {
       greetingMorning: 'Good morning',
@@ -726,6 +727,7 @@ export const TRANSLATIONS = {
         'El acceso de invitado está vinculado solo a este dispositivo o navegador — inicia sesión con Google o Apple para conservar tus datos si cambias de dispositivo o borras el almacenamiento del navegador.',
       signInFailedTitle: 'Error al iniciar sesión',
       couldNotContinueGuest: 'No se pudo continuar como invitado',
+      registrationClosed: 'Esta app está en fase beta — ¡nos vemos pronto!',
     },
     dashboard: {
       greetingMorning: 'Buenos días',
@@ -1173,6 +1175,7 @@ export const TRANSLATIONS = {
         "L'accès invité est lié uniquement à cet appareil/navigateur — connectez-vous avec Google ou Apple pour conserver vos données si vous changez d'appareil ou effacez le stockage du navigateur.",
       signInFailedTitle: 'Échec de la connexion',
       couldNotContinueGuest: 'Impossible de continuer en tant qu\'invité',
+      registrationClosed: 'Cette application est en version bêta — à bientôt !',
     },
     dashboard: {
       greetingMorning: 'Bonjour',
@@ -1620,6 +1623,7 @@ export const TRANSLATIONS = {
         'Der Gastzugang ist nur an dieses Gerät/diesen Browser gebunden — melde dich mit Google oder Apple an, um deine Daten beim Gerätewechsel oder Löschen des Browserspeichers zu behalten.',
       signInFailedTitle: 'Anmeldung fehlgeschlagen',
       couldNotContinueGuest: 'Konnte nicht als Gast fortfahren',
+      registrationClosed: 'Diese App befindet sich in der Betaphase — bis bald!',
     },
     dashboard: {
       greetingMorning: 'Guten Morgen',
@@ -2067,6 +2071,7 @@ export const TRANSLATIONS = {
         'O acesso de convidado está vinculado apenas a este dispositivo/navegador — entre com Google ou Apple para manter seus dados ao trocar de dispositivo ou limpar o armazenamento do navegador.',
       signInFailedTitle: 'Falha no login',
       couldNotContinueGuest: 'Não foi possível continuar como convidado',
+      registrationClosed: 'Este aplicativo está em fase beta — até breve!',
     },
     dashboard: {
       greetingMorning: 'Bom dia',
@@ -2514,6 +2519,7 @@ export const TRANSLATIONS = {
         'Гостевой доступ привязан только к этому устройству/браузеру — войдите через Google или Apple, чтобы сохранить данные при смене устройства или очистке хранилища браузера.',
       signInFailedTitle: 'Не удалось войти',
       couldNotContinueGuest: 'Не удалось продолжить как гость',
+      registrationClosed: 'Это приложение находится в закрытом бета-тестировании — до скорой встречи!',
     },
     dashboard: {
       greetingMorning: 'Доброе утро',
@@ -2964,6 +2970,7 @@ export const TRANSLATIONS = {
         'अतिथि पहुंच केवल इस डिवाइस/ब्राउज़र तक सीमित है — डिवाइस बदलने या ब्राउज़र स्टोरेज साफ़ करने पर अपना डेटा रखने के लिए Google या Apple से साइन इन करें।',
       signInFailedTitle: 'साइन-इन विफल',
       couldNotContinueGuest: 'अतिथि के रूप में जारी नहीं रखा जा सका',
+      registrationClosed: 'यह ऐप बीटा परीक्षण में है — जल्द मिलते हैं!',
     },
     dashboard: {
       greetingMorning: 'सुप्रभात',
@@ -3560,6 +3567,7 @@ export const TRANSLATIONS = {
       footnote: '访客访问仅限于此设备/浏览器 — 使用 Google 或 Apple 登录，以便在更换设备或清除浏览器存储后保留您的数据。',
       signInFailedTitle: '登录失败',
       couldNotContinueGuest: '无法以访客身份继续',
+      registrationClosed: '本应用目前处于测试阶段——我们很快回来！',
     },
     dashboard: {
       greetingMorning: '早上好',
@@ -4000,6 +4008,7 @@ export const TRANSLATIONS = {
       footnote: 'ゲストアクセスはこの端末・ブラウザに限定されます。端末を変えたりブラウザのデータを消去してもデータを保持するには、GoogleまたはAppleでサインインしてください。',
       signInFailedTitle: 'サインインに失敗しました',
       couldNotContinueGuest: 'ゲストとして続行できませんでした',
+      registrationClosed: 'このアプリは現在ベータテスト中です — また近いうちに！',
     },
     dashboard: {
       greetingMorning: 'おはようございます',
@@ -4442,6 +4451,7 @@ export const TRANSLATIONS = {
         '.وصول الضيف مرتبط بهذا الجهاز/المتصفح فقط — سجّل الدخول عبر Google أو Apple للاحتفاظ ببياناتك عند تغيير الجهاز أو مسح بيانات المتصفح',
       signInFailedTitle: 'فشل تسجيل الدخول',
       couldNotContinueGuest: 'تعذّرت المتابعة كضيف',
+      registrationClosed: 'هذا التطبيق في مرحلة الاختبار التجريبي — أراك قريبًا!',
     },
     dashboard: {
       greetingMorning: 'صباح الخير',
@@ -4889,6 +4899,7 @@ export const TRANSLATIONS = {
         'விருந்தினர் அணுகல் இந்த சாதனம்/உலாவிக்கு மட்டுமே. சாதனத்தை மாற்றும்போது அல்லது உலாவி சேமிப்பை அழிக்கும்போது உங்கள் தரவைத் தக்கவைக்க Google அல்லது Apple மூலம் உள்நுழையவும்.',
       signInFailedTitle: 'உள்நுழைவு தோல்வியடைந்தது',
       couldNotContinueGuest: 'விருந்தினராக தொடர முடியவில்லை',
+      registrationClosed: 'இந்த ஆப் பீட்டா சோதனையில் உள்ளது — விரைவில் சந்திப்போம்!',
     },
     dashboard: {
       greetingMorning: 'காலை வணக்கம்',
@@ -5492,6 +5503,7 @@ export const TRANSLATIONS = {
         'అతిథి యాక్సెస్ ఈ పరికరం/బ్రౌజర్‌కు మాత్రమే పరిమితం — పరికరాన్ని మార్చినప్పుడు లేదా బ్రౌజర్ నిల్వను క్లియర్ చేసినప్పుడు మీ డేటాను ఉంచుకోవడానికి Google లేదా Apple తో సైన్ ఇన్ చేయండి.',
       signInFailedTitle: 'సైన్-ఇన్ విఫలమైంది',
       couldNotContinueGuest: 'అతిథిగా కొనసాగించలేకపోయింది',
+      registrationClosed: 'ఈ యాప్ బీటా టెస్టింగ్‌లో ఉంది — త్వరలో కలుద్దాం!',
     },
     dashboard: {
       greetingMorning: 'శుభోదయం',
@@ -6092,6 +6104,7 @@ export const TRANSLATIONS = {
         'Akses tetamu hanya terikat pada peranti/pelayar ini — log masuk dengan Google atau Apple untuk menyimpan data anda jika anda menukar peranti atau memadam storan pelayar.',
       signInFailedTitle: 'Log masuk gagal',
       couldNotContinueGuest: 'Tidak dapat meneruskan sebagai tetamu',
+      registrationClosed: 'Aplikasi ini sedang dalam tahap uji coba beta — sampai jumpa lagi segera!',
     },
     dashboard: {
       greetingMorning: 'Selamat pagi',

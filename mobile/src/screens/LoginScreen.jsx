@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import PrimaryButton from '../components/PrimaryButton';
 import GradientFill from '../components/brand/GradientFill';
 import Mascot from '../components/brand/Mascot';
-import { colors, radii, spacing, typography } from '../theme/theme';
+import { alertSeverityColors, colors, radii, spacing, typography } from '../theme/theme';
 import { fetchAuthConfig } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { renderGoogleButton } from '../auth/googleSignIn';
@@ -75,21 +75,44 @@ function FeaturePill({ icon, label }) {
   );
 }
 
+// Non-dismissible - unlike MedicationsScreen's AlertBanner, there's nothing
+// to tap or clear here, it just reflects server state until a slot opens up.
+function BetaCapacityBanner() {
+  const { t } = useI18n();
+  const palette = alertSeverityColors.attention;
+  return (
+    <View style={[styles.capacityBanner, { backgroundColor: palette.bg, borderLeftColor: palette.fg }]}>
+      <Text style={[typography.body, styles.capacityBannerText, { color: palette.fg }]}>
+        {t('login.registrationClosed')}
+      </Text>
+    </View>
+  );
+}
+
 export default function LoginScreen() {
   const { signInAsGuest, signInWithGoogle, signInWithApple: completeAppleSignIn } = useAuth();
   const { t } = useI18n();
   const [authConfig, setAuthConfig] = useState(null);
   const [busy, setBusy] = useState(false);
+  // Closed-beta cap reached - set from GET /auth/config on load, or from any
+  // sign-in attempt's 403 registration_closed response (the config could
+  // have said "open" a moment before the last slot filled).
+  const [registrationClosed, setRegistrationClosed] = useState(false);
   const googleButtonRef = useRef(null);
 
   useEffect(() => {
     fetchAuthConfig()
-      .then(setAuthConfig)
-      .catch(() => setAuthConfig({ googleClientId: null, appleClientId: null }));
+      .then((cfg) => {
+        setAuthConfig(cfg);
+        if (cfg.registrationOpen === false) setRegistrationClosed(true);
+      })
+      // Fail open on a transient config-fetch error - the server still
+      // enforces the cap regardless of what the client believes here.
+      .catch(() => setAuthConfig({ googleClientId: null, appleClientId: null, registrationOpen: true }));
   }, []);
 
   useEffect(() => {
-    if (!authConfig?.googleClientId || Platform.OS !== 'web' || !googleButtonRef.current) return;
+    if (!authConfig?.googleClientId || registrationClosed || Platform.OS !== 'web' || !googleButtonRef.current) return;
     renderGoogleButton({
       clientId: authConfig.googleClientId,
       container: googleButtonRef.current,
@@ -98,7 +121,11 @@ export default function LoginScreen() {
         try {
           await signInWithGoogle(idToken);
         } catch (err) {
-          showAlert(t('login.signInFailedTitle'), err.message);
+          if (err.code === 'registration_closed') {
+            setRegistrationClosed(true);
+          } else {
+            showAlert(t('login.signInFailedTitle'), err.message);
+          }
         } finally {
           setBusy(false);
         }
@@ -108,14 +135,18 @@ export default function LoginScreen() {
         console.warn('Google Sign-In unavailable:', err.message);
       },
     });
-  }, [authConfig, signInWithGoogle, t]);
+  }, [authConfig, registrationClosed, signInWithGoogle, t]);
 
   async function handleGuest() {
     setBusy(true);
     try {
       await signInAsGuest();
     } catch (err) {
-      showAlert(t('login.couldNotContinueGuest'), err.message);
+      if (err.code === 'registration_closed') {
+        setRegistrationClosed(true);
+      } else {
+        showAlert(t('login.couldNotContinueGuest'), err.message);
+      }
     } finally {
       setBusy(false);
     }
@@ -127,14 +158,18 @@ export default function LoginScreen() {
       const { identityToken, fullName } = await signInWithApple({ clientId: authConfig.appleClientId });
       await completeAppleSignIn(identityToken, fullName);
     } catch (err) {
-      showAlert(t('login.signInFailedTitle'), err.message);
+      if (err.code === 'registration_closed') {
+        setRegistrationClosed(true);
+      } else {
+        showAlert(t('login.signInFailedTitle'), err.message);
+      }
     } finally {
       setBusy(false);
     }
   }
 
-  const showApple = !!authConfig?.appleClientId && isAppleSignInEligible();
-  const showGoogle = !!authConfig?.googleClientId && Platform.OS === 'web';
+  const showApple = !!authConfig?.appleClientId && isAppleSignInEligible() && !registrationClosed;
+  const showGoogle = !!authConfig?.googleClientId && Platform.OS === 'web' && !registrationClosed;
 
   return (
     <View style={styles.container}>
@@ -163,6 +198,7 @@ export default function LoginScreen() {
           <View style={styles.sheet}>
             <Text style={styles.sheetTitle}>{t('login.getStarted')}</Text>
             <Text style={[typography.bodySecondary, styles.subtitle]}>{t('login.subtitle')}</Text>
+            {registrationClosed && <BetaCapacityBanner />}
 
             <View style={styles.actions}>
               {busy && <ActivityIndicator color={colors.primary} style={styles.spinner} />}
@@ -173,7 +209,7 @@ export default function LoginScreen() {
                 title={t('login.continueAsGuest')}
                 variant={showApple || showGoogle ? 'secondary' : 'primary'}
                 onPress={handleGuest}
-                disabled={busy}
+                disabled={busy || registrationClosed}
               />
             </View>
 
@@ -313,6 +349,18 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     marginTop: -spacing.sm,
+  },
+  capacityBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderLeftWidth: 4,
+    borderRadius: radii.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  capacityBannerText: {
+    flex: 1,
+    fontWeight: '600',
   },
   actions: {
     gap: spacing.sm,

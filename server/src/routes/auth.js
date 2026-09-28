@@ -23,11 +23,17 @@ function publicUser(user) {
 // IDs are not secrets (they're embedded in every client-side auth request
 // regardless of who can see this endpoint), so exposing them unauthenticated
 // is safe - this is only ever config, never a credential.
-router.get('/config', (req, res) => {
-  res.json({
-    googleClientId: config.googleClientId,
-    appleClientId: config.appleClientId,
-  });
+router.get('/config', async (req, res, next) => {
+  try {
+    const count = await authService.countUsers();
+    res.json({
+      googleClientId: config.googleClientId,
+      appleClientId: config.appleClientId,
+      registrationOpen: count < config.maxRegisteredUsers,
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 router.post('/guest', async (req, res, next) => {
@@ -46,6 +52,9 @@ router.post('/google', async (req, res) => {
     const user = await authService.upsertOAuthUser({ provider: 'google', providerUserId, email, displayName });
     res.json({ token: authService.signSession(user), user: publicUser(user) });
   } catch (err) {
+    if (err.code === 'registration_closed') {
+      return res.status(403).json({ code: 'registration_closed', error: err.message });
+    }
     // eslint-disable-next-line no-console
     console.error('Google sign-in failed:', err.message);
     if (err.message.includes('not configured')) return res.status(503).json({ error: err.message });
@@ -64,6 +73,9 @@ router.post('/apple', async (req, res) => {
     const user = await authService.upsertOAuthUser({ provider: 'apple', providerUserId, email, displayName });
     res.json({ token: authService.signSession(user), user: publicUser(user) });
   } catch (err) {
+    if (err.code === 'registration_closed') {
+      return res.status(403).json({ code: 'registration_closed', error: err.message });
+    }
     // eslint-disable-next-line no-console
     console.error('Apple sign-in failed:', err.message);
     if (err.message.includes('not configured')) return res.status(503).json({ error: err.message });
