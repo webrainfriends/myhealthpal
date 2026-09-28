@@ -124,6 +124,46 @@ export const TRANSLATIONS = {
       voiceSubtitle: 'Have lab results, insights, and recommendations read aloud',
       aiUsageTitle: 'AI usage',
       aiUsageSubtitle: 'AI tokens used by this session and your account, by feature, with estimated cost',
+      deleteAccountTitle: 'Delete account',
+      deleteAccountSubtitle: 'Permanently delete your account and all of its data',
+      deleteAccountConfirmTitle: 'Delete your account?',
+      deleteAccountConfirmMessage:
+        'This permanently deletes your reports, medications, diet and activity history, chat, and any family member profile only you manage. This cannot be undone.',
+      deleteAccountFinalTitle: 'Are you absolutely sure?',
+      deleteAccountFinalMessage: 'There is no way to recover this account or its data once deleted. Signing in again starts a brand-new account.',
+      deleteAccountCancel: 'Cancel',
+      deleteAccountContinue: 'Continue',
+      deleteAccountConfirm: 'Delete forever',
+      deleteAccountFailedTitle: 'Could not delete account',
+      healthProfileTitle: 'Health profile',
+      healthProfileSubtitle: 'Weight, height, BMI, and allergies',
+    },
+    healthProfile: {
+      intro: 'Log your weight and height to track them over time and see your BMI. Add any allergies so they can be taken into account elsewhere in the app.',
+      loading: 'Loading…',
+      couldNotLoad: 'Could not load health profile',
+      couldNotSave: 'Could not save',
+      weightTitle: 'Weight',
+      heightTitle: 'Height',
+      noEntryYet: 'No entries yet',
+      recorded: 'as of {{date}}',
+      firstRecorded: 'First recorded: {{value}} {{unit}} on {{date}}',
+      addPlaceholder: 'Add {{unit}}',
+      log: 'Log',
+      bmiTitle: 'BMI',
+      bmiNeedsBoth: 'Log both weight and height to see your BMI.',
+      bmiDisclaimer: 'A general guide, not a diagnosis. Talk to your doctor about what a healthy range looks like for you.',
+      bmiCategory: {
+        underweight: 'Underweight',
+        normal: 'Normal range',
+        overweight: 'Overweight',
+        obese: 'Obese',
+      },
+      allergiesTitle: 'Allergies',
+      noAllergiesYet: 'No allergies recorded',
+      allergyPlaceholder: 'e.g. Peanuts',
+      add: 'Add',
+      refresh: 'Refresh',
     },
     aiUsage: {
       intro:
@@ -424,6 +464,10 @@ export const TRANSLATIONS = {
       warnings: 'Alerts & safety warnings',
       drugDisclaimer:
         'General drug reference information, not personalized medical advice - always check the product label and your doctor or pharmacist.',
+      alternativesToDiscuss: 'Alternatives to ask your doctor about',
+      supplementsToDiscuss: 'Supplements to ask your doctor about',
+      alternativesDisclaimer:
+        'Talking points for your next doctor visit, not a recommendation and not a checked interaction list - always confirm before changing or adding anything.',
       dosageSchedule: 'Dosage schedule',
       notRecorded: 'Not recorded',
       timesPerDay: '{{count}}x per day',
@@ -880,6 +924,10 @@ export const TRANSLATIONS = {
       warnings: 'Alertas y advertencias de seguridad',
       drugDisclaimer:
         'Información de referencia general sobre el medicamento, no un consejo médico personalizado - consulta siempre el prospecto y a tu médico o farmacéutico.',
+      alternativesToDiscuss: 'Alternativas para preguntar a tu médico',
+      supplementsToDiscuss: 'Suplementos para preguntar a tu médico',
+      alternativesDisclaimer:
+        'Puntos para hablar en tu próxima consulta médica, no una recomendación ni una verificación de interacciones - confirma siempre antes de cambiar o añadir algo.',
       dosageSchedule: 'Pauta de dosificación',
       notRecorded: 'No registrado',
       timesPerDay: '{{count}} veces al día',
@@ -1328,6 +1376,10 @@ export const TRANSLATIONS = {
       warnings: 'Alertes et mises en garde',
       drugDisclaimer:
         "Informations générales de référence sur le médicament, pas un avis médical personnalisé - vérifiez toujours la notice ainsi qu'auprès de votre médecin ou pharmacien.",
+      alternativesToDiscuss: 'Alternatives à évoquer avec votre médecin',
+      supplementsToDiscuss: 'Compléments à évoquer avec votre médecin',
+      alternativesDisclaimer:
+        "Des pistes à aborder lors de votre prochaine consultation, pas une recommandation ni une vérification des interactions - confirmez toujours avant de changer ou d'ajouter quoi que ce soit.",
       dosageSchedule: 'Posologie',
       notRecorded: 'Non renseigné',
       timesPerDay: '{{count}} fois par jour',
@@ -1776,6 +1828,10 @@ export const TRANSLATIONS = {
       warnings: 'Warnungen & Sicherheitshinweise',
       drugDisclaimer:
         'Allgemeine Arzneimittelinformationen, keine persönliche medizinische Beratung - prüfe stets die Packungsbeilage sowie mit deinem Arzt oder Apotheker.',
+      alternativesToDiscuss: 'Alternativen, die du mit deinem Arzt besprechen kannst',
+      supplementsToDiscuss: 'Nahrungsergänzungsmittel, die du besprechen kannst',
+      alternativesDisclaimer:
+        'Gesprächspunkte für deinen nächsten Arztbesuch, keine Empfehlung und keine geprüfte Wechselwirkungsliste - bestätige immer, bevor du etwas änderst oder hinzufügst.',
       dosageSchedule: 'Dosierungsplan',
       notRecorded: 'Nicht erfasst',
       timesPerDay: '{{count}}x täglich',
@@ -2224,6 +2280,10 @@ export const TRANSLATIONS = {
       warnings: 'Alertas e avisos de segurança',
       drugDisclaimer:
         'Informação de referência geral sobre o medicamento, não um conselho médico personalizado - consulte sempre a bula e seu médico ou farmacêutico.',
+      alternativesToDiscuss: 'Alternativas para perguntar ao seu médico',
+      supplementsToDiscuss: 'Suplementos para perguntar ao seu médico',
+      alternativesDisclaimer:
+        'Pontos para conversar na próxima consulta médica, não uma recomendação nem uma verificação de interações - sempre confirme antes de mudar ou adicionar algo.',
       dosageSchedule: 'Esquema de dosagem',
       notRecorded: 'Não registrado',
       timesPerDay: '{{count}}x ao dia',
@@ -2672,6 +2732,10 @@ export const TRANSLATIONS = {
       warnings: 'Предупреждения и меры предосторожности',
       drugDisclaimer:
         'Общая справочная информация о препарате, а не персональная медицинская консультация - всегда сверяйтесь с инструкцией, врачом или фармацевтом.',
+      alternativesToDiscuss: 'Альтернативы, которые стоит обсудить с врачом',
+      supplementsToDiscuss: 'Добавки, которые стоит обсудить с врачом',
+      alternativesDisclaimer:
+        'Темы для обсуждения на следующем приёме у врача, а не рекомендация и не проверенный список взаимодействий - всегда уточняйте, прежде чем что-то менять или добавлять.',
       dosageSchedule: 'Схема приёма',
       notRecorded: 'Не указано',
       timesPerDay: '{{count}} раз(а) в день',
@@ -3274,6 +3338,10 @@ export const TRANSLATIONS = {
       sideEffects: 'सामान्य दुष्प्रभाव',
       warnings: 'अलर्ट और सुरक्षा चेतावनियां',
       drugDisclaimer: 'सामान्य दवा संदर्भ जानकारी, व्यक्तिगत चिकित्सा सलाह नहीं - हमेशा उत्पाद लेबल और अपने डॉक्टर या फार्मासिस्ट से जांच करें।',
+      alternativesToDiscuss: 'डॉक्टर से पूछने योग्य विकल्प',
+      supplementsToDiscuss: 'डॉक्टर से पूछने योग्य सप्लीमेंट',
+      alternativesDisclaimer:
+        'अगली डॉक्टर विज़िट के लिए चर्चा बिंदु, न कि कोई सिफारिश और न ही जांची गई इंटरैक्शन सूची - कुछ भी बदलने या जोड़ने से पहले हमेशा पुष्टि करें।',
       dosageSchedule: 'खुराक अनुसूची',
       notRecorded: 'दर्ज नहीं',
       timesPerDay: 'दिन में {{count}} बार',
@@ -3715,6 +3783,9 @@ export const TRANSLATIONS = {
       sideEffects: '常见副作用',
       warnings: '警报与安全警示',
       drugDisclaimer: '一般药物参考信息，非个人化医疗建议 - 请始终核对产品说明书并咨询医生或药剂师。',
+      alternativesToDiscuss: '可与医生讨论的替代方案',
+      supplementsToDiscuss: '可与医生讨论的补充剂',
+      alternativesDisclaimer: '这些是下次看医生时的讨论要点，并非推荐，也未经相互作用核实——更改或添加任何药物前请务必先确认。',
       dosageSchedule: '用药方案',
       notRecorded: '未记录',
       timesPerDay: '每天 {{count}} 次',
@@ -4157,6 +4228,9 @@ export const TRANSLATIONS = {
       sideEffects: 'よくある副作用',
       warnings: '注意事項と安全に関する警告',
       drugDisclaimer: '一般的な薬の参考情報であり、個別の医療アドバイスではありません。必ず製品ラベルを確認し、医師または薬剤師に相談してください。',
+      alternativesToDiscuss: '医師に相談したい代替案',
+      supplementsToDiscuss: '医師に相談したいサプリメント',
+      alternativesDisclaimer: '次回の診察で話す話題であり、推奨でも相互作用の確認済みリストでもありません。変更や追加の前には必ず確認してください。',
       dosageSchedule: '用法・用量',
       notRecorded: '未記録',
       timesPerDay: '1日{{count}}回',
@@ -4601,6 +4675,10 @@ export const TRANSLATIONS = {
       sideEffects: 'الآثار الجانبية الشائعة',
       warnings: 'تنبيهات وتحذيرات السلامة',
       drugDisclaimer: '.معلومات مرجعية عامة عن الدواء، وليست استشارة طبية شخصية - تحقق دائمًا من ملصق المنتج ومن طبيبك أو الصيدلي',
+      alternativesToDiscuss: 'بدائل لطرحها على طبيبك',
+      supplementsToDiscuss: 'مكملات لطرحها على طبيبك',
+      alternativesDisclaimer:
+        'نقاط للنقاش في زيارتك القادمة للطبيب، وليست توصية ولا قائمة تفاعلات تم التحقق منها - تأكد دائمًا قبل تغيير أو إضافة أي شيء.',
       dosageSchedule: 'جدول الجرعات',
       notRecorded: 'غير مسجّل',
       timesPerDay: 'مرات يوميًا {{count}}',
@@ -5205,6 +5283,10 @@ export const TRANSLATIONS = {
       warnings: 'எச்சரிக்கைகள் மற்றும் பாதுகாப்பு எச்சரிக்கைகள்',
       drugDisclaimer:
         'பொதுவான மருந்து குறிப்பு தகவல், தனிப்பட்ட மருத்துவ ஆலோசனை அல்ல - எப்போதும் தயாரிப்பு லேபிளையும் உங்கள் மருத்துவர் அல்லது மருந்தாளரையும் சரிபார்க்கவும்.',
+      alternativesToDiscuss: 'மருத்துவரிடம் கேட்க வேண்டிய மாற்றுகள்',
+      supplementsToDiscuss: 'மருத்துவரிடம் கேட்க வேண்டிய சப்ளிமெண்ட்கள்',
+      alternativesDisclaimer:
+        'உங்கள் அடுத்த மருத்துவர் வருகைக்கான உரையாடல் புள்ளிகள், பரிந்துரை அல்ல, சரிபார்க்கப்பட்ட தொடர்பு பட்டியலும் அல்ல - எதையும் மாற்றும் முன் அல்லது சேர்க்கும் முன் எப்போதும் உறுதிப்படுத்தவும்.',
       dosageSchedule: 'மருந்தளவு அட்டவணை',
       notRecorded: 'பதிவு செய்யப்படவில்லை',
       timesPerDay: 'நாளொன்றுக்கு {{count}} முறை',
@@ -5809,6 +5891,10 @@ export const TRANSLATIONS = {
       warnings: 'హెచ్చరికలు & భద్రతా హెచ్చరికలు',
       drugDisclaimer:
         'సాధారణ మందు సూచన సమాచారం, వ్యక్తిగత వైద్య సలహా కాదు - ఎల్లప్పుడూ ఉత్పత్తి లేబుల్‌ను మరియు మీ వైద్యుడు లేదా ఫార్మసిస్ట్‌ను తనిఖీ చేయండి.',
+      alternativesToDiscuss: 'మీ డాక్టర్‌ను అడగవలసిన ప్రత్యామ్నాయాలు',
+      supplementsToDiscuss: 'మీ డాక్టర్‌ను అడగవలసిన సప్లిమెంట్లు',
+      alternativesDisclaimer:
+        'మీ తదుపరి డాక్టర్ సందర్శన కోసం చర్చనీయాంశాలు, ఇది సిఫారసు కాదు, తనిఖీ చేసిన ఇంటరాక్షన్ జాబితా కూడా కాదు - దేనినైనా మార్చే లేదా జోడించే ముందు ఎల్లప్పుడూ నిర్ధారించుకోండి.',
       dosageSchedule: 'మోతాదు షెడ్యూల్',
       notRecorded: 'నమోదు చేయబడలేదు',
       timesPerDay: 'రోజుకు {{count}} సార్లు',
@@ -6257,6 +6343,10 @@ export const TRANSLATIONS = {
       warnings: 'Amaran & peringatan keselamatan',
       drugDisclaimer:
         'Maklumat rujukan ubat umum, bukan nasihat perubatan peribadi - sentiasa semak label produk dan doktor atau ahli farmasi anda.',
+      alternativesToDiscuss: 'Alternatif untuk ditanya kepada doktor anda',
+      supplementsToDiscuss: 'Suplemen untuk ditanya kepada doktor anda',
+      alternativesDisclaimer:
+        'Perkara untuk dibincangkan pada lawatan doktor seterusnya, bukan cadangan dan bukan senarai interaksi yang disahkan - sentiasa sahkan sebelum menukar atau menambah apa-apa.',
       dosageSchedule: 'Jadual dos',
       notRecorded: 'Tidak direkodkan',
       timesPerDay: '{{count}}x sehari',

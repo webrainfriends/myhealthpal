@@ -157,6 +157,14 @@ export default function RecipesScreen() {
                   {recipe.addedAt && <Text style={styles.addedTag}>✓ Added</Text>}
                 </View>
 
+                {recipe.allergyWarnings?.length > 0 && (
+                  <View style={[styles.allergyWarning, { backgroundColor: alertSeverityColors.important.bg }]}>
+                    <Text style={[typography.body, styles.allergyWarningText, { color: alertSeverityColors.important.fg }]}>
+                      ⚠ Contains an ingredient matching your recorded allergy: {recipe.allergyWarnings.join(', ')}
+                    </Text>
+                  </View>
+                )}
+
                 {recipe.dietaryTags.length > 0 && (
                   <View style={styles.tagRow}>
                     {recipe.dietaryTags.map((tag) => (
@@ -270,6 +278,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.success,
     marginLeft: 'auto',
+  },
+  allergyWarning: {
+    borderRadius: radii.sm,
+    padding: spacing.sm,
+  },
+  allergyWarningText: {
+    fontWeight: '700',
   },
   tagRow: {
     flexDirection: 'row',

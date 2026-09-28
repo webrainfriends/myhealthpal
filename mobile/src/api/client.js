@@ -333,6 +333,49 @@ export async function setRetestCheckin(planId, done) {
   return handleResponse(response);
 }
 
+export async function fetchHealthProfile() {
+  const response = await apiFetch('/api/health-profile');
+  return handleResponse(response);
+}
+
+export async function addWeightEntry(weightKg) {
+  const response = await apiFetch('/api/health-profile/weight', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ weightKg }),
+  });
+  return handleResponse(response);
+}
+
+export async function addHeightEntry(heightCm) {
+  const response = await apiFetch('/api/health-profile/height', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ heightCm }),
+  });
+  return handleResponse(response);
+}
+
+export async function addAllergy(allergen) {
+  const response = await apiFetch('/api/health-profile/allergies', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ allergen }),
+  });
+  return handleResponse(response);
+}
+
+export async function removeAllergy(allergyId) {
+  const response = await apiFetch(`/api/health-profile/allergies/${allergyId}`, { method: 'DELETE' });
+  return handleResponse(response);
+}
+
+export async function deleteAccount() {
+  const response = await apiFetch('/api/account', { method: 'DELETE' });
+  if (!response.ok) return handleResponse(response);
+  return null;
+}
+
 export async function updateRetestSettings(remindersEnabled) {
   const response = await apiFetch('/api/account/retest-settings', {
     method: 'PUT',

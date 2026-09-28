@@ -29,6 +29,7 @@ import DietScheduleDetailScreen from '../screens/DietScheduleDetailScreen';
 import KitchenScreen from '../screens/KitchenScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import RecipePreferencesScreen from '../screens/RecipePreferencesScreen';
+import HealthProfileScreen from '../screens/HealthProfileScreen';
 import GmailIntegrationScreen from '../screens/GmailIntegrationScreen';
 import LoginScreen from '../screens/LoginScreen';
 import LanguagePreferenceScreen from '../screens/LanguagePreferenceScreen';
@@ -98,6 +99,7 @@ const linking = {
       Kitchen: 'kitchen',
       Settings: 'settings',
       RecipePreferences: 'settings/recipe-preferences',
+      HealthProfile: 'settings/health-profile',
       GmailIntegration: 'settings/gmail',
       LanguagePreference: 'settings/language',
       VoiceAccessibility: 'settings/voice',
@@ -278,6 +280,11 @@ export default function RootNavigator() {
           name="RecipePreferences"
           component={RecipePreferencesScreen}
           options={{ title: t('nav.recipePreferences') }}
+        />
+        <Stack.Screen
+          name="HealthProfile"
+          component={HealthProfileScreen}
+          options={{ title: t('settings.healthProfileTitle') }}
         />
         <Stack.Screen
           name="GmailIntegration"
