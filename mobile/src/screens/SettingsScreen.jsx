@@ -49,7 +49,7 @@ function RetestRemindersRow({ t }) {
 
   return (
     <View style={[styles.row, cardShadow]}>
-      <View style={[styles.rowText, styles.rowTextFlex]}>
+      <View style={styles.rowText}>
         <Text style={typography.body}>{t('retest.remindersTitle')}</Text>
         <Text style={typography.caption}>{t('retest.remindersSubtitle')}</Text>
       </View>
@@ -122,11 +122,9 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   rowText: {
-    gap: 2,
-  },
-  rowTextFlex: {
     flex: 1,
     marginRight: spacing.md,
+    gap: 2,
   },
   chevron: {
     fontSize: 20,
