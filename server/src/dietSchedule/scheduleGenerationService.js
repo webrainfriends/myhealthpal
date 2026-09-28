@@ -9,18 +9,30 @@ const kitchenService = require('../kitchen/kitchenService');
 const recipeCatalogService = require('../recipes/recipeCatalogService');
 const recipeBackfillService = require('./recipeBackfillService');
 const scheduleService = require('./scheduleService');
+const { logError } = require('../lib/safeLog');
 
 // Generates a full diet schedule constrained to a "mini kitchen" ingredient
 // selection (requirement 3), respecting the person's saved cuisine/diet-type
 // preferences (recipePreferences.js/dietRecipeService.fetchRecipePreferences)
 // and, advisorily, what similar users have reacted well to
 // (recipeCatalogService.topPopularForContext).
+//
+// Split into a fast, synchronous "create" step (DB only - returns almost
+// instantly) and a background "generate" step that makes the actual Claude
+// calls, the same enqueue-then-poll shape scheduleImportService.js and
+// recipeBackfillService.js already use. A 7-15 day schedule needs several
+// sequential Claude calls (see DAYS_PER_BATCH below); doing that inline in
+// the request handler is exactly what caused POST /api/diet-schedules/generate
+// to 504 behind a reverse-proxy/gateway timeout - the route now returns as
+// soon as the schedule + pending entries exist, and the mobile detail
+// screen's existing poll-while-pending/generating loop (built for manual/
+// imported schedules) picks up each recipe as it finishes.
 
 const MEAL_TYPES = ['breakfast', 'lunch', 'snack', 'dinner', 'supper'];
 const DEFAULT_MEALS_PER_DAY = ['breakfast', 'lunch', 'dinner'];
 
-// A day at a time keeps each call's output bounded well under a truncation
-// risk - same reasoning as dietRecipeService.js's FEED_MAX_COUNT/
+// A few slots at a time keeps each call's output bounded well under a
+// truncation risk - same reasoning as dietRecipeService.js's FEED_MAX_COUNT/
 // FEED_OUTPUT_TOKENS_PER_RECIPE comment, just scaled to a multi-day batch
 // instead of a single feed request.
 const DAYS_PER_BATCH = 3;
@@ -163,49 +175,106 @@ async function generateBatch({ userId, slots, considerations, preferences, kitch
     );
 }
 
+function normalizeMealTypes(mealTypesPerDay) {
+  const meals = Array.isArray(mealTypesPerDay) && mealTypesPerDay.length > 0
+    ? [...new Set(mealTypesPerDay.filter((m) => MEAL_TYPES.includes(m)))]
+    : DEFAULT_MEALS_PER_DAY;
+  return meals;
+}
+
+// The actual AI work - runs in the background (see enqueueKitchenGeneration)
+// after createKitchenSchedule has already returned the schedule with every
+// slot as a 'pending' entry. Processes one batch at a time and updates the
+// matching pending entries as soon as that batch's results are in, so
+// recipes appear progressively rather than all at once at the very end.
+async function processKitchenGeneration(scheduleId) {
+  const { rows: scheduleRows } = await pool.query('SELECT * FROM diet_schedules WHERE id = $1', [scheduleId]);
+  const schedule = scheduleRows[0];
+  if (!schedule) return;
+
+  const { rows: pendingEntries } = await pool.query(
+    `SELECT id, day_number, meal_type FROM diet_schedule_entries WHERE schedule_id = $1 AND recipe_status = 'pending'`,
+    [scheduleId]
+  );
+  if (pendingEntries.length === 0) return;
+
+  const entryIdBySlot = new Map(pendingEntries.map((e) => [`${e.day_number}:${e.meal_type}`, e.id]));
+  const kitchenItemIds = Array.isArray(schedule.kitchen_item_ids) ? schedule.kitchen_item_ids : [];
+
+  try {
+    const [kitchenItems, medications, abnormalLabs, preferences] = await Promise.all([
+      kitchenService.fetchAvailableKitchenItems(schedule.user_id, kitchenItemIds),
+      fetchActiveMedications(schedule.user_id),
+      fetchAbnormalDietRelevantLabs(schedule.user_id),
+      dietRecipeService.fetchRecipePreferences(schedule.user_id),
+    ]);
+    const considerations = computeConsiderations(medications, abnormalLabs);
+    const cuisine = preferences.cuisines[0] || null;
+    const dietType = preferences.dietTypes[0] || null;
+    const popular = await recipeCatalogService.topPopularForContext({ cuisine, dietType });
+
+    const slots = pendingEntries.map((e) => ({ dayNumber: e.day_number, mealType: e.meal_type }));
+    const meals = normalizeMealTypes([...new Set(slots.map((s) => s.mealType))]);
+    const batches = chunk(slots, DAYS_PER_BATCH * meals.length);
+
+    for (const batch of batches) {
+      // eslint-disable-next-line no-await-in-loop
+      const results = await generateBatch({ userId: schedule.user_id, slots: batch, considerations, preferences, kitchenItems, popular });
+
+      for (const { dayNumber, mealType, recipe } of results) {
+        const entryId = entryIdBySlot.get(`${dayNumber}:${mealType}`);
+        if (!entryId) continue; // model returned a slot that wasn't actually requested/pending
+        entryIdBySlot.delete(`${dayNumber}:${mealType}`); // first match wins, same as the old dedup pass
+
+        // eslint-disable-next-line no-await-in-loop
+        const saved = await dietRecipeService.saveScheduleRecipeSuggestion(schedule.user_id, recipe, mealType);
+        // eslint-disable-next-line no-await-in-loop
+        const canonicalId = await recipeCatalogService.linkOrCreate(saved.id, saved, { cuisine, dietType });
+        if (canonicalId) {
+          // eslint-disable-next-line no-await-in-loop
+          await recipeCatalogService.recordScheduleAdd(canonicalId);
+        }
+        // eslint-disable-next-line no-await-in-loop
+        await pool.query(
+          `UPDATE diet_schedule_entries SET dish_name = $1, recipe_suggestion_id = $2, recipe_status = 'generated', updated_at = now() WHERE id = $3`,
+          [saved.title, saved.id, entryId]
+        );
+      }
+    }
+  } catch (err) {
+    logError(`Unhandled error generating kitchen diet schedule ${scheduleId}`, err);
+  }
+
+  // Any slot the model skipped (or the whole generation failing, e.g. no AI
+  // consent) still needs a real recipe - fall back to the same single-recipe
+  // backfill path manual/imported entries use, keyed off the dish-name
+  // placeholder createKitchenSchedule gave it, rather than leaving it
+  // silently stuck on 'pending' forever.
+  const stillPendingIds = [...entryIdBySlot.values()];
+  for (const entryId of stillPendingIds) {
+    recipeBackfillService.enqueueBackfillEntry(entryId);
+  }
+}
+
+function enqueueKitchenGeneration(scheduleId) {
+  setImmediate(() => {
+    processKitchenGeneration(scheduleId).catch((err) => logError(`Unhandled error generating kitchen diet schedule ${scheduleId}`, err));
+  });
+}
+
+// Fast, DB-only: validates input, snapshots the selected kitchen items, and
+// creates the schedule with one 'pending' entry per day/meal slot - then
+// hands off to the background generator above. Returns almost immediately,
+// which is what fixes the request timing out behind a reverse proxy.
 async function generateFromKitchen(userId, { title, durationDays, startDate, kitchenItemIds, mealTypesPerDay } = {}) {
   const duration = Number(durationDays);
   if (!scheduleService.DURATIONS.includes(duration)) throw httpError('durationDays must be 7 or 15.', 400);
   if (!startDate || Number.isNaN(new Date(startDate).getTime())) throw httpError('startDate is required (YYYY-MM-DD).', 400);
 
-  const meals = Array.isArray(mealTypesPerDay) && mealTypesPerDay.length > 0
-    ? [...new Set(mealTypesPerDay.filter((m) => MEAL_TYPES.includes(m)))]
-    : DEFAULT_MEALS_PER_DAY;
+  const meals = normalizeMealTypes(mealTypesPerDay);
   if (meals.length === 0) throw httpError('mealTypesPerDay must include at least one valid meal type.', 400);
 
-  const [kitchenItems, medications, abnormalLabs, preferences] = await Promise.all([
-    kitchenService.fetchAvailableKitchenItems(userId, kitchenItemIds || []),
-    fetchActiveMedications(userId),
-    fetchAbnormalDietRelevantLabs(userId),
-    dietRecipeService.fetchRecipePreferences(userId),
-  ]);
-  const considerations = computeConsiderations(medications, abnormalLabs);
-  const cuisine = preferences.cuisines[0] || null;
-  const dietType = preferences.dietTypes[0] || null;
-  const popular = await recipeCatalogService.topPopularForContext({ cuisine, dietType });
-
-  const slots = buildDayMealSlots(duration, meals);
-  const batches = chunk(slots, DAYS_PER_BATCH * meals.length);
-
-  const generated = [];
-  for (const batch of batches) {
-    // eslint-disable-next-line no-await-in-loop
-    const results = await generateBatch({ userId, slots: batch, considerations, preferences, kitchenItems, popular });
-    generated.push(...results);
-  }
-
-  // Keep only one result per requested slot, and only for slots actually
-  // requested - a model deviating from the exact count/order asked for
-  // never gets to smuggle an extra or mismatched day/meal into the schedule.
-  const validSlotKeys = new Set(slots.map((s) => `${s.dayNumber}:${s.mealType}`));
-  const seenSlotKeys = new Set();
-  const dedupedGenerated = [];
-  for (const item of generated) {
-    const key = `${item.dayNumber}:${item.mealType}`;
-    if (!validSlotKeys.has(key) || seenSlotKeys.has(key)) continue;
-    seenSlotKeys.add(key);
-    dedupedGenerated.push(item);
-  }
+  const kitchenItems = await kitchenService.fetchAvailableKitchenItems(userId, kitchenItemIds || []);
 
   const { rows } = await pool.query(
     `INSERT INTO diet_schedules (user_id, title, duration_days, start_date, source_type, kitchen_item_ids)
@@ -220,39 +289,15 @@ async function generateFromKitchen(userId, { title, durationDays, startDate, kit
   );
   const schedule = rows[0];
 
-  for (const { dayNumber, mealType, recipe } of dedupedGenerated) {
-    // eslint-disable-next-line no-await-in-loop
-    const saved = await dietRecipeService.saveScheduleRecipeSuggestion(userId, recipe, mealType);
-    // eslint-disable-next-line no-await-in-loop
-    const canonicalId = await recipeCatalogService.linkOrCreate(saved.id, saved, { cuisine, dietType });
-    if (canonicalId) {
-      // eslint-disable-next-line no-await-in-loop
-      await recipeCatalogService.recordScheduleAdd(canonicalId);
-    }
-    const scheduledDate = scheduleService.addDays(startDate, dayNumber - 1);
-    // eslint-disable-next-line no-await-in-loop
-    await pool.query(
-      `INSERT INTO diet_schedule_entries (schedule_id, day_number, scheduled_date, meal_type, dish_name, recipe_suggestion_id, recipe_status)
-       VALUES ($1, $2, $3, $4, $5, $6, 'generated')`,
-      [schedule.id, dayNumber, scheduledDate, mealType, saved.title, saved.id]
-    );
-  }
+  const slots = buildDayMealSlots(duration, meals);
+  const placeholderEntries = slots.map((slot) => ({
+    dayNumber: slot.dayNumber,
+    mealType: slot.mealType,
+    dishName: `${slot.mealType.charAt(0).toUpperCase()}${slot.mealType.slice(1)} (day ${slot.dayNumber})`,
+  }));
+  await scheduleService.insertEntries(schedule.id, startDate, placeholderEntries);
 
-  // Any slot the model skipped still gets a placeholder entry, backfilled
-  // the normal way - requirement 4 (every entry ends up with a real recipe)
-  // holds even when a generation batch comes back incomplete.
-  const missingSlots = slots.filter((s) => !seenSlotKeys.has(`${s.dayNumber}:${s.mealType}`));
-  for (const slot of missingSlots) {
-    const scheduledDate = scheduleService.addDays(startDate, slot.dayNumber - 1);
-    const placeholderName = `${slot.mealType.charAt(0).toUpperCase()}${slot.mealType.slice(1)} (day ${slot.dayNumber})`;
-    // eslint-disable-next-line no-await-in-loop
-    await pool.query(
-      `INSERT INTO diet_schedule_entries (schedule_id, day_number, scheduled_date, meal_type, dish_name, recipe_status)
-       VALUES ($1, $2, $3, $4, $5, 'pending')`,
-      [schedule.id, slot.dayNumber, scheduledDate, slot.mealType, placeholderName]
-    );
-  }
-  if (missingSlots.length > 0) recipeBackfillService.enqueueBackfill(schedule.id);
+  enqueueKitchenGeneration(schedule.id);
 
   return scheduleService.getScheduleWithEntries(userId, schedule.id);
 }

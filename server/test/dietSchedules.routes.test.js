@@ -136,6 +136,31 @@ test('PATCH an entry dish name validates and resets its recipe; GET impact works
   }
 });
 
+test('POST /api/diet-schedules/generate returns quickly with pending entries instead of blocking on AI generation (regression: 504 on the old synchronous path)', async () => {
+  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  const { server, base } = await listen();
+  try {
+    const start = Date.now();
+    const res = await fetch(`${base}/api/diet-schedules/generate`, {
+      method: 'POST', headers,
+      body: JSON.stringify({
+        title: 'Kitchen Week', duration_days: 7, start_date: '2026-04-01',
+        kitchen_item_ids: [], meal_types_per_day: ['breakfast', 'lunch'],
+      }),
+    });
+    const elapsedMs = Date.now() - start;
+    assert.equal(res.status, 201);
+    assert.ok(elapsedMs < 2000, `expected a fast response, took ${elapsedMs}ms`);
+
+    const body = await res.json();
+    assert.equal(body.schedule.source_type, 'kitchen_generated');
+    assert.equal(body.schedule.entries.length, 14); // 7 days * 2 meals
+    assert.ok(body.schedule.entries.every((e) => ['pending', 'generating', 'failed'].includes(e.recipeStatus)));
+  } finally {
+    server.close();
+  }
+});
+
 test('logging an entry with no generated recipe yet returns 404, and retry-recipe re-queues a failed entry', async () => {
   const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
   const { server, base } = await listen();
