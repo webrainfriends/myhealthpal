@@ -12,6 +12,7 @@ const { createLocalDevProvider } = require('../src/security/providers/localDev')
 const { registerVersion, CURRENT_VERSION } = require('../src/security/cipherVersions');
 const { validateSecurityConfig } = require('../src/security/configValidation');
 const maintenance = require('../src/security/maintenance');
+const audit = require('../src/security/auditLog');
 
 // Envelope encryption, key handling and vault maintenance (issue #104).
 // Uses the local-dev provider with a random master key and a temp store.
@@ -239,6 +240,100 @@ test('db: maintenance jobs', async (t) => {
     const second = await maintenance.encryptLegacyUploads();
     assert.equal(second.reports.encrypted, 0, 'second run is a no-op');
     fs.rmSync(legacyDir, { recursive: true, force: true });
+  });
+
+  await t.test('a row that fails is retried (and can succeed) on the next run, not stuck forever', async () => {
+    // Scoped to this row's exact content, so unrelated legacy rows already
+    // sitting in the shared test database (from other suites/fixtures)
+    // never affect these assertions.
+    const marker = `retry-test-${crypto.randomUUID()}`;
+    const legacyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'legacy-retry-'));
+    const legacyPath = path.join(legacyDir, 'retry.csv');
+    fs.writeFileSync(legacyPath, marker);
+    const legacy = await insertReport({
+      user_id: dbUserId,
+      original_filename: 'retry.csv',
+      mime_type: 'text/csv',
+      file_extension: 'csv',
+      file_size_bytes: marker.length,
+      storage_path: legacyPath,
+      legacy_migration_status: 'pending',
+    });
+
+    const originalPut = store.put;
+    let attempts = 0;
+    let shouldFail = true;
+    store.put = async (args) => {
+      if (args.buffer.toString() !== marker) return originalPut(args);
+      attempts += 1;
+      if (shouldFail) throw new Error('simulated key-service failure');
+      return originalPut(args);
+    };
+    try {
+      const first = await maintenance.encryptLegacyUploads();
+      assert.ok(first.reports.failed >= 1);
+      assert.equal(attempts, 1, 'attempted exactly once within the failing run (no same-run infinite loop)');
+
+      const afterFirst = await pool.query('SELECT legacy_migration_status, storage_path FROM reports WHERE id = $1', [legacy.id]);
+      assert.equal(afterFirst.rows[0].legacy_migration_status, 'failed');
+      assert.equal(afterFirst.rows[0].storage_path, legacyPath, 'plaintext untouched after a failed attempt');
+
+      // The next invocation (e.g. the next deploy) must retry it, not skip
+      // it forever - this is the bug being fixed.
+      shouldFail = false;
+      const second = await maintenance.encryptLegacyUploads();
+      assert.equal(attempts, 2);
+      assert.ok(second.reports.encrypted >= 1);
+
+      const afterSecond = await pool.query(
+        'SELECT legacy_migration_status, storage_path, encryption_version FROM reports WHERE id = $1',
+        [legacy.id]
+      );
+      assert.equal(afterSecond.rows[0].legacy_migration_status, 'done');
+      assert.equal(afterSecond.rows[0].storage_path, null);
+      assert.equal(afterSecond.rows[0].encryption_version, CURRENT_VERSION);
+    } finally {
+      store.put = originalPut;
+      fs.rmSync(legacyDir, { recursive: true, force: true });
+    }
+  });
+
+  await t.test('a failed audit write after the plaintext is gone does not un-migrate the row', async () => {
+    const marker = `audit-test-${crypto.randomUUID()}`;
+    const legacyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'legacy-audit-'));
+    const legacyPath = path.join(legacyDir, 'audit.csv');
+    fs.writeFileSync(legacyPath, marker);
+    const legacy = await insertReport({
+      user_id: dbUserId,
+      original_filename: 'audit.csv',
+      mime_type: 'text/csv',
+      file_extension: 'csv',
+      file_size_bytes: marker.length,
+      storage_path: legacyPath,
+      legacy_migration_status: 'pending',
+    });
+
+    const originalRecord = audit.record;
+    audit.record = async (event) => {
+      if (event.eventType === 'LEGACY_FILE_ENCRYPTED' && event.reportId === legacy.id) {
+        throw new Error('simulated audit-log outage');
+      }
+      return originalRecord(event);
+    };
+    let result;
+    try {
+      result = await maintenance.encryptLegacyUploads();
+    } finally {
+      audit.record = originalRecord;
+      fs.rmSync(legacyDir, { recursive: true, force: true });
+    }
+    assert.ok(result.reports.encrypted >= 1, 'counted as encrypted, not failed, despite the audit write failing');
+
+    const { rows } = await pool.query('SELECT * FROM reports WHERE id = $1', [legacy.id]);
+    assert.equal(rows[0].legacy_migration_status, 'done');
+    assert.equal(rows[0].storage_path, null);
+    assert.equal(rows[0].encryption_version, CURRENT_VERSION);
+    assert.equal((await store.readDecrypted(rows[0])).toString(), marker);
   });
 
   await t.test('KEK rotation re-wraps data keys without touching files', async () => {

@@ -48,6 +48,17 @@ async function encryptLegacyUploads({ dryRun = false, batchSize = 50 } = {}) {
     counts.pending = pendingCount.rows[0].n;
     if (dryRun) continue;
 
+    // A row a previous run marked 'failed'/'missing' is excluded from the
+    // batch loop below (so one persistently-bad row can't loop forever
+    // within a single run), but that must not mean "never again" - each new
+    // invocation (i.e. every deploy) is expected to retry it. Scoped to
+    // encryption_version IS NULL so a row a concurrent run already finished
+    // is never touched.
+    await pool.query(
+      `UPDATE ${table} SET legacy_migration_status = NULL
+       WHERE legacy_migration_status IN ('failed', 'missing') AND encryption_version IS NULL`
+    );
+
     // Rows already encrypted and verified but whose plaintext removal was
     // interrupted: verify again, then finish.
     const { rows: unfinished } = await pool.query(
@@ -106,14 +117,24 @@ async function encryptLegacyUploads({ dryRun = false, batchSize = 50 } = {}) {
 
           await fs.promises.unlink(row.storage_path);
           await pool.query(`UPDATE ${table} SET storage_path = NULL, legacy_migration_status = 'done' WHERE id = $1`, [row.id]);
-          await audit.record({
-            eventType: 'LEGACY_FILE_ENCRYPTED',
-            userId: row.user_id,
-            reportId: table === 'reports' ? row.id : null,
-            resourceType,
-            actorType: 'system',
-          });
+          // Past this point the row is fully migrated - counted as such
+          // even if the audit write itself has trouble, which must never
+          // be able to turn a completed migration into a reported failure
+          // (the rollback below is also a no-op by now: storage_path is
+          // already NULL).
           counts.encrypted += 1;
+          try {
+            await audit.record({
+              eventType: 'LEGACY_FILE_ENCRYPTED',
+              userId: row.user_id,
+              reportId: table === 'reports' ? row.id : null,
+              resourceType,
+              actorType: 'system',
+            });
+          } catch (auditErr) {
+            // eslint-disable-next-line no-console
+            console.error(`[legacy-migration] audit record failed for ${table} ${row.id}: ${auditErr.message}`);
+          }
         } catch (err) {
           // Roll this row back to its untouched legacy state.
           const nulls = store.COLUMNS.map(([c]) => `${c} = NULL`).join(', ');
