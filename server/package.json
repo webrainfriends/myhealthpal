@@ -16,7 +16,8 @@
     "encrypt-legacy-uploads": "node scripts/encrypt-legacy-uploads.js",
     "rewrap-keys": "node scripts/rewrap-keys.js",
     "reencrypt-files": "node scripts/reencrypt-files.js",
-    "check-kms": "node scripts/check-kms.js"
+    "check-kms": "node scripts/check-kms.js",
+    "delete-stale-guests": "node scripts/delete-stale-guests.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",

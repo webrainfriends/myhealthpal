@@ -26,6 +26,7 @@ const EVENT_TYPES = new Set([
   'LEGACY_FILE_ENCRYPTED',
   'UPLOAD_REJECTED',
   'ACCESS_DENIED',
+  'ACCOUNT_DELETED',
 ]);
 
 function hashKey() {
