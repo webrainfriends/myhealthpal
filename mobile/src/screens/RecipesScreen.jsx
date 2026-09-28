@@ -3,7 +3,7 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ChipSelect from '../components/ChipSelect';
 import PrimaryButton from '../components/PrimaryButton';
-import { cardShadow, colors, radii, spacing, typography } from '../theme/theme';
+import { alertSeverityColors, cardShadow, colors, radii, spacing, typography } from '../theme/theme';
 import { fetchSavedRecipes, generateRecipeFeed, logRecipeSuggestion } from '../api/client';
 import { showAlert } from '../utils/alert';
 
@@ -153,6 +153,14 @@ export default function RecipesScreen() {
                   {recipe.addedAt && <Text style={styles.addedTag}>✓ Added</Text>}
                 </View>
 
+                {recipe.allergyWarnings?.length > 0 && (
+                  <View style={[styles.allergyWarning, { backgroundColor: alertSeverityColors.important.bg }]}>
+                    <Text style={[typography.body, styles.allergyWarningText, { color: alertSeverityColors.important.fg }]}>
+                      ⚠ Contains an ingredient matching your recorded allergy: {recipe.allergyWarnings.join(', ')}
+                    </Text>
+                  </View>
+                )}
+
                 {recipe.dietaryTags.length > 0 && (
                   <View style={styles.tagRow}>
                     {recipe.dietaryTags.map((tag) => (
@@ -258,6 +266,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.success,
     marginLeft: 'auto',
+  },
+  allergyWarning: {
+    borderRadius: radii.sm,
+    padding: spacing.sm,
+  },
+  allergyWarningText: {
+    fontWeight: '700',
   },
   tagRow: {
     flexDirection: 'row',

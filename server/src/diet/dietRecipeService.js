@@ -25,8 +25,9 @@ const DEFAULT_CUISINES = ['south_indian', 'western'];
 // only allowed to explain a recipe's fit in terms of considerations it was
 // actually given - never a fabricated health rationale.
 const SAFETY_TAIL =
-  ' This is an AI-generated recipe suggestion, not medical or dietary advice - check with a healthcare professional ' +
-  'or dietitian if you have specific dietary restrictions.';
+  ' This is an AI-generated recipe suggestion, not medical or dietary advice, and not a checked food/medication ' +
+  'interaction review - check with a healthcare professional or dietitian if you have specific dietary restrictions, ' +
+  'allergies, or medications that could interact with an ingredient.';
 
 const SYSTEM_PROMPT = [
   'You are a nutrition-aware recipe generator.',
@@ -85,7 +86,17 @@ const RECIPE_TOOL = {
   },
 };
 
-function buildUserMessage({ mealType, preferences, considerations }) {
+// Stated once here regardless of whether the person also typed it into
+// free-text preferences this time - a stored allergy (Settings > Health
+// profile) is a hard constraint every single request, not just when
+// remembered to mention it.
+function describeAllergiesForPrompt(allergies) {
+  return allergies.length > 0
+    ? `This person has told us they are allergic to: ${allergies.join(', ')}. Never include any of these, or an obvious variant of one, as an ingredient.`
+    : 'No known allergies are on file for this person.';
+}
+
+function buildUserMessage({ mealType, preferences, considerations, allergies = [] }) {
   const parts = [
     mealType ? `Meal type: ${mealType}.` : 'Meal type: not specified - any meal is fine.',
     preferences && preferences.trim() ? `Preferences/constraints: ${preferences.trim()}.` : 'No specific preferences given.',
@@ -95,6 +106,7 @@ function buildUserMessage({ mealType, preferences, considerations }) {
       ? `Real dietary considerations for this person (from their active medications/lab results): ${considerations.map((c) => c.label).join(', ')}.`
       : 'No dietary considerations are on file for this person.'
   );
+  parts.push(describeAllergiesForPrompt(allergies));
   return parts.join(' ');
 }
 
@@ -125,7 +137,40 @@ function mapRecipeResult(input) {
     dietaryTags: Array.isArray(input.dietary_tags) ? input.dietary_tags.filter((t) => typeof t === 'string' && t.trim()) : [],
     whyThisRecipe: input.why_this_recipe ? `${input.why_this_recipe}${SAFETY_TAIL}` : null,
     nutritionPerServing,
+    // Always present (possibly empty) so the client never has to guess
+    // whether the check ran - filled in by flagAllergyMatches below.
+    allergyWarnings: [],
   };
+}
+
+async function fetchAllergies(userId) {
+  const { rows } = await pool.query('SELECT allergen FROM user_allergies WHERE user_id = $1', [userId]);
+  return rows.map((r) => r.allergen);
+}
+
+// Naive English singularization (strip one trailing "s") so "Peanuts" as a
+// stored allergen still matches an ingredient written as "peanut butter" -
+// the singular root is a substring of the plural either way, so this only
+// needs to run on the allergen side.
+function singularize(word) {
+  return word.length > 3 && word.endsWith('s') ? word.slice(0, -1) : word;
+}
+
+// Deterministic safety net, independent of whether the model actually
+// honored the "never include a known allergen" instruction: a plain,
+// case-insensitive substring match of each stored allergen against the
+// recipe's own ingredient list. Only catches the allergen appearing by name
+// (or an obvious plural) in an ingredient, never a category term like "tree
+// nuts" matching "almonds" - that needs real food-allergen knowledge this
+// check doesn't have. Never silently drops or edits the recipe - just flags
+// it, so the person (not the AI) makes the call.
+function flagAllergyMatches(recipe, allergies) {
+  if (!recipe || allergies.length === 0) return recipe;
+  const matched = allergies.filter((allergen) => {
+    const needle = singularize(allergen.trim().toLowerCase());
+    return needle && recipe.ingredients.some((i) => i.item.toLowerCase().includes(needle));
+  });
+  return matched.length > 0 ? { ...recipe, allergyWarnings: matched } : recipe;
 }
 
 // context lets the route pass in medications/abnormalLabs it may have
@@ -136,9 +181,10 @@ async function generateRecipe(userId, { mealType, preferences } = {}) {
     throw new Error('AI recipe generation requires ANTHROPIC_API_KEY to be set.');
   }
 
-  const [medications, abnormalLabs] = await Promise.all([
+  const [medications, abnormalLabs, allergies] = await Promise.all([
     fetchActiveMedications(userId),
     fetchAbnormalDietRelevantLabs(userId),
+    fetchAllergies(userId),
   ]);
   const considerations = computeConsiderations(medications, abnormalLabs);
 
@@ -149,12 +195,12 @@ async function generateRecipe(userId, { mealType, preferences } = {}) {
     system: SYSTEM_PROMPT,
     tools: [RECIPE_TOOL],
     tool_choice: { type: 'tool', name: RECIPE_TOOL.name },
-    messages: [{ role: 'user', content: buildUserMessage({ mealType, preferences, considerations }) }],
+    messages: [{ role: 'user', content: buildUserMessage({ mealType, preferences, considerations, allergies }) }],
   });
   recordAiUsage(FEATURES.RECIPES, response);
 
   const toolUse = response.content.find((block) => block.type === 'tool_use');
-  const recipe = toolUse ? mapRecipeResult(toolUse.input) : null;
+  const recipe = toolUse ? flagAllergyMatches(mapRecipeResult(toolUse.input), allergies) : null;
 
   return { recipe, considerations: considerations.map((c) => ({ key: c.key, label: c.label })) };
 }
@@ -326,7 +372,7 @@ const RECIPE_LIST_TOOL = {
   },
 };
 
-function buildFeedUserMessage({ mealType, count, considerations, activity, weightGoal, preferences, excludeTitles }) {
+function buildFeedUserMessage({ mealType, count, considerations, activity, weightGoal, preferences, excludeTitles, allergies = [] }) {
   const parts = [
     `Generate ${count} recipes.`,
     mealType ? `Meal type: all should be ${mealType}.` : 'Meal type: vary across breakfast/lunch/snack/dinner/supper.',
@@ -336,6 +382,7 @@ function buildFeedUserMessage({ mealType, count, considerations, activity, weigh
       : 'No dietary considerations are on file for this person.',
     describeActivityForPrompt(activity),
     describeWeightGoalForPrompt(weightGoal),
+    describeAllergiesForPrompt(allergies),
   ];
   if (excludeTitles.length > 0) {
     parts.push(`Do not repeat any of these already-suggested recipe titles: ${excludeTitles.join('; ')}.`);
@@ -368,12 +415,13 @@ async function generateRecipeFeed(userId, { mealType, count = FEED_MAX_COUNT, ex
     throw new Error('AI recipe generation requires ANTHROPIC_API_KEY to be set.');
   }
 
-  const [medications, abnormalLabs, activityRows, weightGoal, preferences] = await Promise.all([
+  const [medications, abnormalLabs, activityRows, weightGoal, preferences, allergies] = await Promise.all([
     fetchActiveMedications(userId),
     fetchAbnormalDietRelevantLabs(userId),
     fetchRecentActivity(userId),
     fetchWeightGoal(userId),
     fetchRecipePreferences(userId),
+    fetchAllergies(userId),
   ]);
   const considerations = computeConsiderations(medications, abnormalLabs);
   const activity = describeActivity(activityRows);
@@ -392,14 +440,16 @@ async function generateRecipeFeed(userId, { mealType, count = FEED_MAX_COUNT, ex
       messages: [
         {
           role: 'user',
-          content: buildFeedUserMessage({ mealType, count, considerations, activity, weightGoal, preferences, excludeTitles }),
+          content: buildFeedUserMessage({ mealType, count, considerations, activity, weightGoal, preferences, excludeTitles, allergies }),
         },
       ],
     });
   recordAiUsage(FEATURES.RECIPES, response);
 
   const excludeTitlesLower = new Set(excludeTitles.map((t) => t.toLowerCase().trim()));
-  const recipes = completeRecipesFrom(response).filter((r) => !excludeTitlesLower.has(r.title.toLowerCase().trim()));
+  const recipes = completeRecipesFrom(response)
+    .filter((r) => !excludeTitlesLower.has(r.title.toLowerCase().trim()))
+    .map((r) => flagAllergyMatches(r, allergies));
 
   return {
     recipes,
@@ -565,4 +615,6 @@ module.exports = {
   buildUserMessage,
   buildFeedUserMessage,
   describeActivity,
+  fetchAllergies,
+  flagAllergyMatches,
 };

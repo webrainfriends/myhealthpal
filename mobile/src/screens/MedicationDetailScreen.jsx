@@ -357,6 +357,28 @@ export default function MedicationDetailScreen({ route, navigation }) {
               <Text style={styles.disclaimer}>{t('medicationDetail.drugDisclaimer')}</Text>
             )}
 
+            {(knowledge?.alternativesToDiscuss?.length > 0 || knowledge?.supplementsToDiscuss?.length > 0) && (
+              <View style={styles.section}>
+                {knowledge.alternativesToDiscuss?.length > 0 && (
+                  <>
+                    <Text style={[typography.heading, styles.sectionHeading]}>
+                      {t('medicationDetail.alternativesToDiscuss')}
+                    </Text>
+                    <BulletList items={knowledge.alternativesToDiscuss} />
+                  </>
+                )}
+                {knowledge.supplementsToDiscuss?.length > 0 && (
+                  <>
+                    <Text style={[typography.heading, styles.sectionHeading]}>
+                      {t('medicationDetail.supplementsToDiscuss')}
+                    </Text>
+                    <BulletList items={knowledge.supplementsToDiscuss} />
+                  </>
+                )}
+                <Text style={styles.disclaimer}>{t('medicationDetail.alternativesDisclaimer')}</Text>
+              </View>
+            )}
+
             {knowledge?.sourceUrl && (
               <View style={styles.section}>
                 <Text style={styles.disclaimer}>

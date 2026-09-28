@@ -49,6 +49,22 @@ const KNOWLEDGE_TOOL = {
       active_ingredient: { type: 'string', description: 'Active ingredient(s), as commonly formulated.' },
       common_side_effects: { type: 'array', items: { type: 'string' } },
       warnings: { type: 'array', items: { type: 'string' } },
+      alternatives_to_discuss: {
+        type: 'array',
+        items: { type: 'string' },
+        description:
+          'General drug-class alternatives a patient might ask their doctor about (e.g. "another ACE inhibitor" or ' +
+          '"an ARB instead of an ACE inhibitor") - never a specific brand/dose recommendation, never a suggestion to ' +
+          'actually switch. Omit entirely if none are well-established enough to be worth raising.',
+      },
+      supplements_to_discuss: {
+        type: 'array',
+        items: { type: 'string' },
+        description:
+          'Commonly discussed supplements relevant to this medication or what it treats (e.g. "CoQ10" alongside a ' +
+          'statin) - framed only as a question to raise with a doctor, never a recommendation to take it, and never ' +
+          'when it could plausibly interact with the medication without saying so. Omit entirely if unsure.',
+      },
     },
     required: ['found'],
   },
@@ -66,7 +82,9 @@ async function describeWithClaude(medication, language) {
       'You describe a medication’s general, well-established facts for a patient-facing health app, for a reader with ' +
       'no medical background. Never give dosing advice for a specific person, never diagnose, and never state a fact ' +
       `you are not confident is accurate for this exact medication - call describe_medication with found:false instead ` +
-      `of guessing at an unfamiliar or ambiguous name.${languageInstruction(language)}`,
+      'of guessing at an unfamiliar or ambiguous name. alternatives_to_discuss and supplements_to_discuss are talking ' +
+      'points for a doctor visit, not guidance to act on directly - never phrase either as a recommendation, and leave ' +
+      `them empty rather than guess.${languageInstruction(language)}`,
     messages: [{ role: 'user', content: `Describe this medication: ${label}` }],
     tools: [KNOWLEDGE_TOOL],
     tool_choice: { type: 'tool', name: 'describe_medication' },
@@ -83,6 +101,8 @@ async function describeWithClaude(medication, language) {
     activeIngredient: String(input.active_ingredient || '').trim() || null,
     commonSideEffects: Array.isArray(input.common_side_effects) ? input.common_side_effects.filter(Boolean) : [],
     warnings: Array.isArray(input.warnings) ? input.warnings.filter(Boolean) : [],
+    alternativesToDiscuss: Array.isArray(input.alternatives_to_discuss) ? input.alternatives_to_discuss.filter(Boolean) : [],
+    supplementsToDiscuss: Array.isArray(input.supplements_to_discuss) ? input.supplements_to_discuss.filter(Boolean) : [],
   };
 }
 
@@ -107,6 +127,11 @@ async function getMedicationKnowledge(medication, language = DEFAULT_LANGUAGE) {
       activeIngredient: curated.activeIngredient,
       commonSideEffects: curated.commonSideEffects,
       warnings: curated.warnings,
+      // Not populated for curated entries - see migration 025's note: this
+      // hand-vetted list would need the same real clinical review to name
+      // specific alternatives/supplements, which is out of scope here.
+      alternativesToDiscuss: [],
+      supplementsToDiscuss: [],
       sourceName: authority?.name || null,
       sourceUrl: authority?.url || null,
       sourceIsExactCitation: true,
@@ -136,6 +161,8 @@ async function getMedicationKnowledge(medication, language = DEFAULT_LANGUAGE) {
       activeIngredient: row.active_ingredient,
       commonSideEffects: row.common_side_effects,
       warnings: row.warnings,
+      alternativesToDiscuss: row.alternatives_to_discuss,
+      supplementsToDiscuss: row.supplements_to_discuss,
       sourceName: fallbackAuthority.name,
       sourceUrl: fallbackAuthority.url,
       sourceIsExactCitation: false,
@@ -154,11 +181,22 @@ async function getMedicationKnowledge(medication, language = DEFAULT_LANGUAGE) {
 
   const { rows } = await pool.query(
     `INSERT INTO medication_knowledge_cache
-       (name_key, language, category, usage, active_ingredient, common_side_effects, warnings)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+       (name_key, language, category, usage, active_ingredient, common_side_effects, warnings,
+        alternatives_to_discuss, supplements_to_discuss)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      ON CONFLICT (name_key, language) DO UPDATE SET name_key = EXCLUDED.name_key
      RETURNING *`,
-    [nameKey, lang, described.category, described.usage, described.activeIngredient, described.commonSideEffects, described.warnings]
+    [
+      nameKey,
+      lang,
+      described.category,
+      described.usage,
+      described.activeIngredient,
+      described.commonSideEffects,
+      described.warnings,
+      described.alternativesToDiscuss,
+      described.supplementsToDiscuss,
+    ]
   );
   const row = rows[0];
   return {
@@ -169,6 +207,8 @@ async function getMedicationKnowledge(medication, language = DEFAULT_LANGUAGE) {
     activeIngredient: row.active_ingredient,
     commonSideEffects: row.common_side_effects,
     warnings: row.warnings,
+    alternativesToDiscuss: row.alternatives_to_discuss,
+    supplementsToDiscuss: row.supplements_to_discuss,
     sourceName: fallbackAuthority.name,
     sourceUrl: fallbackAuthority.url,
     sourceIsExactCitation: false,
