@@ -44,6 +44,8 @@ export default function ParameterTrendScreen({ route, navigation }) {
   }, [load]);
 
   const points = data?.points || [];
+  // Latest report first; the API returns oldest-first for the chart.
+  const listPoints = [...points].sort((a, b) => new Date(b.date) - new Date(a.date));
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -71,7 +73,7 @@ export default function ParameterTrendScreen({ route, navigation }) {
       )}
 
       <FlatList
-        data={[...points].reverse()}
+        data={listPoints}
         keyExtractor={(item, index) => `${item.date}-${index}`}
         contentContainerStyle={styles.listContent}
         renderItem={({ item }) => (
@@ -80,16 +82,19 @@ export default function ParameterTrendScreen({ route, navigation }) {
             disabled={!item.reportId}
             onPress={() => item.reportId && navigation.navigate('ReportDetail', { reportId: item.reportId })}
           >
-            <View>
+            <View style={styles.rowMain}>
               <Text style={typography.body}>
                 {item.value !== null && item.value !== undefined ? `${item.value} ${item.unit || ''}` : item.qualitativeValue}
               </Text>
-              <Text style={typography.caption}>
-                {formatDate(item.date)} {item.reportFilename ? `· ${item.reportFilename}` : ''}
-              </Text>
+              <Text style={typography.caption}>{formatDate(item.date)}</Text>
+              {item.reportFilename ? (
+                <Text style={typography.caption} numberOfLines={1} ellipsizeMode="middle">
+                  {item.reportFilename}
+                </Text>
+              ) : null}
             </View>
             {item.referenceRange && (
-              <Text style={typography.caption}>{t('parameterTrend.ref', { range: item.referenceRange })}</Text>
+              <Text style={[typography.caption, styles.rowRef]} numberOfLines={2}>{t('parameterTrend.ref', { range: item.referenceRange })}</Text>
             )}
           </TouchableOpacity>
         )}
@@ -154,5 +159,15 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     padding: spacing.md,
     marginBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  rowMain: {
+    flex: 1,
+    minWidth: 0,
+  },
+  rowRef: {
+    flexShrink: 0,
+    maxWidth: '40%',
+    textAlign: 'right',
   },
 });

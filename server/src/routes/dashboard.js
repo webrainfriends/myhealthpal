@@ -325,14 +325,14 @@ router.get('/parameters/:code/trend', async (req, res, next) => {
 
     const { rows } = await pool.query(
       `SELECT hm.id AS measurement_id, hm.report_id, r.original_filename, r.source_type,
-              COALESCE(hm.sample_datetime::date, r.effective_date, r.created_at::date) AS date,
+              COALESCE(r.effective_date, hm.sample_datetime::date, r.created_at::date) AS date,
               hm.normalized_value, hm.numeric_value, hm.normalized_unit, hm.raw_unit, hm.qualitative_value,
               hm.reference_range_raw
        FROM health_measurements hm
        JOIN reports r ON r.id = hm.report_id
        WHERE r.user_id = $1 AND hm.health_parameter_id = $2 AND hm.is_confirmed = true AND ${EXCLUDE_DUPLICATES_SQL}
          AND ($3::int IS NULL OR COALESCE(r.effective_date, hm.sample_datetime::date, r.created_at::date) >= CURRENT_DATE - $3::int)
-       ORDER BY date ASC`,
+       ORDER BY date ASC, hm.id ASC`,
       [userId, parameter.id, days]
     );
 

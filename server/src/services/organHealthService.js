@@ -192,6 +192,16 @@ const ABNORMAL_FLAGS = new Set([
 // through to the standards-based fallback in determineResultStatus instead.
 const RANGE_PATTERN = /^\s*(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)\s*[^\d]*$/;
 
+// Descending by report date (latest first); results with no date sink last.
+function compareReportDateDesc(a, b) {
+  const ta = a ? new Date(a).getTime() : NaN;
+  const tb = b ? new Date(b).getTime() : NaN;
+  if (Number.isNaN(ta) && Number.isNaN(tb)) return 0;
+  if (Number.isNaN(ta)) return 1;
+  if (Number.isNaN(tb)) return -1;
+  return tb - ta;
+}
+
 function parseRange(rangeRaw) {
   if (!rangeRaw) return null;
   const match = RANGE_PATTERN.exec(String(rangeRaw));
@@ -483,12 +493,13 @@ function buildCardSummaries(rows, groups, standardRangesByCode = new Map()) {
       // Out-of-range results, most concerning first - what a doctor would
       // actually name when reading the report back ("your LDL is high").
       outOfRange,
-      // Out-of-range results first (most concerning first, same order as
-      // outOfRange), then normal ones, then any that couldn't be evaluated -
-      // the order a doctor goes through a report, and the same order the
-      // dashboard card names them in.
+      // Latest report first, so the newest results lead the card. Within
+      // the same report date: out-of-range results first (most concerning
+      // first, same order as outOfRange), then normal ones, then any that
+      // couldn't be evaluated - the order a doctor goes through a report.
       parameters: parameters.sort(
         (a, b) =>
+          compareReportDateDesc(a.effectiveDate, b.effectiveDate) ||
           RESULT_ORDER[a.resultStatus] - RESULT_ORDER[b.resultStatus] ||
           (SEVERITY_RANK[a.severity] ?? 3) - (SEVERITY_RANK[b.severity] ?? 3) ||
           (b.deviationPercent ?? -1) - (a.deviationPercent ?? -1) ||
