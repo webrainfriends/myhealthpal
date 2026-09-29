@@ -1,15 +1,27 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import ChipSelect from '../components/ChipSelect';
 import MedicationForm from '../components/MedicationForm';
 import PrimaryButton from '../components/PrimaryButton';
 import SpeakButton from '../components/SpeakButton';
 import { cardShadow, colors, healthStatusColors, medicineSystemColors, radii, spacing, typography } from '../theme/theme';
-import { deleteMedication, fetchMedication, updateMedication } from '../api/client';
+import {
+  deleteMedication,
+  deleteMedicationPhoto,
+  fetchMedication,
+  fetchMedicationPhotoUrl,
+  updateMedication,
+  uploadMedicationPhoto,
+} from '../api/client';
 import { useT } from '../i18n/I18nContext';
 import { showAlert } from '../utils/alert';
+import { openPrivacyIfConsentNeeded } from '../utils/consent';
 import { formatCalendarDate } from '../utils/date';
+
+const MAX_PHOTOS = 2;
 
 const SYSTEM_LABEL_KEYS = {
   allopathic: 'medicationDetail.systemAllopathic',
@@ -169,6 +181,9 @@ export default function MedicationDetailScreen({ route, navigation }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [photos, setPhotos] = useState([]);
+  const [photoUrls, setPhotoUrls] = useState({});
+  const [photoBusy, setPhotoBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -177,6 +192,19 @@ export default function MedicationDetailScreen({ route, navigation }) {
       setKnowledge(data.knowledge);
       setForecast(data.forecast);
       setDraft(data.medication);
+      setPhotos(data.photos || []);
+
+      const urls = {};
+      await Promise.all(
+        (data.photos || []).map(async (photo) => {
+          try {
+            urls[photo.id] = await fetchMedicationPhotoUrl(medicationId, photo.id);
+          } catch (err) {
+            console.warn('Failed to load medication photo', err.message);
+          }
+        })
+      );
+      setPhotoUrls(urls);
     } catch (err) {
       console.warn('Failed to load medication', err.message);
     }
@@ -204,6 +232,8 @@ export default function MedicationDetailScreen({ route, navigation }) {
         instructions: draft.instructions,
         prescribed_for: draft.prescribed_for,
         prescribing_doctor: draft.prescribing_doctor,
+        prescribing_clinic: draft.prescribing_clinic,
+        prescription_date: draft.prescription_date || null,
         medicine_system: draft.medicine_system || 'allopathic',
         start_date: draft.start_date || null,
         duration_days: draft.duration_days === '' ? null : draft.duration_days,
@@ -228,6 +258,78 @@ export default function MedicationDetailScreen({ route, navigation }) {
     } catch (err) {
       showAlert(t('medicationDetail.couldNotUpdateStatus'), err.message);
     }
+  }
+
+  async function handleAddPhoto(file, source) {
+    if (!file) return;
+    setPhotoBusy(true);
+    try {
+      await uploadMedicationPhoto(medicationId, file, source);
+      await load();
+    } catch (err) {
+      if (openPrivacyIfConsentNeeded(err, navigation)) return;
+      showAlert(t('medicationDetail.couldNotUploadPhoto'), err.message);
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
+
+  async function handleTakePhoto() {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      showAlert(t('common.permissionNeeded'), t('common.cameraPermissionMessage'));
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync();
+    if (result.canceled) return;
+    const asset = result.assets[0];
+    handleAddPhoto(
+      { uri: asset.uri, name: asset.fileName || 'medication.jpg', mimeType: asset.mimeType || 'image/jpeg', file: asset.file },
+      'camera'
+    );
+  }
+
+  async function handlePickFromLibrary() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      showAlert(t('common.permissionNeeded'), t('common.libraryPermissionMessage'));
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'] });
+    if (result.canceled) return;
+    const asset = result.assets[0];
+    handleAddPhoto(
+      { uri: asset.uri, name: asset.fileName || 'medication.jpg', mimeType: asset.mimeType || 'image/jpeg', file: asset.file },
+      'library'
+    );
+  }
+
+  async function handlePickFromFiles() {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: ['image/jpeg', 'image/png'],
+      copyToCacheDirectory: true,
+    });
+    if (result.canceled) return;
+    const asset = result.assets[0];
+    handleAddPhoto({ uri: asset.uri, name: asset.name, mimeType: asset.mimeType, file: asset.file }, 'file');
+  }
+
+  function handleDeletePhoto(photoId) {
+    showAlert(t('medicationDetail.deletePhotoConfirmTitle'), t('medicationDetail.deletePhotoConfirmMessage'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('common.delete'),
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteMedicationPhoto(medicationId, photoId);
+            setPhotos((prev) => prev.filter((p) => p.id !== photoId));
+          } catch (err) {
+            showAlert(t('medicationDetail.couldNotDeletePhoto'), err.message);
+          }
+        },
+      },
+    ]);
   }
 
   function handleDelete() {
@@ -434,6 +536,16 @@ export default function MedicationDetailScreen({ route, navigation }) {
                   {t('medicationDetail.prescribedBy', { value: medication.prescribing_doctor })}
                 </Text>
               )}
+              {medication.prescribing_clinic && (
+                <Text style={typography.bodySecondary}>
+                  {t('medicationDetail.prescribedAt', { value: medication.prescribing_clinic })}
+                </Text>
+              )}
+              {medication.prescription_date && (
+                <Text style={typography.bodySecondary}>
+                  {t('medicationDetail.prescriptionDate', { date: formatDate(medication.prescription_date) })}
+                </Text>
+              )}
               {medication.start_date && (
                 <Text style={typography.bodySecondary}>
                   {t('medicationDetail.started', { date: formatDate(medication.start_date) })}
@@ -449,6 +561,59 @@ export default function MedicationDetailScreen({ route, navigation }) {
                 <Text style={typography.caption}>
                   {t('medicationDetail.daysSinceStarting', { count: forecast.elapsedDays })}
                 </Text>
+              )}
+            </View>
+
+            <View style={styles.section}>
+              <Text style={[typography.heading, styles.sectionHeading]}>{t('medicationDetail.photos')}</Text>
+              {photos.length > 0 && (
+                <View style={styles.photoRow}>
+                  {photos.map((photo) => (
+                    <View key={photo.id} style={styles.photoThumbWrap}>
+                      {photoUrls[photo.id] ? (
+                        <TouchableOpacity onPress={() => Linking.openURL(photoUrls[photo.id])}>
+                          <Image source={{ uri: photoUrls[photo.id] }} style={styles.photoThumb} />
+                        </TouchableOpacity>
+                      ) : (
+                        <View style={[styles.photoThumb, styles.photoThumbLoading]} />
+                      )}
+                      <TouchableOpacity
+                        onPress={() => handleDeletePhoto(photo.id)}
+                        style={styles.photoRemoveBadge}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                      >
+                        <Text style={styles.photoRemoveLabel}>✕</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              )}
+              {photos.length === 0 && (
+                <Text style={typography.bodySecondary}>{t('medicationDetail.noPhotos')}</Text>
+              )}
+              {photos.length < MAX_PHOTOS ? (
+                <View style={styles.photoActionsRow}>
+                  <PrimaryButton
+                    title={t('medicationDetail.takePhoto')}
+                    variant="secondary"
+                    onPress={handleTakePhoto}
+                    loading={photoBusy}
+                  />
+                  <PrimaryButton
+                    title={t('medicationDetail.fromLibrary')}
+                    variant="secondary"
+                    onPress={handlePickFromLibrary}
+                    loading={photoBusy}
+                  />
+                  <PrimaryButton
+                    title={t('medicationDetail.fromFiles')}
+                    variant="secondary"
+                    onPress={handlePickFromFiles}
+                    loading={photoBusy}
+                  />
+                </View>
+              ) : (
+                <Text style={styles.disclaimer}>{t('medicationDetail.maxPhotosReached', { count: MAX_PHOTOS })}</Text>
               )}
             </View>
 
@@ -505,6 +670,44 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     paddingBottom: spacing.xl,
     gap: spacing.lg,
+  },
+  photoRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  photoThumbWrap: {
+    position: 'relative',
+  },
+  photoThumb: {
+    width: 84,
+    height: 84,
+    borderRadius: radii.md,
+    backgroundColor: colors.surfaceMuted,
+  },
+  photoThumbLoading: {
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  photoRemoveBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoRemoveLabel: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  photoActionsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    flexWrap: 'wrap',
   },
   centeredText: {
     textAlign: 'center',

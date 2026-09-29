@@ -111,6 +111,18 @@ export default function MedicationForm({ value, onChange }) {
         onChangeText={(t) => set('prescribing_doctor', t)}
         placeholder="Dr. …"
       />
+      <Field
+        label="Prescribing hospital / clinic"
+        value={value.prescribing_clinic}
+        onChangeText={(t) => set('prescribing_clinic', t)}
+        placeholder="e.g. City General Hospital"
+      />
+      <Field
+        label="Prescription date"
+        value={value.prescription_date ? String(value.prescription_date).slice(0, 10) : ''}
+        onChangeText={(t) => set('prescription_date', t)}
+        placeholder="YYYY-MM-DD"
+      />
       <View style={styles.row}>
         <Field
           label="Start date"

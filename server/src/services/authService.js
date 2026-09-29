@@ -61,6 +61,31 @@ function verifyReportDownloadToken(token) {
   return { userId: payload.sub, reportId: payload.reportId, jti: payload.jti, expiresAt: payload.exp };
 }
 
+// Same shape and reasoning as signReportDownloadToken/verifyReportDownloadToken
+// above, scoped to a medication photo instead of a report - its own HKDF
+// info string keeps the two token families from ever verifying as each other.
+function medicationPhotoDownloadTokenKey() {
+  return Buffer.from(
+    crypto.hkdfSync('sha256', config.jwtSecret, Buffer.alloc(0), 'myhealthpal:medication-photo-download:v1', 32)
+  );
+}
+
+function signMedicationPhotoDownloadToken({ userId, photoId }) {
+  return jwt.sign({ sub: userId, photoId, type: 'medication_photo_download' }, medicationPhotoDownloadTokenKey(), {
+    expiresIn: config.security.downloadTokenTtlSeconds,
+    jwtid: crypto.randomUUID(),
+    algorithm: 'HS256',
+  });
+}
+
+function verifyMedicationPhotoDownloadToken(token) {
+  const payload = jwt.verify(token, medicationPhotoDownloadTokenKey(), { algorithms: ['HS256'] });
+  if (payload.type !== 'medication_photo_download' || !payload.jti) {
+    throw new Error('Not a medication photo download token');
+  }
+  return { userId: payload.sub, photoId: payload.photoId, jti: payload.jti, expiresAt: payload.exp };
+}
+
 async function findUserById(id) {
   const { rows } = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
   return rows[0] || null;
@@ -180,6 +205,8 @@ module.exports = {
   verifySession,
   signReportDownloadToken,
   verifyReportDownloadToken,
+  signMedicationPhotoDownloadToken,
+  verifyMedicationPhotoDownloadToken,
   signGmailOAuthState,
   verifyGmailOAuthState,
   findUserById,

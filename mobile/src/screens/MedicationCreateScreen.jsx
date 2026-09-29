@@ -19,6 +19,8 @@ const EMPTY = {
   instructions: null,
   prescribed_for: null,
   prescribing_doctor: null,
+  prescribing_clinic: null,
+  prescription_date: null,
   start_date: null,
   duration_days: null,
   quantity_dispensed: null,
