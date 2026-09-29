@@ -257,11 +257,7 @@ export default function RootNavigator() {
           component={MedicationScanReviewScreen}
           options={{ title: t('nav.reviewScan') }}
         />
-        <Stack.Screen name="MedicationCreate" component={MedicationCreateScreen} options={{ title: 'Add medication' }} />
-        <Stack.Screen name="Activity" component={ActivityScreen} options={{ title: 'Activity' }} />
         <Stack.Screen name="Devices" component={DevicesScreen} options={{ title: 'Bluetooth & wearable devices' }} />
-        <Stack.Screen name="Diet" component={DietScreen} options={{ title: 'Diet' }} />
-        <Stack.Screen name="DietScanReview" component={DietScanReviewScreen} options={{ title: 'Review scan' }} />
         <Stack.Screen
           name="MedicationCreate"
           component={MedicationCreateScreen}
