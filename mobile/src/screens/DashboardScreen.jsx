@@ -623,6 +623,7 @@ const styles = StyleSheet.create({
   },
   tileRow: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
     gap: spacing.sm,
   },
   retestList: {

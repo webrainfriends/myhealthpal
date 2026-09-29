@@ -1,7 +1,31 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Svg, { Defs, LinearGradient, Path, Stop } from 'react-native-svg';
 import { cardShadow, colors, radii, spacing } from '../theme/theme';
 import { useT } from '../i18n/I18nContext';
 import { formatCalendarDate } from '../utils/date';
+
+// A small gradient "energy bolt" glyph - a crisp vector illustration rather
+// than a flat emoji, in the same gradient-plus-highlight style as the
+// water bottle graphic so the three dashboard tiles read as one family.
+function BoltIcon() {
+  return (
+    <Svg width={22} height={22} viewBox="0 0 24 24">
+      <Defs>
+        <LinearGradient id="boltGrad" x1="0" y1="0" x2="1" y2="1">
+          <Stop offset="0" stopColor="#7CF0A8" />
+          <Stop offset="1" stopColor={colors.success} />
+        </LinearGradient>
+      </Defs>
+      <Path
+        d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"
+        fill="url(#boltGrad)"
+        stroke="#FFFFFF"
+        strokeWidth="0.75"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
 
 function formatShortDate(dateStr) {
   return formatCalendarDate(dateStr, { month: 'short', day: 'numeric' }) || '';
@@ -18,7 +42,7 @@ export default function ActivityCard({ current, isCurrentToday, onPress }) {
   return (
     <TouchableOpacity style={[styles.card, cardShadow]} onPress={onPress} activeOpacity={0.8}>
       <View style={styles.iconWrap}>
-        <Text style={styles.icon}>🔥</Text>
+        <BoltIcon />
       </View>
       <Text style={styles.value} numberOfLines={1}>
         {hasData ? current.steps ?? 0 : '—'}
@@ -52,9 +76,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 4,
-  },
-  icon: {
-    fontSize: 18,
   },
   value: {
     fontSize: 20,
