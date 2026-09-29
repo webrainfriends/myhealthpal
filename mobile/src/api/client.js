@@ -289,6 +289,8 @@ export const startWorkout = (id) => workoutJson(`/${id}/start`, 'POST');
 export const recordWorkoutSets = (id, sets) => workoutJson(`/${id}/sets`, 'POST', { sets });
 export const completeWorkout = (id, fields) => workoutJson(`/${id}/complete`, 'POST', fields);
 export const fetchWorkoutSummary = (id) => workoutJson(`/${id}/summary`, 'GET');
+export const fetchWorkoutProgression = (exerciseId) => workoutJson(`/progression/${exerciseId}`, 'GET');
+export const fetchWorkoutAnalytics = () => workoutJson('/analytics', 'GET');
 export const fetchWorkoutPlans = () => workoutJson('/plans', 'GET');
 export const fetchWorkoutPlan = (id) => workoutJson(`/plans/${id}`, 'GET');
 export const createWorkoutPlan = (plan) => workoutJson('/plans', 'POST', plan);

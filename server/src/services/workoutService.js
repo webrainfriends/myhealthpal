@@ -3,6 +3,7 @@ const { estimateCalories } = require('../workout/calorieEstimator');
 const { summarize } = require('../workout/summaryProvider');
 const analysis = require('../workout/analysis');
 const hr = require('../workout/heartRate');
+const progression = require('../workout/progression');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MODEL_VERSION = 'pose-v1';
@@ -265,6 +266,51 @@ async function loadMetrics(session, exercise, heart = { samples: [], summary: nu
   return { metrics, adherence };
 }
 
+// Completed sessions of one exercise, newest first, in the shape
+// workout/progression.js expects (built from the stored adherence/summary).
+async function completedSessionsFor(userId, exerciseId, limit = 12) {
+  const { rows } = await pool.query(
+    `SELECT s.id, s.completed_at, s.target_sets, s.target_reps, s.target_hold_seconds, s.target_rest_seconds,
+            s.adherence_json, s.summary_json, e.is_hold,
+            (SELECT COALESCE(SUM(completed_valid_reps), 0)::int FROM workout_set WHERE workout_session_id = s.id) AS valid_reps,
+            (SELECT COALESCE(MAX(completed_valid_reps), 0)::int FROM workout_set WHERE workout_session_id = s.id) AS best_set_reps
+     FROM workout_session s JOIN workout_exercise_definition e ON e.id = s.exercise_id
+     WHERE s.user_id = $1 AND s.exercise_id = $2 AND s.status = 'completed'
+     ORDER BY s.completed_at DESC LIMIT $3`,
+    [userId, exerciseId, limit]
+  );
+  return rows.map((r) => ({
+    targetSets: r.target_sets,
+    targetReps: r.target_reps,
+    targetHoldSeconds: r.target_hold_seconds,
+    targetRestSeconds: r.target_rest_seconds,
+    isHold: r.is_hold,
+    plannedRepsAchieved: r.adherence_json?.plannedRepsAchieved ?? null,
+    correctFormRatio: r.adherence_json?.correctFormRatio ?? null,
+    fatigueDetected: !!r.summary_json?.metrics?.trend?.fatigueDetected,
+    validReps: r.valid_reps,
+    bestSetReps: r.best_set_reps,
+    completedAt: r.completed_at,
+  }));
+}
+
+async function getProgression(userId, exerciseId) {
+  const { rows } = await pool.query('SELECT id FROM workout_exercise_definition WHERE id = $1', [exerciseId]);
+  if (!rows[0]) throw new WorkoutError(404, 'Unknown exercise.');
+  return { exerciseId, suggestion: progression.suggestNext(await completedSessionsFor(userId, exerciseId)) };
+}
+
+async function getAnalytics(userId) {
+  const { rows } = await pool.query(
+    `SELECT DISTINCT s.exercise_id, e.name FROM workout_session s JOIN workout_exercise_definition e ON e.id = s.exercise_id
+     WHERE s.user_id = $1 AND s.status = 'completed' ORDER BY e.name`, [userId]);
+  const exercises = [];
+  for (const r of rows) {
+    exercises.push({ exerciseId: r.exercise_id, name: r.name, ...progression.buildAnalytics(await completedSessionsFor(userId, r.exercise_id, 30)) });
+  }
+  return { exercises };
+}
+
 async function completeSession(userId, id, body = {}) {
   const session = await getOwnedSession(userId, id);
   if (session.status === 'completed') return getSummary(userId, id);
@@ -289,6 +335,16 @@ async function completeSession(userId, id, body = {}) {
     heartRate: heart.summary, deviceActiveKcal: deviceKcal,
   });
   const { metrics, adherence } = await loadMetrics(session, exercise, heart);
+  // Next-session suggestion from history including this session, so the
+  // summary's recommendation is computed from measured numbers, not invented.
+  const history = await completedSessionsFor(userId, session.exercise_id, 3);
+  const current = {
+    targetSets: session.target_sets, targetReps: session.target_reps, targetHoldSeconds: session.target_hold_seconds,
+    targetRestSeconds: session.target_rest_seconds, isHold: exercise.is_hold,
+    plannedRepsAchieved: adherence.plannedRepsAchieved, correctFormRatio: adherence.correctFormRatio,
+    fatigueDetected: !!metrics.trend?.fatigueDetected,
+  };
+  metrics.nextSession = progression.suggestNext([current, ...history.slice(0, 2)]);
   const summary = await summarize(metrics, { userId });
 
   await pool.query(
@@ -443,4 +499,5 @@ async function runPlan(userId, id) {
 }
 
 module.exports = {
+  getProgression, getAnalytics,
   createPlan, getPlan, listPlans, deletePlan, runPlan, WorkoutError, listExercises, createSession, startSession, recordSets, completeSession, getSummary, history };

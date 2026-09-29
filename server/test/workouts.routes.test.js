@@ -169,3 +169,44 @@ test('phase 4: heart rate, zone adherence and device energy on completion', asyn
     server.close();
   }
 });
+
+test('phase 5: progression, analytics, next-session in the summary, expanded library', async () => {
+  const { server, base } = await listen();
+  const post = (path, t, body) => fetch(`${base}/api/activity/workouts${path}`, { method: 'POST', headers: H(t), body: body ? JSON.stringify(body) : undefined }).then((r) => r.json().then((j) => [r.status, j]));
+  const get = (path, t) => fetch(`${base}/api/activity/workouts${path}`, { headers: H(t) }).then((r) => r.json().then((j) => [r.status, j]));
+  try {
+    const [, lib] = await get('/exercises', tokenA);
+    for (const id of ['lateral_raise', 'shoulder_press', 'triceps_extension', 'calf_raise', 'situp', 'jumping_jack', 'high_knees', 'mountain_climber']) {
+      assert.ok(lib.exercises.some((e) => e.id === id), id);
+    }
+
+    // A fresh user has no history for an exercise.
+    const [, none] = await get('/progression/lateral_raise', tokenB);
+    assert.equal(none.suggestion, null);
+    assert.equal((await get('/progression/nope', tokenA))[0], 404);
+
+    // Complete a clean lateral-raise session (2 sets x 3 reps, all valid).
+    const [, sess] = await post('/', tokenA, { exerciseId: 'lateral_raise', targetSets: 2, targetReps: 3, targetRestSeconds: 45 });
+    await post(`/${sess.id}/start`, tokenA);
+    const mk = (n) => ({ clientId: `s${n}`, setNumber: n, reps: [1, 2, 3].map((r) => ({ clientId: `r${r}`, repNumber: r, classification: 'valid', rangeOfMotionScore: 0.95 })) });
+    await post(`/${sess.id}/sets`, tokenA, { sets: [mk(1), mk(2)] });
+    const [, done] = await post(`/${sess.id}/complete`, tokenA, { activeSeconds: 90 });
+    assert.equal(done.metrics.nextSession.action, 'progress');
+    assert.equal(done.metrics.nextSession.targets.reps, 5);
+    assert.match(done.summaryText, /Next time: 2 set\(s\) of 5 reps/);
+
+    const [, prog] = await get('/progression/lateral_raise', tokenA);
+    assert.equal(prog.suggestion.targets.reps, 5);
+    const [, other] = await get('/progression/lateral_raise', tokenB);
+    assert.equal(other.suggestion, null); // per-user history
+
+    const [, an] = await get('/analytics', tokenA);
+    const lr = an.exercises.find((e) => e.exerciseId === 'lateral_raise');
+    assert.equal(lr.sessions, 1);
+    assert.equal(lr.totalValidReps, 6);
+    assert.equal(lr.bestSetReps, 3);
+    assert.equal((await get('/analytics', tokenB))[1].exercises.find((e) => e.exerciseId === 'lateral_raise'), undefined);
+  } finally {
+    server.close();
+  }
+});

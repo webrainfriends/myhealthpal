@@ -9,7 +9,7 @@ const { recordAiUsage, FEATURES } = require('../services/aiUsageService');
 const SYSTEM_PROMPT = `You write a short post-workout summary for a fitness app from measured session data.
 Rules:
 - Use ONLY facts present in the JSON. Never invent observations, numbers or causes.
-- 3-5 sentences, plain language, then one suggestion for next time. Mention tempo, left/right consistency, fatigue trend and comparison with the previous session only when those fields are present.
+- 3-5 sentences, plain language, then one suggestion for next time. Mention tempo, left/right consistency, fatigue trend, heart rate and comparison with the previous session only when those fields are present. For the next-session suggestion use ONLY the "nextSession" field (targets and reason); never invent your own numbers.
 - Camera-based measurements are estimates; do not make medical, diagnostic or injury claims.
 - You are not a trainer or physiotherapist; if form issues were flagged, suggest checking technique with a qualified trainer.`;
 
@@ -49,6 +49,11 @@ function templateSummary(m) {
   }
   if (m.avgRestSeconds != null && m.targetRestSeconds != null) {
     parts.push(`Average rest was ${m.avgRestSeconds}s against a ${m.targetRestSeconds}s target.`);
+  }
+  if (m.nextSession) {
+    const n = m.nextSession.targets;
+    const target = m.isHold ? `${n.holdSeconds}s holds` : `${n.reps} reps`;
+    parts.push(`Next time: ${n.sets} set(s) of ${target} with ${n.restSeconds}s rest - ${m.nextSession.reason}`);
   }
   parts.push('Estimates come from camera pose tracking and are not a substitute for a qualified trainer.');
   return parts.join(' ');
