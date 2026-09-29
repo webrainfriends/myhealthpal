@@ -35,6 +35,7 @@ import LoginScreen from '../screens/LoginScreen';
 import LanguagePreferenceScreen from '../screens/LanguagePreferenceScreen';
 import VoiceAccessibilityScreen from '../screens/VoiceAccessibilityScreen';
 import AiUsageScreen from '../screens/AiUsageScreen';
+import AdminSessionsScreen from '../screens/AdminSessionsScreen';
 import RetestRadarScreen from '../screens/RetestRadarScreen';
 import FamilyScreen from '../screens/FamilyScreen';
 import PrivacyConsentScreen from '../screens/PrivacyConsentScreen';
@@ -104,6 +105,7 @@ const linking = {
       LanguagePreference: 'settings/language',
       VoiceAccessibility: 'settings/voice',
       AiUsage: 'settings/ai-usage',
+      AdminSessions: 'settings/admin-sessions',
     },
   },
 };
@@ -303,6 +305,11 @@ export default function RootNavigator() {
           options={{ title: t('nav.voiceAccessibility') }}
         />
         <Stack.Screen name="AiUsage" component={AiUsageScreen} options={{ title: t('nav.aiUsage') }} />
+        <Stack.Screen
+          name="AdminSessions"
+          component={AdminSessionsScreen}
+          options={{ title: 'Sessions & logins' }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );

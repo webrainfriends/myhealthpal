@@ -156,6 +156,7 @@ function DeleteAccountRow({ t }) {
 
 export default function SettingsScreen({ navigation }) {
   const t = useT();
+  const { user } = useAuth();
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -196,6 +197,13 @@ export default function SettingsScreen({ navigation }) {
           subtitle={t('settings.aiUsageSubtitle')}
           onPress={() => navigation.navigate('AiUsage')}
         />
+        {user?.isAdmin && (
+          <SettingsRow
+            title="Manage sessions & logins"
+            subtitle="Admin: view and clean up registered and guest logins"
+            onPress={() => navigation.navigate('AdminSessions')}
+          />
+        )}
         <DeleteAccountRow t={t} />
       </ScrollView>
     </SafeAreaView>

@@ -71,6 +71,16 @@ module.exports = {
   // Closed-beta ceiling on total `users` rows (guest, Google, Apple, and
   // managed family profiles all count) - see authService.withRegistrationCap.
   maxRegisteredUsers: Number(process.env.MAX_REGISTERED_USERS) || 20,
+  // Email addresses (case-insensitive) allowed to use the admin session
+  // cleanup screen (routes/admin.js) - lists every registered/guest login
+  // and can delete one, or every guest login, on the spot. Comma-separated
+  // for more than one; the app's own email/password is never involved,
+  // this only ever gates against the signed-in account's verified
+  // Google/Apple email.
+  adminEmails: (process.env.ADMIN_EMAILS || 'rraja.edge@gmail.com')
+    .split(',')
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean),
   // Retest Radar's "Book test" link. {test} is replaced with the URL-encoded
   // test name - point this at a lab partner's search/booking page when one
   // exists; the default is a nearby-labs map search.

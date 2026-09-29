@@ -376,6 +376,36 @@ export async function deleteAccount() {
   return null;
 }
 
+// Admin-only (server checks config.adminEmails; the client only ever shows
+// this screen when GET /api/auth/me returned isAdmin, and any other account
+// gets a 403 from the server itself) session cleanup - see server's
+// routes/admin.js.
+export async function fetchAdminSessions() {
+  const response = await apiFetch('/api/admin/sessions');
+  return handleResponse(response);
+}
+
+export async function deleteAdminSession(userId) {
+  const response = await apiFetch(`/api/admin/sessions/${userId}`, { method: 'DELETE' });
+  if (!response.ok) return handleResponse(response);
+  return null;
+}
+
+// Multi-select delete: deletes exactly the checked-off logins in one request.
+export async function bulkDeleteAdminSessions(userIds) {
+  const response = await apiFetch('/api/admin/sessions/bulk-delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userIds }),
+  });
+  return handleResponse(response);
+}
+
+export async function cleanupGuestSessions() {
+  const response = await apiFetch('/api/admin/sessions/cleanup/guests', { method: 'DELETE' });
+  return handleResponse(response);
+}
+
 export async function updateRetestSettings(remindersEnabled) {
   const response = await apiFetch('/api/account/retest-settings', {
     method: 'PUT',

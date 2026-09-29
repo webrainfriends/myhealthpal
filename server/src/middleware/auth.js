@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const authService = require('../services/authService');
 const { runWithContext } = require('../lib/requestContext');
 const familyService = require('../services/familyService');
+const config = require('../config');
 
 const READ_ONLY_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -85,4 +86,16 @@ const requireAuth = authenticate({ allowProfile: true });
 // client currently has selected.
 const requireAccountAuth = authenticate({ allowProfile: false });
 
-module.exports = { requireAuth, requireAccountAuth };
+// Gates routes/admin.js - mounted after requireAccountAuth, so req.accountUser
+// is already the verified signed-in account, never a family profile. Checked
+// by email (config.adminEmails) rather than any role/flag stored on the
+// user row, since there is no admin role in the schema at all yet.
+function requireAdmin(req, res, next) {
+  const email = (req.accountUser?.email || '').toLowerCase();
+  if (!email || !config.adminEmails.includes(email)) {
+    return res.status(403).json({ error: 'Admin access required.' });
+  }
+  next();
+}
+
+module.exports = { requireAuth, requireAccountAuth, requireAdmin };
