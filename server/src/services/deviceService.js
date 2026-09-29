@@ -1,7 +1,7 @@
 const pool = require('../db/pool');
 
 const DEVICE_TYPES = ['blood_glucose_meter', 'blood_pressure_monitor', 'smart_scale', 'step_tracker'];
-const CONNECTION_TYPES = ['ble', 'apple_health', 'health_connect'];
+const CONNECTION_TYPES = ['ble', 'apple_health', 'health_connect', 'phone_pedometer'];
 const READING_TYPES = ['blood_glucose', 'blood_pressure', 'body_weight'];
 
 // Which reading_type a device_type is allowed to submit - a paired glucose

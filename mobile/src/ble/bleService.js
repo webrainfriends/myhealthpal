@@ -12,13 +12,19 @@ let BleManagerClass = null;
 let bleManager = null;
 function getManager() {
   if (bleManager) return bleManager;
+  // Browsers have no BLE stack this module can use (Safari has no Web
+  // Bluetooth at all), and react-native-ble-plx *loads* fine on web but
+  // throws from `new BleManager()` - which used to escape from every
+  // onPress that called this and look like "nothing happens".
+  if (Platform.OS === 'web') return null;
   try {
     // eslint-disable-next-line global-require
     BleManagerClass = require('react-native-ble-plx').BleManager;
+    bleManager = new BleManagerClass();
   } catch (err) {
+    bleManager = null;
     return null;
   }
-  bleManager = new BleManagerClass();
   return bleManager;
 }
 
