@@ -22,7 +22,11 @@ const EXECUTABLE_SIGNATURES = [
   [0x23, 0x21], // #! script
 ];
 
+// ISO base media (MP4/MOV/M4V): a box size then 'ftyp' at byte offset 4.
+const FTYP = [0x66, 0x74, 0x79, 0x70];
+
 function detectKind(buf) {
+  if (startsWith(buf, FTYP, 4)) return 'mp4';
   if (startsWith(buf, PDF)) return 'pdf';
   if (startsWith(buf, PNG)) return 'png';
   if (startsWith(buf, JPEG)) return 'jpeg';
@@ -51,6 +55,9 @@ const EXPECTED_KIND = {
   docx: 'zip',
   xlsx: 'zip',
   doc: 'ole',
+  mp4: 'mp4',
+  m4v: 'mp4',
+  mov: 'mp4',
   xls: 'ole',
 };
 

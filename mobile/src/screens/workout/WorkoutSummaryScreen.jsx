@@ -5,6 +5,7 @@ import PrimaryButton from '../../components/PrimaryButton';
 import { cardShadow, colors, radii, spacing, typography } from '../../theme/theme';
 import { completeWorkout, fetchWorkoutSummary } from '../../api/client';
 import { useT } from '../../i18n/I18nContext';
+import WorkoutRecordingCard from './WorkoutRecordingCard';
 
 const pct = (v) => (v == null ? null : `${Math.round(v * 100)}%`);
 
@@ -126,6 +127,8 @@ export default function WorkoutSummaryScreen({ route, navigation }) {
             <Text style={typography.bodySecondary}>{t('workout.caloriesInputs', { inputs: data.calories.inputs.sources.join(', ') })}</Text>
           </View>
         )}
+
+        <WorkoutRecordingCard workoutId={workoutId} navigation={navigation} />
 
         <Text style={typography.bodySecondary}>{t('workout.disclaimer')}</Text>
         {next && (

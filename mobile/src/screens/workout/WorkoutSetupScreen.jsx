@@ -50,6 +50,7 @@ export default function WorkoutSetupScreen({ navigation }) {
   const [rest, setRest] = useState(60);
   const [level, setLevel] = useState(() => getSetting('workout.coachLevel', 'full'));
   const [tempoOn, setTempoOn] = useState(false);
+  const [recordVideo, setRecordVideo] = useState(false);
   const [down, setDown] = useState(3);
   const [up, setUp] = useState(2);
   const chooseLevel = (l) => {
@@ -97,6 +98,7 @@ export default function WorkoutSetupScreen({ navigation }) {
             <Chip key={l} label={t(`workout.${LEVEL_KEYS[l]}`)} selected={l === level} onPress={() => chooseLevel(l)} />
           ))}
         </View>
+        <Chip label={t('workout.recordThis')} selected={recordVideo} onPress={() => setRecordVideo((v) => !v)} />
         <Text style={typography.bodySecondary}>{t('workout.disclaimer')}</Text>
         <PrimaryButton
           title={t('workout.continueToCamera')}
@@ -109,6 +111,7 @@ export default function WorkoutSetupScreen({ navigation }) {
               targetHoldSeconds: isHold ? hold : undefined,
               targetRestSeconds: rest,
               coachLevel: level,
+              recordVideo,
               tempo: tempoOn && !isHold ? { down, pause: 0, up } : undefined,
             })
           }

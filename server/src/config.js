@@ -68,6 +68,12 @@ module.exports = {
   databaseUrl: process.env.DATABASE_URL,
   uploadDir: path.resolve(__dirname, '..', process.env.UPLOAD_DIR || 'uploads'),
   maxUploadBytes: Number(process.env.MAX_UPLOAD_BYTES) || 20 * 1024 * 1024,
+  // Retained workout recordings (issue #135 Phase 3). nginx must allow this
+  // much on the upload route (deploy.yml).
+  maxWorkoutVideoBytes: Number(process.env.MAX_WORKOUT_VIDEO_BYTES) || 100 * 1024 * 1024,
+  // Days a retained recording is kept before scripts/purge-workout-videos.js
+  // hard-deletes it. 0 = keep until the user deletes it.
+  workoutVideoRetentionDays: Number(process.env.WORKOUT_VIDEO_RETENTION_DAYS) || 0,
   // Closed-beta ceiling on total `users` rows (guest, Google, Apple, and
   // managed family profiles all count) - see authService.withRegistrationCap.
   maxRegisteredUsers: Number(process.env.MAX_REGISTERED_USERS) || 20,
@@ -103,6 +109,7 @@ module.exports = {
       ? path.resolve(process.env.ENCRYPTED_STORE_DIR)
       : path.resolve(__dirname, '..', 'vault'),
     downloadTokenTtlSeconds: Number(process.env.DOWNLOAD_TOKEN_TTL_SECONDS) || 300,
+    workoutVideoTokenTtlSeconds: Number(process.env.WORKOUT_VIDEO_TOKEN_TTL_SECONDS) || 900,
     downloadTokenSingleUse: process.env.DOWNLOAD_TOKEN_SINGLE_USE === 'true',
     // 'allow' only while legacy plaintext uploads still exist (before
     // scripts/encrypt-legacy-uploads.js has run); deploy.yml sets 'deny'.
