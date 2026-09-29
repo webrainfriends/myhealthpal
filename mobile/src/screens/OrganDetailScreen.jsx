@@ -2,9 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ResultSummaryModal from '../components/ResultSummaryModal';
+import GlucoseDailyCard from '../components/GlucoseDailyCard';
 import SpeakButton from '../components/SpeakButton';
 import { cardShadow, colors, healthStatusColors, radii, spacing, typography } from '../theme/theme';
-import { fetchCustomCards, fetchOrganHealth } from '../api/client';
+import { fetchCustomCards, fetchGlucoseSummary, fetchOrganHealth } from '../api/client';
 import { useT } from '../i18n/I18nContext';
 import { formatCalendarDate } from '../utils/date';
 import { cardCounts, cardHeadline, flagLabel, notCheckedNote, outOfRangeList } from '../utils/organReadout';
@@ -115,11 +116,13 @@ export default function OrganDetailScreen({ route, navigation }) {
   const t = useT();
   const [organ, setOrgan] = useState(initialOrgan || null);
   const [summaryParameter, setSummaryParameter] = useState(null);
+  const [glucose, setGlucose] = useState(null);
   // Custom (AI/heuristic-grouped) cards cover results with no registry
   // match at all - see /api/dashboard/custom-cards - and share this same
   // detail layout, just sourced from a different endpoint keyed the same
   // way (organ.key / card.key).
   const isCustom = source === 'custom';
+  const isDiabetes = !isCustom && organKey === 'diabetes';
 
   const load = useCallback(async () => {
     try {
@@ -132,10 +135,25 @@ export default function OrganDetailScreen({ route, navigation }) {
     }
   }, [organKey, isCustom]);
 
+  // The diabetes card also carries the glucose meter's daily averages and
+  // their comparison with the last lab report (best-effort: the lab-result
+  // list above still renders if this fails).
+  const loadGlucose = useCallback(async () => {
+    if (!isDiabetes) return;
+    try {
+      setGlucose(await fetchGlucoseSummary());
+    } catch (err) {
+      console.warn('Failed to load glucose summary', err.message);
+    }
+  }, [isDiabetes]);
+
   useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', load);
+    const unsubscribe = navigation.addListener('focus', () => {
+      load();
+      loadGlucose();
+    });
     return unsubscribe;
-  }, [navigation, load]);
+  }, [navigation, load, loadGlucose]);
 
   useEffect(() => {
     if (organ) navigation.setOptions({ title: organ.label });
@@ -153,6 +171,9 @@ export default function OrganDetailScreen({ route, navigation }) {
   const { evaluated, outOfRange } = cardCounts(organ);
   const headline = cardHeadline(organ, t);
   const summary = organSummary(organ, t);
+  // Meter readings alone (no lab report yet) still mean the diabetes card
+  // has data - don't tell the user to "upload a report" to start tracking.
+  const meterOnly = isDiabetes && organ.trackedCount === 0 && glucose?.readingCount > 0;
   const suggestedBox = organ.suggestedTests?.length > 0 && (
     <View style={[styles.suggestedBox, cardShadow]}>
       <Text style={typography.heading}>
@@ -197,7 +218,9 @@ export default function OrganDetailScreen({ route, navigation }) {
             </Text>
           )}
           <Text style={typography.bodySecondary}>
-            {organ.trackedCount === 0
+            {meterOnly
+              ? t('organDetail.glucose.meterOnly')
+              : organ.trackedCount === 0
               ? t('organDetail.noResultsYet', { organ: organ.label.toLowerCase() })
               : summary || t('organDetail.cardNotEvaluated', { count: organ.trackedCount, plural: organ.trackedCount === 1 ? '' : 's' })}
           </Text>
@@ -209,9 +232,13 @@ export default function OrganDetailScreen({ route, navigation }) {
           <Text style={styles.disclaimer}>{t('organDetail.disclaimer')}</Text>
         </View>
 
+        {isDiabetes && <GlucoseDailyCard summary={glucose} />}
+
         {organ.trackedCount === 0 && suggestedBox}
 
-        <Text style={[typography.heading, styles.sectionSpacing]}>{t('organDetail.trackedTests')}</Text>
+        <Text style={[typography.heading, styles.sectionSpacing]}>
+          {t(isDiabetes ? 'organDetail.glucose.labResults' : 'organDetail.trackedTests')}
+        </Text>
         {organ.parameters.length === 0 ? (
           <Text style={[typography.bodySecondary, styles.emptySection]}>{t('organDetail.emptyTracked')}</Text>
         ) : (
