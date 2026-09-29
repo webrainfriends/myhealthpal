@@ -28,6 +28,7 @@ export default function WorkoutCoachHomeScreen({ navigation }) {
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={typography.bodySecondary}>{t('workout.disclaimer')}</Text>
         <PrimaryButton title={t('workout.startWorkout')} onPress={() => navigation.navigate('WorkoutSetup')} />
+        <PrimaryButton variant="secondary" title={t('workout.myPlans')} onPress={() => navigation.navigate('WorkoutPlans')} />
         <Text style={typography.heading}>{t('workout.recent')}</Text>
         {history && history.length === 0 && <Text style={typography.bodySecondary}>{t('workout.noHistory')}</Text>}
         {(history || []).map((w) => (

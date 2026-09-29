@@ -12,7 +12,8 @@ const pct = (v) => (v == null ? null : `${Math.round(v * 100)}%`);
 // the grounded AI/template summary and the calorie range with its inputs.
 export default function WorkoutSummaryScreen({ route, navigation }) {
   const t = useT();
-  const { workoutId, activeSeconds, complete } = route.params;
+  const { workoutId, activeSeconds, complete, queue, queueIndex } = route.params;
+  const next = queue && queueIndex != null ? queue[queueIndex + 1] : null;
   const [data, setData] = useState(null);
   const [error, setError] = useState(false);
 
@@ -55,6 +56,8 @@ export default function WorkoutSummaryScreen({ route, navigation }) {
     ['aForm', a.correctFormRatio],
     ['aRom', a.rangeOfMotionQuality],
     ['aRest', a.restAdherence],
+    ['aTempo', a.tempoAdherence],
+    ['aSymmetry', a.symmetry],
   ];
   const m = data.metrics;
 
@@ -89,6 +92,32 @@ export default function WorkoutSummaryScreen({ route, navigation }) {
           </View>
         </View>
 
+        {(m?.trend || m?.tempo) && (
+          <View style={styles.card}>
+            <Text style={typography.heading}>{t('workout.trendTitle')}</Text>
+            {m.tempo?.actual && (
+              <>
+                <Text style={typography.body}>{t('workout.tempoActual', { down: m.tempo.actual.downSeconds, up: m.tempo.actual.upSeconds ?? '-' })}</Text>
+                {m.tempo.planned && <Text style={typography.bodySecondary}>{t('workout.tempoPlanned', { down: m.tempo.planned.down ?? '-', up: m.tempo.planned.up ?? '-' })}</Text>}
+              </>
+            )}
+            {m.trend && <Text style={typography.bodySecondary}>{m.trend.fatigueDetected ? t('workout.trendFatigue') : t('workout.trendSteady')}</Text>}
+          </View>
+        )}
+
+        {m?.comparison && (
+          <View style={styles.card}>
+            <Text style={typography.heading}>{t('workout.compareTitle')}</Text>
+            <Text style={typography.body}>
+              {t('workout.compareReps', {
+                current: m.comparison.validReps.current,
+                previous: m.comparison.validReps.previous,
+                change: `${m.comparison.validReps.change >= 0 ? '+' : ''}${m.comparison.validReps.change}`,
+              })}
+            </Text>
+          </View>
+        )}
+
         {data.calories && (
           <View style={styles.card}>
             <Text style={typography.heading}>{t('workout.calories')}</Text>
@@ -99,7 +128,13 @@ export default function WorkoutSummaryScreen({ route, navigation }) {
         )}
 
         <Text style={typography.bodySecondary}>{t('workout.disclaimer')}</Text>
-        <PrimaryButton title={t('workout.done')} onPress={() => navigation.popToTop()} />
+        {next && (
+          <PrimaryButton
+            title={t('workout.nextExercise', { name: next.name })}
+            onPress={() => navigation.replace('LiveWorkout', { ...next.params, queue, queueIndex: queueIndex + 1 })}
+          />
+        )}
+        <PrimaryButton variant={next ? 'secondary' : 'primary'} title={t('workout.done')} onPress={() => navigation.popToTop()} />
       </ScrollView>
     </SafeAreaView>
   );

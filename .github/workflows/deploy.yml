@@ -175,6 +175,12 @@ jobs:
             KMS_KEY_ID="$(printf '%s' "$KMS_KEY_ID" | tr -d '\r\n' | xargs)"
             KMS_REGION="$(printf '%s' "${KMS_REGION:-ap-southeast-1}" | tr -d '\r\n' | xargs)"
             (cd server && npm ci --omit=dev) || abort_deploy "npm ci failed"
+            # A broken merge (e.g. a router used but never required) once left
+            # the API crash-looping behind a 502. Loading the app here fails
+            # the deploy while the previous version keeps serving.
+            (cd server && NODE_ENV=production KEY_PROVIDER=aws-kms KMS_KEY_ID="$KMS_KEY_ID" KMS_REGION="${KMS_REGION:-ap-southeast-1}" \
+              ENCRYPTED_STORE_DIR="$VAULT_DIR" JWT_SECRET=preflight-only LOCAL_DEV_MASTER_KEY= LEGACY_PLAINTEXT_READS=deny \
+              node -e "require('./src/app'); process.exit(0)") || abort_deploy "The server code fails to load (see the error above) - deploy aborted, previous version still running."
             if ! (cd server && NODE_ENV=production KEY_PROVIDER=aws-kms KMS_KEY_ID="$KMS_KEY_ID" KMS_REGION="${KMS_REGION:-ap-southeast-1}" \
                   ENCRYPTED_STORE_DIR="$VAULT_DIR" JWT_SECRET=preflight-only LOCAL_DEV_MASTER_KEY= LEGACY_PLAINTEXT_READS=deny \
                   node scripts/check-kms.js); then

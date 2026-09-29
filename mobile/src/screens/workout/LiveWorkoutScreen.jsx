@@ -25,7 +25,7 @@ export default function LiveWorkoutScreen({ route, navigation }) {
   const cfg = route.params;
   const exercise = useMemo(() => getExercise(cfg.exerciseId), [cfg.exerciseId]);
   const runner = useMemo(
-    () => createWorkoutRunner({ exercise, targetSets: cfg.targetSets, targetReps: cfg.targetReps, targetHoldSeconds: cfg.targetHoldSeconds, targetRestSeconds: cfg.targetRestSeconds }),
+    () => createWorkoutRunner({ exercise, targetSets: cfg.targetSets, targetReps: cfg.targetReps, targetHoldSeconds: cfg.targetHoldSeconds, targetRestSeconds: cfg.targetRestSeconds, tempo: cfg.tempo }),
     [exercise, cfg]
   );
   const coach = useLiveCoach(cfg.coachLevel);
@@ -35,6 +35,7 @@ export default function LiveWorkoutScreen({ route, navigation }) {
   const [missing, setMissing] = useState(exercise.required.map((n) => n.replace(/^(LEFT|RIGHT)_/, '')));
   const [view, setView] = useState({ valid: 0, partial: 0, invalid: 0, heldSeconds: 0, setNumber: 1, paused: true });
   const [cue, setCue] = useState(null);
+  const [lastTempo, setLastTempo] = useState(null);
   const [restLeft, setRestLeft] = useState(0);
   const [workoutId, setWorkoutId] = useState(null);
   const [failed, setFailed] = useState(false);
@@ -72,15 +73,19 @@ export default function LiveWorkoutScreen({ route, navigation }) {
 
   const beginTracking = useCallback(async () => {
     try {
-      const w = await createWorkout({
+      // A plan run has already created its sessions; a quick start creates one now.
+      const id = cfg.workoutId || (await createWorkout({
         exerciseId: cfg.exerciseId,
         targetSets: cfg.targetSets,
         targetReps: cfg.targetReps,
         targetHoldSeconds: cfg.targetHoldSeconds,
         targetRestSeconds: cfg.targetRestSeconds,
-      });
-      await startWorkout(w.id);
-      setWorkoutId(w.id);
+        tempoDownSeconds: cfg.tempo?.down,
+        tempoPauseSeconds: cfg.tempo?.pause,
+        tempoUpSeconds: cfg.tempo?.up,
+      })).id;
+      await startWorkout(id);
+      setWorkoutId(id);
       go('live');
     } catch (err) {
       setFailed(true);
@@ -108,6 +113,7 @@ export default function LiveWorkoutScreen({ route, navigation }) {
         if (ev.type === 'rep') {
           const r = ev.rep;
           if (r.classification === 'valid') validAnnounced.current += 1;
+          if (r.eccentricMs != null) setLastTempo({ down: r.eccentricMs / 1000, up: r.concentricMs / 1000 });
           coach.announceRep(validAnnounced.current, r.classification, exercise.cues?.partial);
         } else if (ev.type === 'cue') {
           setCue(ev.message);
@@ -143,7 +149,7 @@ export default function LiveWorkoutScreen({ route, navigation }) {
       setFailed(true);
       return;
     }
-    navigation.replace('WorkoutSummary', { workoutId, activeSeconds: runner.activeSeconds, complete: true });
+    navigation.replace('WorkoutSummary', { workoutId, activeSeconds: runner.activeSeconds, complete: true, queue: cfg.queue, queueIndex: cfg.queueIndex });
   }
 
   function confirmEnd() {
@@ -227,6 +233,9 @@ export default function LiveWorkoutScreen({ route, navigation }) {
                 <Text style={styles.big}>{t('workout.repsOf', { done: view.valid, target: cfg.targetReps })}</Text>
                 <Text style={styles.lightText}>{t('workout.validPartial', { valid: view.valid, partial: view.partial })}</Text>
               </>
+            )}
+            {lastTempo && !showRest && (
+              <Text style={styles.lightText}>{t('workout.tempoActual', { down: lastTempo.down.toFixed(1), up: lastTempo.up.toFixed(1) })}</Text>
             )}
             {view.paused && !showRest && <Text style={styles.warn}>{t('workout.frameYourself')}</Text>}
             {cue && !showRest && <Text style={styles.warn}>⚠ {cue}</Text>}

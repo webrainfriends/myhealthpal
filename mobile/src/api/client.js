@@ -289,6 +289,11 @@ export const startWorkout = (id) => workoutJson(`/${id}/start`, 'POST');
 export const recordWorkoutSets = (id, sets) => workoutJson(`/${id}/sets`, 'POST', { sets });
 export const completeWorkout = (id, fields) => workoutJson(`/${id}/complete`, 'POST', fields);
 export const fetchWorkoutSummary = (id) => workoutJson(`/${id}/summary`, 'GET');
+export const fetchWorkoutPlans = () => workoutJson('/plans', 'GET');
+export const fetchWorkoutPlan = (id) => workoutJson(`/plans/${id}`, 'GET');
+export const createWorkoutPlan = (plan) => workoutJson('/plans', 'POST', plan);
+export const deleteWorkoutPlan = (id) => workoutJson(`/plans/${id}`, 'DELETE');
+export const runWorkoutPlan = (id) => workoutJson(`/plans/${id}/run`, 'POST');
 
 export async function fetchPairedDevices() {
   const response = await apiFetch('/api/devices');

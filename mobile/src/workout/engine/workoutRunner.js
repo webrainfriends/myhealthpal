@@ -12,9 +12,23 @@ const EVENT_GAP_MS = 2000; // same rule is logged at most this often
 const MAX_EVENTS_PER_SET = 200;
 const MAX_FRAME_GAP_MS = 1000; // longer gaps are not counted as active time
 
+// Flags a rep whose lowering or lifting phase was clearly faster than the
+// planned tempo (under 60% of target). Only valid reps carry tempo data.
+function tempoCueFor(rep, tempo) {
+  if (!tempo || rep.eccentricMs == null) return null;
+  if (tempo.down && rep.eccentricMs < tempo.down * 1000 * 0.6) {
+    return { ruleCode: 'TEMPO_DOWN_FAST', severity: 'minor', measuredValue: Number((rep.eccentricMs / 1000).toFixed(1)), expectedRange: { min: tempo.down, max: null }, message: 'Slow down the lowering phase.', bodySide: null };
+  }
+  if (tempo.up && rep.concentricMs < tempo.up * 1000 * 0.6) {
+    return { ruleCode: 'TEMPO_UP_FAST', severity: 'minor', measuredValue: Number((rep.concentricMs / 1000).toFixed(1)), expectedRange: { min: tempo.up, max: null }, message: 'Control the lifting phase.', bodySide: null };
+  }
+  return null;
+}
+
 const iso = (ms) => new Date(ms).toISOString();
 
-function createWorkoutRunner({ exercise, targetSets, targetReps, targetHoldSeconds, targetRestSeconds = 60, options = {} }) {
+// tempo: optional { down, pause, up } target seconds per rep phase.
+function createWorkoutRunner({ exercise, targetSets, targetReps, targetHoldSeconds, targetRestSeconds = 60, tempo = null, options = {} }) {
   const isHold = exercise.kind === 'hold';
   const counter = isHold ? null : createRepCounter(exercise, options);
   const hold = isHold ? createHoldTracker(exercise, options) : null;
@@ -42,7 +56,7 @@ function createWorkoutRunner({ exercise, targetSets, targetReps, targetHoldSecon
       completedAt: iso(now),
       holdSeconds: isHold ? hold.heldSeconds : undefined,
       restSecondsAfter: null,
-      reps: reps.map((r) => ({ ...r, clientId: `r${r.repNumber}`, startedAt: iso(r.startedAt), completedAt: iso(r.completedAt), metrics: { minAngle: r.minValue, issue: r.issue } })),
+      reps: reps.map((r) => ({ ...r, clientId: `r${r.repNumber}`, startedAt: iso(r.startedAt), completedAt: iso(r.completedAt), metrics: { minAngle: r.minValue, issue: r.issue } })),  // tempo/symmetry travel as top-level rep fields
       formEvents,
     };
   }
@@ -89,6 +103,8 @@ function createWorkoutRunner({ exercise, targetSets, targetReps, targetHoldSecon
       if (r.rep) {
         reps.push(r.rep);
         events.push({ type: 'rep', rep: r.rep });
+        const tempoCue = tempoCueFor(r.rep, tempo);
+        if (tempoCue) recordCue(events, tempoCue, now);
       }
       if (targetReps && validInSet() >= targetReps) {
         completeSet(now);
@@ -99,16 +115,22 @@ function createWorkoutRunner({ exercise, targetSets, targetReps, targetHoldSecon
 
     if (!paused) {
       for (const ev of analyzeForm(exercise, landmarks, state === 'bottom' ? 'bottom' : 'any', options)) {
-        if (now - (lastEventAt.get(ev.ruleCode) ?? -Infinity) < EVENT_GAP_MS) continue;
-        lastEventAt.set(ev.ruleCode, now);
-        events.push({ type: 'cue', ...ev });
-        if (formEvents.length < MAX_EVENTS_PER_SET) {
-          eventSeq += 1;
-          formEvents.push({ clientId: `e${eventSeq}`, timestampMs: Math.max(0, now - (setStart ?? now)), ...ev });
-        }
+        recordCue(events, ev, now);
       }
     }
     return { events, paused };
+  }
+
+  // Emits a cue event and logs it as a form event, at most once per rule
+  // per EVENT_GAP_MS so the log (and the coach) aren't spammed.
+  function recordCue(events, ev, now) {
+    if (now - (lastEventAt.get(ev.ruleCode) ?? -Infinity) < EVENT_GAP_MS) return;
+    lastEventAt.set(ev.ruleCode, now);
+    events.push({ type: 'cue', ...ev });
+    if (formEvents.length < MAX_EVENTS_PER_SET) {
+      eventSeq += 1;
+      formEvents.push({ clientId: `e${eventSeq}`, timestampMs: Math.max(0, now - (setStart ?? now)), ...ev });
+    }
   }
 
   function startNextSet(now) {
