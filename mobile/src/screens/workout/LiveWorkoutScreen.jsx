@@ -43,6 +43,7 @@ export default function LiveWorkoutScreen({ route, navigation }) {
   const [failed, setFailed] = useState(false);
   const readyFrames = useRef(0);
   const validAnnounced = useRef(0);
+  const beganAt = useRef(null);
   // Optional recording (opt-in): file path promise + sampled landmarks.
   const cameraRef = useRef(null);
   const recording = useRef({ promise: null, startedAt: null, frames: [], lastSampleAt: 0 });
@@ -88,9 +89,12 @@ export default function LiveWorkoutScreen({ route, navigation }) {
         tempoDownSeconds: cfg.tempo?.down,
         tempoPauseSeconds: cfg.tempo?.pause,
         tempoUpSeconds: cfg.tempo?.up,
+        targetHrZoneLow: cfg.hrZone?.low,
+        targetHrZoneHigh: cfg.hrZone?.high,
       })).id;
       await startWorkout(id);
       setWorkoutId(id);
+      beganAt.current = Date.now();
       if (cfg.recordVideo && cameraRef.current) {
         // The local file is a temp recording; nothing leaves the phone until
         // the user chooses to save it (WorkoutRecordingCard).
@@ -173,7 +177,7 @@ export default function LiveWorkoutScreen({ route, navigation }) {
       setFailed(true);
       return;
     }
-    navigation.replace('WorkoutSummary', { workoutId, activeSeconds: runner.activeSeconds, complete: true, queue: cfg.queue, queueIndex: cfg.queueIndex });
+    navigation.replace('WorkoutSummary', { workoutId, activeSeconds: runner.activeSeconds, complete: true, queue: cfg.queue, queueIndex: cfg.queueIndex, useHeartRate: cfg.useHeartRate, startedAtMs: beganAt.current });
   }
 
   function confirmEnd() {

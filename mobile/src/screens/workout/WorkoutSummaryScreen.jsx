@@ -6,6 +6,7 @@ import { cardShadow, colors, radii, spacing, typography } from '../../theme/them
 import { completeWorkout, fetchWorkoutSummary } from '../../api/client';
 import { useT } from '../../i18n/I18nContext';
 import WorkoutRecordingCard from './WorkoutRecordingCard';
+import { fetchWorkoutHealth } from '../../health/workoutHealth';
 
 const pct = (v) => (v == null ? null : `${Math.round(v * 100)}%`);
 
@@ -13,7 +14,7 @@ const pct = (v) => (v == null ? null : `${Math.round(v * 100)}%`);
 // the grounded AI/template summary and the calorie range with its inputs.
 export default function WorkoutSummaryScreen({ route, navigation }) {
   const t = useT();
-  const { workoutId, activeSeconds, complete, queue, queueIndex } = route.params;
+  const { workoutId, activeSeconds, complete, queue, queueIndex, useHeartRate, startedAtMs } = route.params;
   const next = queue && queueIndex != null ? queue[queueIndex + 1] : null;
   const [data, setData] = useState(null);
   const [error, setError] = useState(false);
@@ -22,11 +23,24 @@ export default function WorkoutSummaryScreen({ route, navigation }) {
     setError(false);
     try {
       // First arrival from a live session completes it (idempotent on the server).
-      setData(complete ? await completeWorkout(workoutId, { activeSeconds }) : await fetchWorkoutSummary(workoutId));
+      if (!complete) {
+        setData(await fetchWorkoutSummary(workoutId));
+        return;
+      }
+      // Heart rate/active energy for the workout window, only if the user opted in.
+      let health = null;
+      if (useHeartRate && startedAtMs) {
+        health = await fetchWorkoutHealth(startedAtMs, Date.now()).catch(() => null);
+      }
+      setData(await completeWorkout(workoutId, {
+        activeSeconds,
+        heartRate: health && health.samples.length ? { source: health.source, samples: health.samples } : undefined,
+        deviceActiveKcal: health?.activeKcal || undefined,
+      }));
     } catch (err) {
       setError(true);
     }
-  }, [workoutId, activeSeconds, complete]);
+  }, [workoutId, activeSeconds, complete, useHeartRate, startedAtMs]);
 
   useEffect(() => {
     load();
@@ -59,6 +73,7 @@ export default function WorkoutSummaryScreen({ route, navigation }) {
     ['aRest', a.restAdherence],
     ['aTempo', a.tempoAdherence],
     ['aSymmetry', a.symmetry],
+    ['aHrZone', a.heartRateZoneTime],
   ];
   const m = data.metrics;
 
@@ -116,6 +131,16 @@ export default function WorkoutSummaryScreen({ route, navigation }) {
                 change: `${m.comparison.validReps.change >= 0 ? '+' : ''}${m.comparison.validReps.change}`,
               })}
             </Text>
+          </View>
+        )}
+
+        {data.heartRate && (
+          <View style={styles.card}>
+            <Text style={typography.heading}>{t('workout.heartRate')}</Text>
+            <Text style={typography.body}>{t('workout.hrAvgMax', { avg: data.heartRate.avgBpm, max: data.heartRate.maxBpm })}</Text>
+            {data.heartRate.zone && (
+              <Text style={typography.bodySecondary}>{t('workout.hrZone', { low: data.heartRate.zone.low, high: data.heartRate.zone.high })}</Text>
+            )}
           </View>
         )}
 
