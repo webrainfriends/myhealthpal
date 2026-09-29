@@ -1,19 +1,43 @@
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Svg, { Circle, Defs, Ellipse, RadialGradient, Stop } from 'react-native-svg';
 import GradientFill from './brand/GradientFill';
 import { colors } from '../theme/theme';
 import { useT } from '../i18n/I18nContext';
 
 const DIET_IMAGE = require('../../assets/dashboard/diet-bowl.jpg');
-// Transparent at the top (so the photo reads clearly) fading into an orange
-// tint at the bottom - keeps the calorie total legible without hiding the
-// photo behind a flat color block.
-const OVERLAY = ['rgba(255, 122, 61, 0)', 'rgba(196, 68, 16, 0.88)'];
+// A light, mostly-transparent orange wash - just enough to tie the photo
+// into the app's color system without hiding the bowl of fruit/veg it's a
+// photo of.
+const OVERLAY = ['rgba(255, 122, 61, 0)', 'rgba(196, 68, 16, 0.32)'];
+
+const BADGE_SIZE = 68;
+
+// The calorie count's own glossy 3D badge - a white rim + gradient-filled
+// sphere (the same layered-circle technique as the app mascot's heartbeat
+// badge) so the number reads as a raised object sitting on the photo,
+// rather than flat text stamped over it.
+function CalorieBadgeArt() {
+  return (
+    <Svg width={BADGE_SIZE} height={BADGE_SIZE} viewBox="0 0 68 68">
+      <Defs>
+        <RadialGradient id="calGrad" cx="0.35" cy="0.3" r="0.75">
+          <Stop offset="0" stopColor="#FFD27A" />
+          <Stop offset="1" stopColor="#FF6A3D" />
+        </RadialGradient>
+      </Defs>
+      <Circle cx="34" cy="34" r="33" fill="#FFFFFF" />
+      <Circle cx="34" cy="34" r="29" fill="url(#calGrad)" />
+      <Ellipse cx="24" cy="22" rx="11" ry="6.5" fill="#FFFFFF" opacity="0.35" transform="rotate(-25 24 22)" />
+    </Svg>
+  );
+}
 
 // Dashboard tile - a real photo fills the card (an actual "HQ background
-// image" rather than an icon or illustration), tinted with the app's warm
-// diet color so the card still reads as part of the same system. Still just
-// a teaser (today's calorie total + a pending-review badge); full detail
-// lives on the Diet screen itself.
+// image" rather than an icon or illustration), lightly tinted so the bowl
+// of fruit/veg it shows stays clearly visible. The calorie count sits in
+// its own glossy 3D badge over the photo instead of as flat overlay text,
+// with a pending-review count as a small dot on that badge. Still just a
+// teaser - full detail lives on the Diet screen itself.
 export default function DietCard({ today, pendingReviewCount, onPress }) {
   const t = useT();
   const hasData = today && today.calories > 0;
@@ -23,21 +47,25 @@ export default function DietCard({ today, pendingReviewCount, onPress }) {
       <Image source={DIET_IMAGE} style={StyleSheet.absoluteFill} resizeMode="cover" />
       <GradientFill colors={OVERLAY} angle="vertical" />
 
-      {pendingReviewCount > 0 && (
-        <View style={styles.badge}>
-          <Text style={styles.badgeText} numberOfLines={1}>
-            {pendingReviewCount}
-          </Text>
+      <View style={styles.badgeAnchor}>
+        <View style={styles.badgeWrap}>
+          <CalorieBadgeArt />
+          <View style={styles.badgeCenter} pointerEvents="none">
+            <Text style={styles.badgeValue} numberOfLines={1}>
+              {hasData ? Math.round(today.calories) : '—'}
+            </Text>
+            <Text style={styles.badgeUnit} numberOfLines={1}>
+              {t('diet.calSuffix').trim()}
+            </Text>
+          </View>
         </View>
-      )}
-
-      <View style={styles.textBlock}>
-        <Text style={styles.value} numberOfLines={1}>
-          {hasData ? Math.round(today.calories) : '—'}
-        </Text>
-        <Text style={styles.label} numberOfLines={1}>
-          {t('diet.calSuffix').trim()}
-        </Text>
+        {pendingReviewCount > 0 && (
+          <View style={styles.reviewDot}>
+            <Text style={styles.reviewDotText} numberOfLines={1}>
+              {pendingReviewCount}
+            </Text>
+          </View>
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -50,12 +78,41 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     overflow: 'hidden',
     justifyContent: 'flex-end',
-    padding: 14,
+    alignItems: 'flex-end',
+    padding: 10,
   },
-  badge: {
+  badgeAnchor: {
+    width: BADGE_SIZE,
+    height: BADGE_SIZE,
+  },
+  badgeWrap: {
+    width: BADGE_SIZE,
+    height: BADGE_SIZE,
+    shadowColor: '#4B2BD6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  badgeCenter: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeValue: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  badgeUnit: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: 'rgba(255, 255, 255, 0.9)',
+  },
+  reviewDot: {
     position: 'absolute',
-    top: 10,
-    right: 10,
+    top: -4,
+    right: -4,
     minWidth: 20,
     height: 20,
     borderRadius: 10,
@@ -66,22 +123,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 4,
   },
-  badgeText: {
+  reviewDotText: {
     color: '#FFFFFF',
     fontSize: 10,
     fontWeight: '700',
-  },
-  textBlock: {
-    gap: 2,
-  },
-  value: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  label: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: 'rgba(255, 255, 255, 0.9)',
   },
 });
