@@ -26,6 +26,8 @@ const PURPOSES = {
   // the same kind of "read my uploaded document" AI processing.
   diet_schedule_import: 'ai_document_processing',
   custom_card_grouping: 'ai_health_insights',
+  // Workout Coach summary - receives only aggregated session metrics.
+  workout_coach: 'ai_health_insights',
   // A medicine's generic reference description - the request carries only
   // the medicine's name, no personal data, so no consent is needed.
   reference_lookup: null,

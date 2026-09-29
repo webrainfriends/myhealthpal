@@ -39,6 +39,10 @@ import AiUsageScreen from '../screens/AiUsageScreen';
 import AdminSessionsScreen from '../screens/AdminSessionsScreen';
 import RetestRadarScreen from '../screens/RetestRadarScreen';
 import FamilyScreen from '../screens/FamilyScreen';
+import WorkoutCoachHomeScreen from '../screens/workout/WorkoutCoachHomeScreen';
+import WorkoutSetupScreen from '../screens/workout/WorkoutSetupScreen';
+import LiveWorkoutScreen from '../screens/workout/LiveWorkoutScreen';
+import WorkoutSummaryScreen from '../screens/workout/WorkoutSummaryScreen';
 import PrivacyConsentScreen from '../screens/PrivacyConsentScreen';
 import { onRetestNotificationTap, registerForRetestPush } from '../notifications/retestNotifications';
 import { onWaterNotificationTap } from '../notifications/waterNotifications';
@@ -90,6 +94,10 @@ const linking = {
       MedicationDetail: 'medications/:medicationId',
       MedicationScanReview: 'medications/scans/:scanId',
       Activity: 'activity',
+      WorkoutCoach: 'activity/coach',
+      WorkoutSetup: 'activity/coach/setup',
+      LiveWorkout: 'activity/coach/live',
+      WorkoutSummary: 'activity/coach/summary/:workoutId',
       Devices: 'settings/devices',
       Diet: 'diet',
       DietScanReview: 'diet/scans/:scanId',
@@ -264,6 +272,10 @@ export default function RootNavigator() {
           options={{ title: t('nav.addMedication') }}
         />
         <Stack.Screen name="Activity" component={ActivityScreen} options={{ title: t('nav.activity') }} />
+        <Stack.Screen name="WorkoutCoach" component={WorkoutCoachHomeScreen} options={{ title: t('nav.workoutCoach') }} />
+        <Stack.Screen name="WorkoutSetup" component={WorkoutSetupScreen} options={{ title: t('workout.setupTitle') }} />
+        <Stack.Screen name="LiveWorkout" component={LiveWorkoutScreen} options={{ title: t('workout.liveTitle'), gestureEnabled: false }} />
+        <Stack.Screen name="WorkoutSummary" component={WorkoutSummaryScreen} options={{ title: t('workout.summaryTitle') }} />
         <Stack.Screen name="Diet" component={DietScreen} options={{ title: t('nav.diet') }} />
         <Stack.Screen name="DietScanReview" component={DietScanReviewScreen} options={{ title: t('nav.reviewScan') }} />
         <Stack.Screen

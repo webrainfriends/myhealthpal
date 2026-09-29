@@ -267,6 +267,24 @@ export async function logActivity(fields) {
   return handleResponse(response);
 }
 
+// AI Workout Coach (issue #135). Pose tracking is on-device; only per-rep
+// aggregates and form events are sent, in batches.
+async function workoutJson(path, method, body) {
+  const response = await apiFetch(`/api/activity/workouts${path}`, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return handleResponse(response);
+}
+export const fetchWorkoutExercises = () => workoutJson('/exercises', 'GET');
+export const fetchWorkoutHistory = () => workoutJson('/history', 'GET');
+export const createWorkout = (fields) => workoutJson('', 'POST', fields);
+export const startWorkout = (id) => workoutJson(`/${id}/start`, 'POST');
+export const recordWorkoutSets = (id, sets) => workoutJson(`/${id}/sets`, 'POST', { sets });
+export const completeWorkout = (id, fields) => workoutJson(`/${id}/complete`, 'POST', fields);
+export const fetchWorkoutSummary = (id) => workoutJson(`/${id}/summary`, 'GET');
+
 export async function fetchPairedDevices() {
   const response = await apiFetch('/api/devices');
   return handleResponse(response);
