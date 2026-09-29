@@ -17,6 +17,7 @@ import {
 } from '../api/client';
 import { showAlert } from '../utils/alert';
 import { DEVICE_PROFILES } from '../ble/deviceProfiles';
+import { requestWebDevice } from '../ble/webBluetooth';
 import { isBleAvailable, requestBlePermissions, scanForDevices, connectAndSync, isBluetoothPoweredOn } from '../ble/bleService';
 import {
   isStepSyncAvailable,
@@ -402,13 +403,37 @@ export default function DevicesScreen() {
     }
   }
 
+  // Web Bluetooth has no background scan - the browser's own chooser is the
+  // scan UI, and it must open straight from the tap (a user gesture).
+  async function handleWebPair(deviceType) {
+    if (!isBleAvailable()) {
+      showAlert(
+        'Bluetooth isn’t supported in this browser',
+        'Safari (iPhone/iPad/Mac) and Firefox can’t pair Bluetooth devices. Use Chrome or Edge on Android or a computer, or the EyeMyHealth mobile app.'
+      );
+      return;
+    }
+    try {
+      const picked = await requestWebDevice(deviceType);
+      const { device } = await pairDevice({
+        deviceType,
+        connectionType: 'ble',
+        name: picked.name || DEVICE_PROFILES[deviceType].label,
+        bluetoothId: picked.id,
+      });
+      await load();
+      await handleSync(device);
+    } catch (err) {
+      // Closing the chooser rejects with NotFoundError - not worth an alert.
+      if (err?.name === 'NotFoundError') return;
+      showAlert('Could not pair device', err.message);
+    }
+  }
+
   function handleScanned(deviceType) {
     try {
       if (IS_WEB) {
-        showAlert(
-          'Open the mobile app to pair',
-          'Browsers can’t pair Bluetooth health devices (Safari doesn’t support it at all). Install the EyeMyHealth app on your phone, pair there, and readings will show up here.'
-        );
+        handleWebPair(deviceType);
         return;
       }
       if (!isBleAvailable()) {
