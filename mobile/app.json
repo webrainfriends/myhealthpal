@@ -12,7 +12,8 @@
       "infoPlist": {
         "NSBluetoothAlwaysUsageDescription": "MyHealthPal uses Bluetooth to sync readings from paired devices like glucose meters, blood pressure monitors, and smart scales.",
         "NSBluetoothPeripheralUsageDescription": "MyHealthPal uses Bluetooth to sync readings from paired devices like glucose meters, blood pressure monitors, and smart scales.",
-        "NSHealthShareUsageDescription": "MyHealthPal reads your step count from Apple Health to show it alongside your other activity."
+        "NSHealthShareUsageDescription": "MyHealthPal reads your step count from Apple Health to show it alongside your other activity.",
+        "NSMotionUsageDescription": "EyeMyHealth reads your phone's step counter to show your daily steps."
       }
     },
     "android": {
@@ -26,7 +27,8 @@
         "android.permission.BLUETOOTH_SCAN",
         "android.permission.BLUETOOTH_CONNECT",
         "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.health.READ_STEPS"
+        "android.permission.health.READ_STEPS",
+        "android.permission.ACTIVITY_RECOGNITION"
       ]
     },
     "web": {
@@ -47,6 +49,12 @@
       "react-native-health",
       "react-native-health-connect",
       "expo-dev-client",
+      [
+        "expo-sensors",
+        {
+          "motionPermission": "EyeMyHealth reads your phone's step counter to show your daily steps."
+        }
+      ],
       "expo-notifications",
       [
         "expo-location",

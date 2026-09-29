@@ -17,8 +17,15 @@ import {
 } from '../api/client';
 import { showAlert } from '../utils/alert';
 import { DEVICE_PROFILES } from '../ble/deviceProfiles';
+import { requestWebDevice } from '../ble/webBluetooth';
 import { isBleAvailable, requestBlePermissions, scanForDevices, connectAndSync, isBluetoothPoweredOn } from '../ble/bleService';
-import { isStepSyncAvailable, stepSourceForPlatform, fetchDailyStepsSince } from '../health/stepSync';
+import {
+  isStepSyncAvailable,
+  stepSourceForPlatform,
+  fetchDailyStepsSince,
+  isPhonePedometerAvailable,
+  PHONE_PEDOMETER_SOURCE,
+} from '../health/stepSync';
 
 const DEVICE_TYPE_ICON = {
   blood_glucose_meter: '🩸',
@@ -50,6 +57,7 @@ function formatDateTime(value) {
 // is exactly one HealthKit store and one Health Connect store per phone,
 // so pairing it is just registering that connection directly.
 const PLATFORM_STEP_SOURCE = stepSourceForPlatform();
+const IS_WEB = Platform.OS === 'web';
 const PLATFORM_STEP_LABEL = PLATFORM_STEP_SOURCE === 'apple_health' ? 'Apple Health' : 'Health Connect';
 
 function DeviceRow({ device, onRename, onUnpair, onSync, syncing }) {
@@ -301,6 +309,16 @@ export default function DevicesScreen() {
     }, [load])
   );
 
+  const [pedometerAvailable, setPedometerAvailable] = useState(false);
+  useEffect(() => {
+    isPhonePedometerAvailable().then(setPedometerAvailable);
+  }, []);
+
+  const pairedPedometerDevice = useMemo(
+    () => devices.find((d) => d.connectionType === PHONE_PEDOMETER_SOURCE),
+    [devices]
+  );
+
   const pairedPlatformStepDevice = useMemo(
     () => devices.find((d) => d.connectionType === PLATFORM_STEP_SOURCE),
     [devices]
@@ -338,7 +356,7 @@ export default function DevicesScreen() {
         const result = await syncDeviceReadings(device.id, readings);
         showAlert('Synced', `${result.synced} new reading${result.synced === 1 ? '' : 's'} added.`);
       } else {
-        const days = await fetchDailyStepsSince();
+        const days = await fetchDailyStepsSince(undefined, device.connectionType);
         for (const day of days) {
           await logActivity({ log_date: day.date, steps: day.steps });
         }
@@ -372,15 +390,63 @@ export default function DevicesScreen() {
     }
   }
 
-  function handleScanned(deviceType) {
+  async function handlePairPhonePedometer() {
+    try {
+      const { device } = await pairDevice({
+        deviceType: 'step_tracker',
+        connectionType: PHONE_PEDOMETER_SOURCE,
+        name: 'Phone step counter',
+      });
+      await handleSync(device);
+    } catch (err) {
+      showAlert('Could not connect', err.message);
+    }
+  }
+
+  // Web Bluetooth has no background scan - the browser's own chooser is the
+  // scan UI, and it must open straight from the tap (a user gesture).
+  async function handleWebPair(deviceType) {
     if (!isBleAvailable()) {
       showAlert(
-        'Bluetooth isn’t available in this build',
-        'This needs a custom dev client build with react-native-ble-plx linked (see the README).'
+        'Bluetooth isn’t supported in this browser',
+        'Safari (iPhone/iPad/Mac) and Firefox can’t pair Bluetooth devices. Use Chrome or Edge on Android or a computer, or the EyeMyHealth mobile app.'
       );
       return;
     }
-    setScanDeviceType(deviceType);
+    try {
+      const picked = await requestWebDevice(deviceType);
+      const { device } = await pairDevice({
+        deviceType,
+        connectionType: 'ble',
+        name: picked.name || DEVICE_PROFILES[deviceType].label,
+        bluetoothId: picked.id,
+      });
+      await load();
+      await handleSync(device);
+    } catch (err) {
+      // Closing the chooser rejects with NotFoundError - not worth an alert.
+      if (err?.name === 'NotFoundError') return;
+      showAlert('Could not pair device', err.message);
+    }
+  }
+
+  function handleScanned(deviceType) {
+    try {
+      if (IS_WEB) {
+        handleWebPair(deviceType);
+        return;
+      }
+      if (!isBleAvailable()) {
+        showAlert(
+          'Bluetooth isn’t available in this build',
+          'This needs a custom dev client build with react-native-ble-plx linked (see the README).'
+        );
+        return;
+      }
+      setScanDeviceType(deviceType);
+    } catch (err) {
+      showAlert('Bluetooth error', err.message);
+    }
   }
 
   if (loading) {
@@ -427,6 +493,23 @@ export default function DevicesScreen() {
               <Text style={styles.chevron}>›</Text>
             </TouchableOpacity>
           ))}
+          {(pedometerAvailable || IS_WEB) && !pairedPedometerDevice && (
+            <TouchableOpacity
+              style={[styles.card, styles.addRow]}
+              onPress={() =>
+                IS_WEB
+                  ? showAlert('Open the mobile app', 'A browser can’t read your phone’s step counter. Use the EyeMyHealth app on your phone to connect it.')
+                  : handlePairPhonePedometer()
+              }
+            >
+              <Text style={styles.deviceIcon}>{DEVICE_TYPE_ICON.step_tracker}</Text>
+              <View style={styles.deviceRowText}>
+                <Text style={typography.body}>Phone step counter</Text>
+                <Text style={typography.caption}>Built-in steps from this phone, no extra app needed</Text>
+              </View>
+              <Text style={styles.chevron}>›</Text>
+            </TouchableOpacity>
+          )}
           {PLATFORM_STEP_SOURCE && !pairedPlatformStepDevice && (
             <TouchableOpacity style={[styles.card, styles.addRow]} onPress={handlePairPlatformSteps}>
               <Text style={styles.deviceIcon}>{DEVICE_TYPE_ICON.step_tracker}</Text>

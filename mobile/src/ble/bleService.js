@@ -2,6 +2,7 @@ import { Platform, PermissionsAndroid } from 'react-native';
 import { profileForDeviceType, allScannableServiceUuids } from './deviceProfiles';
 import { RACP_OPCODE_REPORT_STORED_RECORDS, RACP_OPERATOR_ALL_RECORDS, CHARACTERISTICS } from './gattConstants';
 import { bytesToBase64 } from './parsers';
+import { isWebBluetoothSupported, webConnectAndSync } from './webBluetooth';
 
 // react-native-ble-plx requires a custom dev client build (it's a native
 // module - Expo Go cannot load it). Rather than make every screen that
@@ -12,17 +13,24 @@ let BleManagerClass = null;
 let bleManager = null;
 function getManager() {
   if (bleManager) return bleManager;
+  // Browsers have no BLE stack this module can use (Safari has no Web
+  // Bluetooth at all), and react-native-ble-plx *loads* fine on web but
+  // throws from `new BleManager()` - which used to escape from every
+  // onPress that called this and look like "nothing happens".
+  if (Platform.OS === 'web') return null;
   try {
     // eslint-disable-next-line global-require
     BleManagerClass = require('react-native-ble-plx').BleManager;
+    bleManager = new BleManagerClass();
   } catch (err) {
+    bleManager = null;
     return null;
   }
-  bleManager = new BleManagerClass();
   return bleManager;
 }
 
 export function isBleAvailable() {
+  if (Platform.OS === 'web') return isWebBluetoothSupported();
   return getManager() !== null;
 }
 
@@ -104,6 +112,7 @@ async function requestStoredRecords(device, serviceUuid) {
 // measurement) will simply stop sending after its one reading and the
 // caller doesn't wait out the full window needlessly.
 export async function connectAndSync(bluetoothId, deviceType, { collectWindowMs = 4000, miScale = false } = {}) {
+  if (Platform.OS === 'web') return webConnectAndSync(bluetoothId, deviceType, { collectWindowMs, miScale });
   const manager = getManager();
   if (!manager) throw new Error('Bluetooth is not available in this build.');
 
@@ -141,6 +150,7 @@ export async function connectAndSync(bluetoothId, deviceType, { collectWindowMs 
 // because the person hasn't turned Bluetooth on yet, vs. any other error -
 // used to show "Turn on Bluetooth" instead of a generic failure message.
 export async function isBluetoothPoweredOn() {
+  if (Platform.OS === 'web') return isWebBluetoothSupported();
   const manager = getManager();
   if (!manager) return false;
   const state = await manager.state();
