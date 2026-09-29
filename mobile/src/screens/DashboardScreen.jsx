@@ -386,40 +386,38 @@ export default function DashboardScreen({ navigation }) {
           </>
         )}
 
-        {activity && (
-          <View style={styles.sectionSpacing}>
-            <ActivityCard
-              current={activity.current}
-              isCurrentToday={activity.isCurrentToday}
-              onPress={() => navigation.navigate('Activity')}
-            />
-          </View>
-        )}
+        {(activity || diet || water) && (
+          <View style={[styles.tileRow, styles.sectionSpacing]}>
+            {activity && (
+              <ActivityCard
+                current={activity.current}
+                isCurrentToday={activity.isCurrentToday}
+                onPress={() => navigation.navigate('Activity')}
+              />
+            )}
 
-        {diet && (
-          <View style={styles.sectionSpacing}>
-            <DietCard
-              today={diet.today}
-              pendingReviewCount={diet.pendingReviewCount}
-              onPress={() => navigation.navigate('Diet')}
-            />
-          </View>
-        )}
+            {diet && (
+              <DietCard
+                today={diet.today}
+                pendingReviewCount={diet.pendingReviewCount}
+                onPress={() => navigation.navigate('Diet')}
+              />
+            )}
 
-        {water && (
-          <View style={styles.sectionSpacing}>
-            <WaterBottleTracker
-              totalMl={water.totalMl}
-              target={water.target}
-              alert={water.alert}
-              onAdd={handleLogWater}
-              onUndo={handleUndoWater}
-              onRefreshTarget={handleRefreshWaterTarget}
-              adding={loggingWater}
-              undoing={undoingWater}
-              refreshingTarget={refreshingWaterTarget}
-              canUndo={(water.entries || []).length > 0}
-            />
+            {water && (
+              <WaterBottleTracker
+                totalMl={water.totalMl}
+                target={water.target}
+                alert={water.alert}
+                onAdd={handleLogWater}
+                onUndo={handleUndoWater}
+                onRefreshTarget={handleRefreshWaterTarget}
+                adding={loggingWater}
+                undoing={undoingWater}
+                refreshingTarget={refreshingWaterTarget}
+                canUndo={(water.entries || []).length > 0}
+              />
+            )}
           </View>
         )}
 
@@ -622,6 +620,10 @@ const styles = StyleSheet.create({
   },
   sectionSpacing: {
     marginTop: spacing.lg,
+  },
+  tileRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
   },
   retestList: {
     gap: spacing.sm,

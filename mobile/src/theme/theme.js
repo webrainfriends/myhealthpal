@@ -21,6 +21,8 @@ export const colors = {
   warningMuted: '#FFF3E0',
   danger: '#FF3B5C',
   dangerMuted: '#FFEBEF',
+  teal: '#0E9FB4',
+  tealMuted: '#E1F7FA',
   overlay: 'rgba(26, 20, 51, 0.45)',
   onBrand: '#FFFFFF',
   onBrandMuted: 'rgba(255, 255, 255, 0.82)',
