@@ -20,6 +20,7 @@ import {
   fetchDashboardSnapshot,
   fetchDietSummary,
   fetchOrganHealth,
+  fetchPairedDevices,
   fetchRetestPlans,
   fetchWaterSummary,
   logWaterEntry,
@@ -120,6 +121,7 @@ export default function DashboardScreen({ navigation }) {
   const [customCards, setCustomCards] = useState(null);
   const [activity, setActivity] = useState(null);
   const [diet, setDiet] = useState(null);
+  const [pairedDeviceCount, setPairedDeviceCount] = useState(0);
   const [retestPlans, setRetestPlans] = useState([]);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [weather, setWeather] = useState(null);
@@ -144,6 +146,32 @@ export default function DashboardScreen({ navigation }) {
   }, []);
 
   const load = useCallback(async () => {
+    try {
+      const [data, organData, customCardData, activityData, dietData, devicesData] = await Promise.all([
+        fetchDashboardSnapshot(),
+        fetchOrganHealth(),
+        // Results a report contained that matched nothing in the Health
+        // Parameter Registry - grouped into their own ad-hoc cards (see
+        // customCardService.js) so nothing extracted ever goes unshown.
+        fetchCustomCards(),
+        // A window wide enough that the card can fall back to the most
+        // recently logged day (see /api/activity/summary) when nothing is
+        // logged for today itself - a wearable export upload is common and
+        // rarely includes literally today.
+        fetchActivitySummary(7),
+        fetchDietSummary(1),
+        fetchPairedDevices(),
+      ]);
+      setSnapshot(data);
+      setOrgans(organData.organs);
+      setCustomCards(customCardData.cards);
+      setActivity({ current: activityData.current, isCurrentToday: activityData.isCurrentToday });
+      setDiet(dietData);
+      setPairedDeviceCount(devicesData.devices.length);
+    } catch (err) {
+      console.warn('Failed to load dashboard', err.message);
+    } finally {
+      setLoading(false);
     // Promise.all rejects (and skips every setter below, including ones
     // whose own call already succeeded) the instant any ONE of these five
     // calls fails - one flaky/erroring endpoint used to blank out the
@@ -466,6 +494,14 @@ export default function DashboardScreen({ navigation }) {
             subtitle={snapshot.needsAttention.length === 0 ? t('dashboard.allClear') : t('dashboard.tapToView')}
             palette={snapshot.needsAttention.length === 0 ? healthStatusColors.good : healthStatusColors.attention}
             onPress={() => navigation.navigate('NeedsAttention')}
+          />
+          <SummaryCard
+            icon="📶"
+            count={pairedDeviceCount}
+            label="Devices"
+            subtitle={pairedDeviceCount === 0 ? 'Pair a device' : 'Tap to manage'}
+            palette={pairedDeviceCount === 0 ? healthStatusColors.no_data : healthStatusColors.good}
+            onPress={() => navigation.navigate('Devices')}
           />
         </View>
 
