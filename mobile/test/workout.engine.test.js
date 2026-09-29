@@ -160,3 +160,27 @@ test('workout runner: ending early keeps a set that has activity', () => {
   assert.equal(sets.length, 1);
   assert.equal(sets[0].reps.length, 1);
 });
+
+test('valid reps carry tempo phases and (with both sides) a symmetry score', () => {
+  const c = createRepCounter(getExercise('squat'), { smoothing: 1 });
+  const uneven = (a) => {
+    const lm = legs(a);
+    lm.RIGHT_ANKLE = { x: Math.sin(rad(Math.max(a, 105))), y: -Math.cos(rad(Math.max(a, 105))), c: 0.9 }; // right knee bends less
+    return lm;
+  };
+  // 100ms frames: descend 8 frames, hold 5 frames at the bottom, ascend 8.
+  const angles = [175, ...ramp(175, 85, 8), 85, 85, 85, 85, 85, ...ramp(85, 175, 8)];
+  let rep = null;
+  angles.forEach((a, i) => { const r = c.update(uneven(a), i * 100).rep; if (r) rep = r; });
+  assert.equal(rep.classification, 'valid');
+  assert.ok(rep.eccentricMs > 0 && rep.concentricMs > 0 && rep.holdMs >= 0);
+  assert.ok(rep.symmetryScore > 0 && rep.symmetryScore < 1);
+});
+
+test('runner cues a rep lowered much faster than the planned tempo', () => {
+  const runner = createWorkoutRunner({ exercise: getExercise('squat'), targetSets: 1, targetReps: 5, tempo: { down: 3, pause: 0, up: 2 }, options: { smoothing: 1 } });
+  let t = 0;
+  const cues = [];
+  [175, ...cycle(85)].forEach((a) => { cues.push(...runner.feed(legs(a), t).events.filter((e) => e.type === 'cue')); t += 100; });
+  assert.ok(cues.some((c) => c.ruleCode === 'TEMPO_DOWN_FAST'));
+});

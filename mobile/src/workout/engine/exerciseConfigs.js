@@ -16,6 +16,7 @@ const LM = (n) => n; // documentation aid: MediaPipe-style landmark names
 const EXERCISES = {
   squat: {
     id: 'squat',
+    symmetry: true,
     name: 'Squat',
     kind: 'reps',
     required: ['LEFT_HIP', 'LEFT_KNEE', 'LEFT_ANKLE'],
@@ -28,6 +29,7 @@ const EXERCISES = {
   },
   pushup: {
     id: 'pushup',
+    symmetry: true,
     name: 'Push-up',
     kind: 'reps',
     required: ['LEFT_SHOULDER', 'LEFT_ELBOW', 'LEFT_WRIST', 'LEFT_HIP', 'LEFT_ANKLE'],
@@ -52,6 +54,7 @@ const EXERCISES = {
   },
   bicep_curl: {
     id: 'bicep_curl',
+    symmetry: true,
     name: 'Biceps curl',
     kind: 'reps',
     required: ['LEFT_SHOULDER', 'LEFT_ELBOW', 'LEFT_WRIST'],

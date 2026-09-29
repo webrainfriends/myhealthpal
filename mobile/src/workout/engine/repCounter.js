@@ -21,13 +21,30 @@ function createRepCounter(exercise, options = {}) {
   let confSum = 0;
   let confN = 0;
   let paused = true;
+  // Tempo phase timestamps for the rep in progress (issue #135 §8).
+  let bottomAt = null;
+  let ascendAt = null;
+  // Deepest value seen per body side, for left/right symmetry (§5).
+  let minBySide = {};
   const totals = { valid: 0, partial: 0, invalid: 0 };
   let repNumber = 0;
+
+  // Per-side range of motion ratio (weaker side / stronger side). Needs both
+  // sides visible; a side-on camera sees one so this stays null there.
+  function symmetryOf(bySide) {
+    if (bySide.left == null || bySide.right == null) return null;
+    const rom = (v) => Math.max(0, Math.min(1, (extended - v) / (extended - flexed)));
+    const [a, b] = [rom(bySide.left), rom(bySide.right)];
+    return Number((Math.max(a, b) === 0 ? 1 : Math.min(a, b) / Math.max(a, b)).toFixed(3));
+  }
 
   function finish(classification, now, extra = {}) {
     repNumber += 1;
     totals[classification] += 1;
     const rom = Math.max(0, Math.min(1, (extended - minValue) / (extended - flexed)));
+    const tempo = classification === 'valid' && bottomAt != null && ascendAt != null
+      ? { eccentricMs: bottomAt - repStart, holdMs: Math.max(0, ascendAt - bottomAt), concentricMs: now - ascendAt }
+      : {};
     const rep = {
       repNumber,
       classification,
@@ -37,9 +54,14 @@ function createRepCounter(exercise, options = {}) {
       completedAt: now,
       durationMs: now - repStart,
       confidence: Number((confN ? confSum / confN : 0).toFixed(3)),
+      symmetryScore: exercise.symmetry ? symmetryOf(minBySide) : null,
+      ...tempo,
       ...extra,
     };
     state = 'top';
+    bottomAt = null;
+    ascendAt = null;
+    minBySide = {};
     minValue = null;
     repStart = null;
     confSum = 0;
@@ -69,18 +91,22 @@ function createRepCounter(exercise, options = {}) {
         state = 'descending';
         repStart = now;
         minValue = v;
+        bottomAt = null;
+        ascendAt = null;
+        minBySide = {};
         confSum = 0;
         confN = 0;
       }
     } else {
       minValue = Math.min(minValue, v);
+      for (const r of m.results) minBySide[r.side] = Math.min(minBySide[r.side] ?? Infinity, r.value);
       confSum += m.confidence;
       confN += 1;
       if (state === 'descending') {
-        if (v <= flexed) state = 'bottom';
+        if (v <= flexed) { state = 'bottom'; bottomAt = now; }
         else if (v >= extended) rep = closeShallow(now);
       } else if (state === 'bottom') {
-        if (v > flexed + opt.hysteresis) state = 'ascending';
+        if (v > flexed + opt.hysteresis) { state = 'ascending'; ascendAt = now; }
       } else if (state === 'ascending') {
         if (v <= flexed) state = 'bottom';
         else if (v >= extended) {
@@ -101,6 +127,9 @@ function createRepCounter(exercise, options = {}) {
     state = 'top';
     minValue = null;
     repStart = null;
+    bottomAt = null;
+    ascendAt = null;
+    minBySide = {};
     return null;
   }
 
@@ -109,7 +138,7 @@ function createRepCounter(exercise, options = {}) {
     get totals() { return { ...totals }; },
     get state() { return state; },
     get paused() { return paused; },
-    reset() { state = 'top'; smoothed = null; minValue = null; repStart = null; },
+    reset() { state = 'top'; smoothed = null; minValue = null; repStart = null; bottomAt = null; ascendAt = null; minBySide = {}; },
   };
 }
 

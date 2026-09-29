@@ -5,6 +5,7 @@ import PrimaryButton from '../../components/PrimaryButton';
 import { colors, radii, spacing, typography } from '../../theme/theme';
 import { fetchWorkoutExercises } from '../../api/client';
 import { useT } from '../../i18n/I18nContext';
+import { getSetting, setSetting } from '../../utils/localSettings';
 import { LEVELS } from '../../workout/engine/coachThrottle';
 
 function Chip({ label, selected, onPress }) {
@@ -47,7 +48,14 @@ export default function WorkoutSetupScreen({ navigation }) {
   const [reps, setReps] = useState(10);
   const [hold, setHold] = useState(30);
   const [rest, setRest] = useState(60);
-  const [level, setLevel] = useState('full');
+  const [level, setLevel] = useState(() => getSetting('workout.coachLevel', 'full'));
+  const [tempoOn, setTempoOn] = useState(false);
+  const [down, setDown] = useState(3);
+  const [up, setUp] = useState(2);
+  const chooseLevel = (l) => {
+    setLevel(l);
+    setSetting('workout.coachLevel', l); // remembered on this device
+  };
 
   useEffect(() => {
     fetchWorkoutExercises().then((d) => setExercises(d.exercises)).catch(() => {});
@@ -72,10 +80,21 @@ export default function WorkoutSetupScreen({ navigation }) {
           <Stepper label={t('workout.reps')} value={reps} onChange={setReps} min={1} max={50} />
         )}
         <Stepper label={t('workout.restSeconds')} value={rest} onChange={setRest} min={0} max={300} step={15} />
+        {!isHold && (
+          <>
+            <Chip label={tempoOn ? t('workout.tempo') : t('workout.tempoOff')} selected={tempoOn} onPress={() => setTempoOn((v) => !v)} />
+            {tempoOn && (
+              <>
+                <Stepper label={t('workout.tempoDown')} value={down} onChange={setDown} min={1} max={8} />
+                <Stepper label={t('workout.tempoUp')} value={up} onChange={setUp} min={1} max={8} />
+              </>
+            )}
+          </>
+        )}
         <Text style={typography.heading}>{t('workout.coaching')}</Text>
         <View style={styles.chips}>
           {LEVELS.map((l) => (
-            <Chip key={l} label={t(`workout.${LEVEL_KEYS[l]}`)} selected={l === level} onPress={() => setLevel(l)} />
+            <Chip key={l} label={t(`workout.${LEVEL_KEYS[l]}`)} selected={l === level} onPress={() => chooseLevel(l)} />
           ))}
         </View>
         <Text style={typography.bodySecondary}>{t('workout.disclaimer')}</Text>
@@ -90,6 +109,7 @@ export default function WorkoutSetupScreen({ navigation }) {
               targetHoldSeconds: isHold ? hold : undefined,
               targetRestSeconds: rest,
               coachLevel: level,
+              tempo: tempoOn && !isHold ? { down, pause: 0, up } : undefined,
             })
           }
         />

@@ -81,3 +81,54 @@ test('workout lifecycle: create, idempotent batch, complete, summary, isolation'
     server.close();
   }
 });
+
+test('phase 2: plans, tempo/symmetry adherence, comparison with the previous session', async () => {
+  const { server, base } = await listen();
+  const post = (path, t, body) => fetch(`${base}/api/activity/workouts${path}`, { method: 'POST', headers: H(t), body: body ? JSON.stringify(body) : undefined }).then((r) => r.json().then((j) => [r.status, j]));
+  try {
+    const [bad] = await post('/plans', tokenA, { name: 'x', exercises: [{ exerciseId: 'squat', targetSets: 2 }] });
+    assert.equal(bad, 400); // rep exercise without targetReps
+
+    const [st, plan] = await post('/plans', tokenA, {
+      name: 'Leg day',
+      exercises: [
+        { exerciseId: 'squat', targetSets: 1, targetReps: 2, targetRestSeconds: 30, tempoDownSeconds: 3, tempoUpSeconds: 2 },
+        { exerciseId: 'plank', targetSets: 1, targetHoldSeconds: 20 },
+      ],
+    });
+    assert.equal(st, 200);
+    assert.equal(plan.exercises.length, 2);
+    assert.equal((await fetch(`${base}/api/activity/workouts/plans/${plan.id}`, { headers: H(tokenB) })).status, 404);
+
+    const [, run] = await post(`/plans/${plan.id}/run`, tokenA);
+    assert.equal(run.sessions.length, 2);
+    assert.ok(run.sessions.every((s) => s.plan_run_id === run.planRunId));
+
+    const squat = run.sessions[0];
+    const mkSet = (id, rom) => ({
+      clientId: id, setNumber: 1,
+      reps: [1, 2].map((n) => ({ clientId: `r${n}`, repNumber: n, classification: 'valid', rangeOfMotionScore: rom, durationMs: 4000, eccentricMs: 2000, holdMs: 300, concentricMs: 1500, symmetryScore: 0.9 })),
+    });
+    await post(`/${squat.id}/start`, tokenA);
+    await post(`/${squat.id}/sets`, tokenA, { sets: [mkSet('s1', 0.9)] });
+    const [, done] = await post(`/${squat.id}/complete`, tokenA, { activeSeconds: 60 });
+    assert.equal(done.metrics.tempo.actual.downSeconds, 2);
+    assert.equal(done.adherence.symmetry, 0.9);
+    assert.ok(done.adherence.tempoAdherence > 0 && done.adherence.tempoAdherence < 1);
+    assert.equal(done.target.tempo.down, 3);
+
+    // A second squat session should compare against the first.
+    const [, s2] = await post('/', tokenA, { exerciseId: 'squat', targetSets: 1, targetReps: 2 });
+    await post(`/${s2.id}/start`, tokenA);
+    await post(`/${s2.id}/sets`, tokenA, { sets: [mkSet('s1', 0.95)] });
+    const [, done2] = await post(`/${s2.id}/complete`, tokenA, { activeSeconds: 60 });
+    assert.ok(done2.metrics.comparison, 'expected a comparison with a previous squat session');
+    assert.equal(done2.metrics.comparison.validReps.current, 2);
+    assert.match(done2.summaryText, /Compared with your previous session/);
+
+    const del = await fetch(`${base}/api/activity/workouts/plans/${plan.id}`, { method: 'DELETE', headers: H(tokenA) });
+    assert.equal(del.status, 200);
+  } finally {
+    server.close();
+  }
+});
