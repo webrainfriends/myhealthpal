@@ -47,7 +47,13 @@ async function findSoleManagedProfiles(client, accountId) {
 // stateless JWT with no session table, so once the row is gone any token
 // issued for it 401s on its own next use - there is nothing else session-
 // like to revoke.
-async function deleteAccount(accountId) {
+//
+// `purpose` distinguishes a self-service deletion (routes/account.js,
+// the default) from an admin-initiated one (routes/admin.js passes
+// 'admin_cleanup') in the audit trail; either way audit.record's own
+// actorUserId defaults to the requesting account from context, so an
+// admin deleting someone else's account is recorded as doing so.
+async function deleteAccount(accountId, { purpose = 'user_request' } = {}) {
   const client = await pool.connect();
   let filesToDelete;
   try {
@@ -76,7 +82,7 @@ async function deleteAccount(accountId) {
     )
   );
 
-  await audit.record({ eventType: 'ACCOUNT_DELETED', userId: accountId, purpose: 'user_request' });
+  await audit.record({ eventType: 'ACCOUNT_DELETED', userId: accountId, purpose });
 }
 
 module.exports = { deleteAccount };

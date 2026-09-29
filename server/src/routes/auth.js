@@ -16,6 +16,9 @@ function publicUser(user) {
     displayName: user.display_name,
     authProvider: user.auth_provider,
     preferredLanguage: user.preferred_language,
+    // Lets the client show/hide the admin session-cleanup screen without
+    // ever shipping the admin email list itself into the app bundle.
+    isAdmin: Boolean(user.email) && config.adminEmails.includes(user.email.toLowerCase()),
   };
 }
 

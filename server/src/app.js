@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
 const config = require('./config');
-const { requireAuth, requireAccountAuth } = require('./middleware/auth');
+const { requireAuth, requireAccountAuth, requireAdmin } = require('./middleware/auth');
 const authRouter = require('./routes/auth');
 const reportsRouter = require('./routes/reports');
 const healthParametersRouter = require('./routes/healthParameters');
@@ -27,6 +27,7 @@ const integrationsGmailRouter = require('./routes/integrationsGmail');
 const retestRouter = require('./routes/retest');
 const familyRouter = require('./routes/family');
 const accountRouter = require('./routes/account');
+const adminRouter = require('./routes/admin');
 const consentsRouter = require('./routes/consents');
 const { logError } = require('./lib/safeLog');
 const { runWithContext } = require('./lib/requestContext');
@@ -75,6 +76,7 @@ app.use('/api/ai-usage', requireAuth, aiUsageRouter);
 app.use('/api/retest', requireAuth, retestRouter);
 app.use('/api/family', requireAccountAuth, familyRouter);
 app.use('/api/account', requireAccountAuth, accountRouter);
+app.use('/api/admin', requireAccountAuth, requireAdmin, adminRouter);
 app.use('/api/consents', requireAuth, consentsRouter);
 // Not wrapped in requireAuth - see routes/files.js for why (a plain link
 // open can't carry an Authorization header, so a short-lived scoped token
