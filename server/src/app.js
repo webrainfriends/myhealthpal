@@ -13,6 +13,7 @@ const insightsRouter = require('./routes/insights');
 const chatRouter = require('./routes/chat');
 const medicationsRouter = require('./routes/medications');
 const activityRouter = require('./routes/activity');
+const workoutsRouter = require('./routes/workouts');
 const glucoseRouter = require('./routes/glucose');
 const devicesRouter = require('./routes/devices');
 const dietRouter = require('./routes/diet');
