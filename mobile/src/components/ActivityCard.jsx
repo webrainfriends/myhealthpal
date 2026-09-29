@@ -1,6 +1,5 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import ActivityRings from './ActivityRings';
-import { activityRingColors, cardShadow, colors, radii, spacing, typography } from '../theme/theme';
+import { cardShadow, colors, radii, spacing } from '../theme/theme';
 import { useT } from '../i18n/I18nContext';
 import { formatCalendarDate } from '../utils/date';
 
@@ -8,60 +7,68 @@ function formatShortDate(dateStr) {
   return formatCalendarDate(dateStr, { month: 'short', day: 'numeric' }) || '';
 }
 
-// Compact dashboard preview of the most recent day's three rings -
-// deliberately its own card, not part of the organ-score grid above it (see
-// organHealthService.js for why activity is never scored like a lab
-// result). `current` falls back to the latest logged day when nothing is
-// logged for today itself (see /api/activity/summary) - a wearable export
-// upload is common and rarely includes literally today, so this card
-// mustn't show an empty ring just because of that lag.
+// Compact dashboard tile - sits beside DietCard and WaterBottleTracker in a
+// single row instead of stacking full-width, so `current` (today's steps, or
+// the latest logged day - see /api/activity/summary) reduces to just the
+// headline number rather than the full ring breakdown.
 export default function ActivityCard({ current, isCurrentToday, onPress }) {
   const t = useT();
-  const rings = current
-    ? [
-        { percent: current.rings.steps, ...activityRingColors.steps },
-        { percent: current.rings.exerciseMinutes, ...activityRingColors.exerciseMinutes },
-        { percent: current.rings.standHours, ...activityRingColors.standHours },
-      ]
-    : [];
-  const hasData = current?.steps || current?.exerciseMinutes || current?.standHours;
+  const hasData = Boolean(current?.steps || current?.exerciseMinutes || current?.standHours);
 
   return (
     <TouchableOpacity style={[styles.card, cardShadow]} onPress={onPress} activeOpacity={0.8}>
-      <View style={styles.ringsWrap}>
-        <ActivityRings rings={rings} size={72} strokeWidth={8} gap={3} />
+      <View style={styles.iconWrap}>
+        <Text style={styles.icon}>🔥</Text>
       </View>
-      <View style={styles.textBlock}>
-        <Text style={typography.heading}>{t('nav.activity')}</Text>
-        <Text style={typography.bodySecondary} numberOfLines={2}>
-          {hasData
-            ? t('activity.summaryLine', {
-                steps: current.steps ?? 0,
-                min: current.exerciseMinutes ?? 0,
-                dateSuffix: isCurrentToday ? '' : ` · ${formatShortDate(current.date)}`,
-              })
-            : t('activity.logPrompt')}
+      <Text style={styles.value} numberOfLines={1}>
+        {hasData ? current.steps ?? 0 : '—'}
+      </Text>
+      <Text style={styles.label} numberOfLines={1}>
+        {t('activity.stepsLabel')}
+      </Text>
+      {hasData && !isCurrentToday && (
+        <Text style={styles.caption} numberOfLines={1}>
+          {formatShortDate(current.date)}
         </Text>
-      </View>
+      )}
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    padding: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  ringsWrap: {
-    width: 72,
-    height: 72,
-  },
-  textBlock: {
     flex: 1,
+    backgroundColor: colors.successMuted,
+    borderRadius: radii.lg,
+    padding: spacing.sm,
+    alignItems: 'center',
     gap: 2,
+  },
+  iconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: radii.pill,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  icon: {
+    fontSize: 18,
+  },
+  value: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.success,
+  },
+  label: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  caption: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: colors.textTertiary,
   },
 });
