@@ -1,8 +1,11 @@
 const express = require('express');
-const fs = require('fs');
 const pool = require('../db/pool');
 const config = require('../config');
 const { upload, extensionOf } = require('../middleware/upload');
+const { secureStore, encryptionInsertParts, deleteStoredFile } = require('../security/secureUpload');
+const { requireConsent } = require('../security/consentService');
+const { toPublicRecord } = require('../security/reportAccess');
+const audit = require('../security/auditLog');
 const { enqueueDietScanProcessing, classifyMealType } = require('../diet/dietScanService');
 const { getOrGenerateRecommendations, generateRecommendations } = require('../diet/dietInsightService');
 const dietTextProvider = require('../extraction/providers/dietTextProvider');
@@ -48,27 +51,29 @@ router.post('/scans', (req, res, next) => {
 
       const extension = extensionOf(req.file.originalname);
       if (!SCAN_EXTENSIONS.has(extension)) {
-        fs.unlinkSync(req.file.path);
         return res.status(400).json({ error: 'Unsupported file type. Use a JPG or PNG photo.' });
       }
       if (req.file.size === 0) {
-        fs.unlinkSync(req.file.path);
         return res.status(400).json({ error: 'The uploaded file is empty or corrupt.' });
       }
 
       const consumedAt = parseConsumedAt(req.body.consumed_at);
+      await requireConsent(currentUserId(req), 'medical_record_storage');
+      const meta = await secureStore({ userId: currentUserId(req), buffer: req.file.buffer, extension });
+      req.file.buffer = null;
+      const enc = encryptionInsertParts(meta, 7);
       const { rows } = await pool.query(
         `INSERT INTO diet_scans
-           (user_id, original_filename, mime_type, file_extension, file_size_bytes, storage_path, consumed_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+           (user_id, original_filename, mime_type, file_extension, file_size_bytes, consumed_at, ${enc.columns.join(', ')})
+         VALUES ($1, $2, $3, $4, $5, $6, ${enc.placeholders.join(', ')})
          RETURNING *`,
-        [currentUserId(req), req.file.originalname, req.file.mimetype, extension, req.file.size, req.file.path, consumedAt]
+        [currentUserId(req), req.file.originalname, req.file.mimetype, extension, req.file.size, consumedAt, ...enc.values]
       );
       const scan = rows[0];
 
       enqueueDietScanProcessing(scan.id);
 
-      res.status(201).json({ scan });
+      res.status(201).json({ scan: toPublicRecord(scan) });
     } catch (dbErr) {
       next(dbErr);
     }
@@ -87,7 +92,29 @@ router.get('/scans/:id', async (req, res, next) => {
     const entries = await pool.query('SELECT * FROM food_entries WHERE scan_id = $1 ORDER BY created_at ASC', [
       req.params.id,
     ]);
-    res.json({ scan, entries: entries.rows });
+    res.json({ scan: toPublicRecord(scan), entries: entries.rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Permanently deletes a scan's photo/document (encrypted object and its
+// wrapped key) plus any not-yet-confirmed items read from it. Confirmed
+// items the person already kept stay (their scan link is cleared by
+// ON DELETE SET NULL).
+router.delete('/scans/:id', async (req, res, next) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM diet_scans WHERE id = $1 AND user_id = $2', [
+      req.params.id,
+      currentUserId(req),
+    ]);
+    const scan = rows[0];
+    if (!scan) return res.status(404).json({ error: 'Scan not found' });
+    await pool.query('DELETE FROM food_entries WHERE scan_id = $1 AND is_confirmed = false', [scan.id]);
+    await pool.query('DELETE FROM diet_scans WHERE id = $1', [scan.id]);
+    await deleteStoredFile(scan).catch(() => {});
+    await audit.record({ eventType: 'REPORT_DELETED', userId: scan.user_id, resourceType: 'diet_scan', purpose: 'user_request' });
+    res.status(204).send();
   } catch (err) {
     next(err);
   }
@@ -192,9 +219,9 @@ function validateEntryBody(body) {
 // ...nutrient fields}) containing only what was confidently estimated -
 // never a quantity_amount/quantity_unit pair when the caller already gave
 // one (the estimate was scaled to that quantity, not a replacement for it).
-async function estimateNutrition(name, brand, quantityAmount, quantityUnit) {
+async function estimateNutrition(userId, name, brand, quantityAmount, quantityUnit) {
   const description = brand ? `${name} (${brand})` : name;
-  const result = await dietTextProvider.estimate(description, { quantityAmount, quantityUnit });
+  const result = await dietTextProvider.estimate(description, { quantityAmount, quantityUnit, userId });
   if (!result.recognized) {
     return { recognized: false, matchedFoodDescription: null, confidence: 0, patch: {} };
   }
@@ -233,13 +260,19 @@ router.post('/entries/estimate', async (req, res, next) => {
       ? Number(body.quantity_amount)
       : null;
     const { recognized, matchedFoodDescription, confidence, patch } = await estimateNutrition(
-      body.name, body.brand || null, quantityAmount, body.quantity_unit || null
+      req.user.id, body.name, body.brand || null, quantityAmount, body.quantity_unit || null
     );
 
     res.json({ recognized, matched_food_description: matchedFoodDescription, confidence, ...patch });
   } catch (err) {
     if (err.message && err.message.includes('ANTHROPIC_API_KEY')) {
       return res.status(503).json({ error: err.message });
+    }
+    if (err.code === 'ai_consent_required') {
+      return res.status(409).json({
+        code: 'ai_consent_required',
+        error: 'AI nutrition estimates are turned off for this profile (Settings → Privacy & AI).',
+      });
     }
     next(err);
   }
@@ -265,7 +298,7 @@ router.post('/entries', async (req, res, next) => {
     if (body.calories == null && body.name) {
       try {
         const quantityAmount = body.quantity_amount != null ? Number(body.quantity_amount) : null;
-        const result = await estimateNutrition(body.name, body.brand, quantityAmount, body.quantity_unit || null);
+        const result = await estimateNutrition(req.user.id, body.name, body.brand, quantityAmount, body.quantity_unit || null);
         if (result.recognized) {
           for (const [key, value] of Object.entries(result.patch)) {
             if (body[key] == null) body[key] = value;
@@ -497,6 +530,80 @@ router.post('/recipes/generate', async (req, res, next) => {
     if (err.message && err.message.includes('ANTHROPIC_API_KEY')) {
       return res.status(503).json({ error: err.message });
     }
+    next(err);
+  }
+});
+
+// On-demand, paginated recipe feed for the standalone Recipes screen -
+// grounded in the same considerations as /recipes/generate plus recent
+// activity, weight goal, and saved diet/cuisine preferences (see
+// dietRecipeService.generateRecipeFeed). Every recipe returned is
+// persisted (see saveRecipeSuggestions) so a batch that cost AI tokens is
+// never lost to a screen unmount or app restart, and GET below can list it
+// back with no further AI cost. "Add to Diet" on the mobile app posts to
+// /recipes/:id/log, same nutrition either way.
+router.post('/recipes/feed', async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    if (body.meal_type && !MEAL_TYPES.has(body.meal_type)) {
+      return res.status(400).json({ error: 'meal_type is not a recognized meal.' });
+    }
+    const count = Math.min(
+      Math.max(Number.parseInt(body.limit, 10) || dietRecipeService.FEED_MAX_COUNT, 1),
+      dietRecipeService.FEED_MAX_COUNT
+    );
+    const excludeTitles = Array.isArray(body.exclude_titles)
+      ? body.exclude_titles.filter((t) => typeof t === 'string').slice(0, 200)
+      : [];
+
+    const { recipes, considerations, signals } = await dietRecipeService.generateRecipeFeed(currentUserId(req), {
+      mealType: body.meal_type || null,
+      count,
+      excludeTitles,
+    });
+    const saved = await dietRecipeService.saveRecipeSuggestions(currentUserId(req), recipes, body.meal_type || null);
+
+    res.json({ recipes: saved, considerations, signals, hasMore: saved.length > 0 });
+  } catch (err) {
+    if (err.message && err.message.includes('ANTHROPIC_API_KEY')) {
+      return res.status(503).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+// The user's previously generated recipe suggestions (see
+// saveRecipeSuggestions) - a free, non-AI read. Backs both the Recipes
+// screen on open (so it shows what was already generated instead of
+// generating again) and the Diet screen's quick-pick list.
+router.get('/recipes/feed', async (req, res, next) => {
+  try {
+    const mealType = req.query.meal_type || null;
+    if (mealType && !MEAL_TYPES.has(mealType)) {
+      return res.status(400).json({ error: 'meal_type is not a recognized meal.' });
+    }
+    const recipes = await dietRecipeService.listSavedRecipeSuggestions(currentUserId(req), {
+      mealType,
+      limit: req.query.limit,
+    });
+    res.json({ recipes });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Logs a previously generated (or just-generated) recipe suggestion as a
+// food_entries row - the "select this as my diet" action, used from both
+// the Recipes screen and the Diet screen's quick-pick list. Scoped to the
+// signed-in user the same way every other diet route is: a suggestion id
+// belonging to someone else 404s rather than leaking its content.
+router.post('/recipes/:id/log', async (req, res, next) => {
+  try {
+    const consumedAt = parseConsumedAt(req.body?.consumed_at);
+    const entry = await dietRecipeService.logRecipeSuggestion(currentUserId(req), req.params.id, { consumedAt });
+    if (!entry) return res.status(404).json({ error: 'Recipe suggestion not found.' });
+    res.status(201).json({ entry });
+  } catch (err) {
     next(err);
   }
 });

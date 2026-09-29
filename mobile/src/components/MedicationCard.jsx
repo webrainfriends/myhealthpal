@@ -1,21 +1,47 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { alertSeverityColors, cardShadow, colors, medicationStatusColors, radii, spacing, typography } from '../theme/theme';
+import {
+  alertSeverityColors,
+  cardShadow,
+  colors,
+  medicationStatusColors,
+  medicineSystemColors,
+  radii,
+  spacing,
+  typography,
+} from '../theme/theme';
+import { useT } from '../i18n/I18nContext';
 
-const STATUS_LABELS = { active: 'Active', completed: 'Completed', discontinued: 'Discontinued' };
+const SYSTEM_LABEL_KEYS = {
+  allopathic: 'medicationDetail.systemAllopathic',
+  ayurvedic: 'medicationDetail.systemAyurvedic',
+  homeopathic: 'medicationDetail.systemHomeopathic',
+  unani: 'medicationDetail.systemUnani',
+  siddha: 'medicationDetail.systemSiddha',
+};
 
-function doseLine(medication) {
+function doseLine(medication, t) {
   const parts = [];
   if (medication.dosage_amount) parts.push(`${medication.dosage_amount}${medication.dosage_unit || ''}`);
   if (medication.form) parts.push(medication.form);
   if (medication.frequency_per_day) {
-    parts.push(`${medication.frequency_per_day}x/day`);
+    parts.push(t('medicationDetail.timesPerDay', { count: medication.frequency_per_day }));
   }
-  return parts.join(' · ') || 'Dose not recorded';
+  return parts.join(' · ') || t('medicationDetail.notRecorded');
 }
 
+const STATUS_KEYS = {
+  active: 'medicationDetail.statusActive',
+  completed: 'medicationDetail.statusCompleted',
+  discontinued: 'medicationDetail.statusDiscontinued',
+};
+
 export default function MedicationCard({ medication, alert, onPress }) {
+  const t = useT();
   const statusPalette = medicationStatusColors[medication.status] || medicationStatusColors.active;
   const alertPalette = alert ? alertSeverityColors[alert.severity] || alertSeverityColors.info : null;
+  const statusLabel = t(STATUS_KEYS[medication.status] || STATUS_KEYS.active);
+  const system = medication.medicine_system || 'allopathic';
+  const systemPalette = medicineSystemColors[system] || medicineSystemColors.allopathic;
 
   return (
     <TouchableOpacity style={[styles.card, cardShadow]} onPress={onPress} activeOpacity={0.8}>
@@ -24,20 +50,26 @@ export default function MedicationCard({ medication, alert, onPress }) {
           {medication.name}
         </Text>
         <View style={[styles.statusPill, { backgroundColor: statusPalette.bg }]}>
-          <Text style={[styles.statusPillText, { color: statusPalette.fg }]}>{STATUS_LABELS[medication.status]}</Text>
+          <Text style={[styles.statusPillText, { color: statusPalette.fg }]}>{statusLabel}</Text>
         </View>
       </View>
 
-      <Text style={typography.bodySecondary}>{doseLine(medication)}</Text>
+      {system !== 'allopathic' && (
+        <View style={[styles.miniPill, styles.systemPill, { backgroundColor: systemPalette.bg }]}>
+          <Text style={[styles.miniPillText, { color: systemPalette.fg }]}>{t(SYSTEM_LABEL_KEYS[system])}</Text>
+        </View>
+      )}
+
+      <Text style={typography.bodySecondary}>{doseLine(medication, t)}</Text>
       {medication.prescribed_for && (
         <Text style={typography.caption} numberOfLines={1}>
-          For {medication.prescribed_for}
+          {t('medicationDetail.forLabel', { value: medication.prescribed_for })}
         </Text>
       )}
 
       {medication.needs_review && (
         <View style={[styles.miniPill, { backgroundColor: colors.warningMuted }]}>
-          <Text style={[styles.miniPillText, { color: colors.warning }]}>Needs review</Text>
+          <Text style={[styles.miniPillText, { color: colors.warning }]}>{t('measurement.needsReview')}</Text>
         </View>
       )}
 
@@ -88,6 +120,9 @@ const styles = StyleSheet.create({
   miniPillText: {
     fontSize: 10,
     fontWeight: '700',
+  },
+  systemPill: {
+    marginTop: 0,
   },
   alertRow: {
     borderRadius: radii.sm,

@@ -1,6 +1,7 @@
 const pool = require('../db/pool');
 const config = require('../config');
 const { getProvider } = require('./providers');
+const { isAllowed } = require('../ai/privacyGateway');
 const { normalizeCandidates } = require('./normalizationService');
 const dedupService = require('./dedupService');
 
@@ -10,8 +11,16 @@ const dedupService = require('./dedupService');
 // duplicates, and persist everything with full provenance. Returns the
 // persisted measurements plus a few counts the caller uses for the report
 // summary/status.
-async function runExtraction({ reportId, userId, document, filePath, mimeType }) {
-  const provider = getProvider();
+async function runExtraction({ reportId, userId, document, fileBuffer, mimeType }) {
+  let provider = getProvider();
+  // Without the person's AI-processing consent the report never leaves the
+  // server: the local heuristic extractor runs instead (scanned images then
+  // stay 'OCR Pending' for manual review).
+  let consentNote = null;
+  if (provider.name !== 'heuristic' && !(await isAllowed({ subjectUserId: userId, purpose: 'report_extraction' }))) {
+    provider = getProvider('heuristic');
+    consentNote = 'AI extraction is off for this profile (Settings → Privacy & AI), so this report was read locally.';
+  }
 
   const runResult = await pool.query(
     `INSERT INTO extraction_runs (report_id, provider) VALUES ($1, $2) RETURNING id`,
@@ -26,9 +35,12 @@ async function runExtraction({ reportId, userId, document, filePath, mimeType })
   let ocrAttempted;
   try {
     ({ candidates, warnings, rawModelOutput, document: documentInfo, ocrAttempted } = await provider.extract(document, {
-      filePath,
+      fileBuffer,
       mimeType,
+      userId,
+      reportId,
     }));
+    if (consentNote) warnings = [...(warnings || []), consentNote];
   } catch (err) {
     await pool.query(
       `UPDATE extraction_runs SET status = 'Failed', error_message = $2, finished_at = now() WHERE id = $1`,

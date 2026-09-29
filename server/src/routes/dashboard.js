@@ -1,6 +1,11 @@
 const express = require('express');
 const pool = require('../db/pool');
-const { buildOrganSummaries, buildCardSummaries } = require('../services/organHealthService');
+const {
+  ORGAN_GROUPS,
+  buildOrganSummaries,
+  buildCardSummaries,
+  organKeyForCustomLabel,
+} = require('../services/organHealthService');
 const { getAllReferenceRangesByCode } = require('../medications/referenceRangeService');
 const { groupTestNames, normalizeTestNameKey } = require('../services/customCardService');
 
@@ -96,9 +101,10 @@ router.get('/snapshot', async (req, res, next) => {
   }
 });
 
-// One card per body-organ group, each with a Health Score: the % of that
-// organ's tracked parameters whose latest result falls in range - the
-// report's own printed flag/range when it's usable, else the app's own
+// One card per body-organ group, each read back the way a doctor would:
+// how many of that organ's latest results are in range and which ones
+// aren't (high/low, and how far) - judged by the report's own printed
+// flag/range when it's usable, else the app's own
 // standards-based (WHO/ICMR/FDA) general reference range (same source the
 // Medications tab scores against) as a fallback. Every group is always
 // returned (even with no data yet)
@@ -143,6 +149,23 @@ router.get('/organs', async (req, res, next) => {
       reportId: row.report_id,
     }));
 
+    // An unmapped result the custom-card grouping puts in the same kind of
+    // group as one of the organ cards (e.g. a CA-125 grouped as "Tumor
+    // Markers") joins that card rather than showing up on a second card
+    // with the same name - see ORGAN_GROUPS' customLabels. Best-effort: a
+    // failure here only means those results stay on their custom card.
+    try {
+      const classified = await classifyUnmappedMeasurements(userId, req.user.preferred_language);
+      for (const { row, classification } of classified) {
+        const organKey = organKeyForCustomLabel(classification.label);
+        if (!organKey) continue;
+        const group = ORGAN_GROUPS.find((g) => g.key === organKey);
+        measurements.push(toCardMeasurement(row, group.categories[0]));
+      }
+    } catch (err) {
+      console.warn('Could not fold unmapped results into organ cards', err.message);
+    }
+
     const standardRangesByCode = await getAllReferenceRangesByCode();
 
     res.json({ organs: buildOrganSummaries(measurements, standardRangesByCode) });
@@ -156,51 +179,95 @@ function slugifyGroupLabel(label) {
 }
 
 // One card per AI/heuristic-grouped label (see customCardService.js) for
-// every confirmed result a lab report contained that the Health Parameter
-// Registry has no canonical match for at all (health_parameter_id IS NULL -
-// unlike /organs, which can only ever show a registry-mapped result). Exists
-// so a report's full set of results is always represented somewhere on the
-// Dashboard, never silently dropped just because nothing recognized the
-// test name.
+// every result a lab report contained that the Health Parameter Registry has
+// no canonical match for at all (health_parameter_id IS NULL - unlike
+// /organs, which can only ever show a registry-mapped result). Scoped by
+// report status exactly like /organs (Needs Review or Completed, not
+// requiring per-measurement is_confirmed) - a result the user hasn't
+// explicitly confirmed yet already shows on an organ card the moment
+// extraction finishes, so gating this on confirmation would leave an
+// unmapped result invisible for as long as the report sits in Needs
+// Review, defeating the entire point: a report's full set of results is
+// always represented somewhere on the Dashboard, never silently dropped
+// just because nothing recognized the test name.
+// Exported for dashboard.test.js: the latest unmapped result per distinct
+// raw test name for a user, scoped by report status exactly like /organs
+// (see the route comment above for why this deliberately does NOT also
+// require hm.is_confirmed).
+async function fetchLatestUnmappedMeasurements(userId) {
+  const { rows } = await pool.query(
+    `WITH ranked AS (
+       SELECT hm.raw_test_name, hm.raw_value, hm.raw_unit, hm.qualitative_value, hm.status_flag,
+              hm.reference_range_raw, hm.numeric_value, hm.normalized_value, r.effective_date, r.id AS report_id,
+              row_number() OVER (
+                PARTITION BY lower(hm.raw_test_name)
+                ORDER BY COALESCE(r.effective_date, r.created_at::date) DESC, hm.created_at DESC
+              ) AS rank
+       FROM health_measurements hm
+       JOIN reports r ON r.id = hm.report_id
+       WHERE r.user_id = $1
+         AND hm.health_parameter_id IS NULL
+         AND ${EXCLUDE_DUPLICATES_SQL}
+         AND r.ingestion_status IN ('Needs Review', 'Completed')
+     )
+     SELECT raw_test_name, raw_value, raw_unit, qualitative_value, status_flag,
+            reference_range_raw, numeric_value, normalized_value, effective_date, report_id
+     FROM ranked
+     WHERE rank = 1`,
+    [userId]
+  );
+  return rows;
+}
+
+// Every latest unmapped result paired with its custom-card grouping (see
+// customCardService.groupTestNames - cached per test name and language).
+async function classifyUnmappedMeasurements(userId, language) {
+  const rows = await fetchLatestUnmappedMeasurements(userId);
+  const groupByKey = await groupTestNames(
+    rows.map((row) => row.raw_test_name),
+    language,
+    userId
+  );
+  return rows.map((row) => ({
+    row,
+    classification: groupByKey.get(normalizeTestNameKey(row.raw_test_name)) || {
+      label: 'Other Results',
+      icon: '🔬',
+      description: null,
+    },
+  }));
+}
+
+function toCardMeasurement(row, category) {
+  return {
+    // No registry code exists for an unmapped result - the raw test
+    // name is the only stable identity it has.
+    code: null,
+    displayName: row.raw_test_name,
+    category,
+    rawValue: row.raw_value,
+    rawUnit: row.raw_unit,
+    qualitativeValue: row.qualitative_value,
+    statusFlag: row.status_flag,
+    referenceRangeRaw: row.reference_range_raw,
+    numericValue: row.numeric_value,
+    normalizedValue: row.normalized_value,
+    effectiveDate: row.effective_date,
+    reportId: row.report_id,
+  };
+}
+
 router.get('/custom-cards', async (req, res, next) => {
   try {
     const userId = currentUserId(req);
 
-    const { rows } = await pool.query(
-      `WITH ranked AS (
-         SELECT hm.raw_test_name, hm.raw_value, hm.raw_unit, hm.qualitative_value, hm.status_flag,
-                hm.reference_range_raw, hm.numeric_value, hm.normalized_value, r.effective_date, r.id AS report_id,
-                row_number() OVER (
-                  PARTITION BY lower(hm.raw_test_name)
-                  ORDER BY COALESCE(r.effective_date, r.created_at::date) DESC, hm.created_at DESC
-                ) AS rank
-         FROM health_measurements hm
-         JOIN reports r ON r.id = hm.report_id
-         WHERE r.user_id = $1
-           AND hm.health_parameter_id IS NULL
-           AND hm.is_confirmed = true
-           AND ${EXCLUDE_DUPLICATES_SQL}
-           AND r.ingestion_status IN ('Needs Review', 'Completed')
-       )
-       SELECT raw_test_name, raw_value, raw_unit, qualitative_value, status_flag,
-              reference_range_raw, numeric_value, normalized_value, effective_date, report_id
-       FROM ranked
-       WHERE rank = 1`,
-      [userId]
-    );
-
-    const groupByKey = await groupTestNames(
-      rows.map((row) => row.raw_test_name),
-      req.user.preferred_language
-    );
+    const classified = await classifyUnmappedMeasurements(userId, req.user.preferred_language);
 
     const groupsByLabel = new Map();
-    const measurements = rows.map((row) => {
-      const classification = groupByKey.get(normalizeTestNameKey(row.raw_test_name)) || {
-        label: 'Other Results',
-        icon: '🔬',
-        description: null,
-      };
+    const measurements = [];
+    for (const { row, classification } of classified) {
+      // Already shown on the matching organ card (see /organs).
+      if (organKeyForCustomLabel(classification.label)) continue;
       if (!groupsByLabel.has(classification.label)) {
         groupsByLabel.set(classification.label, {
           key: slugifyGroupLabel(classification.label),
@@ -213,23 +280,8 @@ router.get('/custom-cards', async (req, res, next) => {
           note: classification.description || undefined,
         });
       }
-      return {
-        // No registry code exists for an unmapped result - the raw test
-        // name is the only stable identity it has.
-        code: null,
-        displayName: row.raw_test_name,
-        category: classification.label,
-        rawValue: row.raw_value,
-        rawUnit: row.raw_unit,
-        qualitativeValue: row.qualitative_value,
-        statusFlag: row.status_flag,
-        referenceRangeRaw: row.reference_range_raw,
-        numericValue: row.numeric_value,
-        normalizedValue: row.normalized_value,
-        effectiveDate: row.effective_date,
-        reportId: row.report_id,
-      };
-    });
+      measurements.push(toCardMeasurement(row, classification.label));
+    }
 
     const cards = buildCardSummaries(measurements, [...groupsByLabel.values()]);
 
@@ -310,3 +362,6 @@ router.get('/parameters/:code/trend', async (req, res, next) => {
 });
 
 module.exports = router;
+// Exposed for dashboard.test.js only - module.exports is still the router
+// itself, used identically by app.js.
+module.exports.fetchLatestUnmappedMeasurements = fetchLatestUnmappedMeasurements;

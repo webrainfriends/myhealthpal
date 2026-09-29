@@ -2,18 +2,59 @@ import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ResultSummaryModal from '../components/ResultSummaryModal';
+import SpeakButton from '../components/SpeakButton';
 import { cardShadow, colors, healthStatusColors, radii, spacing, typography } from '../theme/theme';
 import { fetchCustomCards, fetchOrganHealth } from '../api/client';
+import { useT } from '../i18n/I18nContext';
 import { formatCalendarDate } from '../utils/date';
+import { cardCounts, cardHeadline, flagLabel, notCheckedNote, outOfRangeList } from '../utils/organReadout';
 
-const RESULT_STATUS_LABEL = { normal: 'Normal', abnormal: 'Out of range', unknown: 'Not evaluated' };
+const RESULT_STATUS_KEYS = {
+  normal: 'organDetail.resultNormal',
+  abnormal: 'organDetail.resultAbnormal',
+  unknown: 'organDetail.resultUnevaluated',
+};
 
 function formatDate(value) {
   if (!value) return 'unknown date';
   return formatCalendarDate(value, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function ParameterRow({ parameter, onPress, onAlertPress }) {
+// For an out-of-range result, the same wording the card and summary use
+// ("Well above range", "Slightly high") rather than a bare "Out of range".
+function resultLabel(parameter, t) {
+  if (parameter.resultStatus === 'abnormal') return flagLabel(parameter, t);
+  return t(RESULT_STATUS_KEYS[parameter.resultStatus] || RESULT_STATUS_KEYS.unknown);
+}
+
+// The doctor-style summary under the hero: the same headline the dashboard
+// card shows, then which results are out of range (and which way), and how
+// many tracked results couldn't be checked at all.
+function organSummary(organ, t) {
+  const headline = cardHeadline(organ, t);
+  if (!headline) return null;
+  const list = outOfRangeList(organ, t);
+  return [
+    list ? t('organDetail.outOfRangeList', { list }) : null,
+    notCheckedNote(organ, t),
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+// Builds the sentence SpeakButton reads for the whole organ card: each
+// tracked test's name, value, and whether it's in range - the same data
+// ParameterRow shows below, said aloud instead.
+function buildOrganSpeech(organ, t) {
+  const parts = organ.parameters.map((p) => {
+    const value = p.value !== null && p.value !== undefined ? `${p.value} ${p.unit || ''}` : '';
+    return `${p.displayName}: ${value}, ${resultLabel(p, t)}.${p.relevance ? ` ${p.relevance}` : ''}`;
+  });
+  const headline = cardHeadline(organ, t);
+  return [headline ? `${headline}.` : null, organSummary(organ, t), ...parts].filter(Boolean).join(' ');
+}
+
+function ParameterRow({ parameter, onPress, onAlertPress, t }) {
   const palette =
     parameter.resultStatus === 'normal'
       ? healthStatusColors.good
@@ -46,6 +87,7 @@ function ParameterRow({ parameter, onPress, onAlertPress }) {
           </Text>
         </View>
         <Text style={typography.caption}>{formatDate(parameter.effectiveDate)}</Text>
+        {parameter.relevance ? <Text style={styles.relevance}>{parameter.relevance}</Text> : null}
       </View>
       <View style={styles.rowValueBlock}>
         <Text style={typography.heading}>
@@ -53,7 +95,7 @@ function ParameterRow({ parameter, onPress, onAlertPress }) {
         </Text>
         <View style={[styles.miniPill, { backgroundColor: palette.bg }]}>
           <Text style={[styles.miniPillText, { color: palette.fg }]}>
-            {RESULT_STATUS_LABEL[parameter.resultStatus] || 'Not evaluated'}
+            {resultLabel(parameter, t)}
           </Text>
         </View>
       </View>
@@ -61,8 +103,16 @@ function ParameterRow({ parameter, onPress, onAlertPress }) {
   );
 }
 
+const STATUS_LABEL_KEYS = {
+  good: 'organDetail.statusGood',
+  watch: 'organDetail.statusWatch',
+  attention: 'organDetail.statusAttention',
+  no_data: 'organDetail.statusNoData',
+};
+
 export default function OrganDetailScreen({ route, navigation }) {
   const { organKey, initialOrgan, source } = route.params;
+  const t = useT();
   const [organ, setOrgan] = useState(initialOrgan || null);
   const [summaryParameter, setSummaryParameter] = useState(null);
   // Custom (AI/heuristic-grouped) cards cover results with no registry
@@ -94,12 +144,33 @@ export default function OrganDetailScreen({ route, navigation }) {
   if (!organ) {
     return (
       <SafeAreaView style={styles.container} edges={['bottom']}>
-        <Text style={[typography.bodySecondary, styles.centeredText]}>Loading…</Text>
+        <Text style={[typography.bodySecondary, styles.centeredText]}>{t('organDetail.loading')}</Text>
       </SafeAreaView>
     );
   }
 
   const palette = healthStatusColors[organ.status] || healthStatusColors.no_data;
+  const { evaluated, outOfRange } = cardCounts(organ);
+  const headline = cardHeadline(organ, t);
+  const summary = organSummary(organ, t);
+  const suggestedBox = organ.suggestedTests?.length > 0 && (
+    <View style={[styles.suggestedBox, cardShadow]}>
+      <Text style={typography.heading}>
+        {t(organ.trackedCount > 0 ? 'organDetail.otherPanelTests' : 'organDetail.testsFeedCard')}
+      </Text>
+      <Text style={typography.bodySecondary}>
+        {t(organ.trackedCount > 0 ? 'organDetail.otherPanelTestsHint' : 'organDetail.testsFeedCardHint')}
+      </Text>
+      <View style={styles.suggestedChipRow}>
+        {organ.suggestedTests.map((test) => (
+          <View key={test} style={styles.suggestedChip}>
+            <Text style={styles.suggestedChipText}>{test}</Text>
+          </View>
+        ))}
+      </View>
+      {organ.trackedCount === 0 && organ.note && <Text style={styles.disclaimer}>{organ.note}</Text>}
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -110,51 +181,45 @@ export default function OrganDetailScreen({ route, navigation }) {
               <Text style={styles.icon}>{organ.icon}</Text>
             </View>
             <View style={styles.heroScoreBlock}>
-              <Text style={[styles.heroScore, { color: palette.fg }]}>
-                {organ.scorePercent === null ? '—' : `${organ.scorePercent}%`}
-              </Text>
               <View style={[styles.statusPill, { backgroundColor: palette.bg }]}>
-                <Text style={[styles.statusPillText, { color: palette.fg }]}>{organ.statusLabel}</Text>
+                <Text style={[styles.statusPillText, { color: palette.fg }]}>
+                  {t(STATUS_LABEL_KEYS[organ.status] || STATUS_LABEL_KEYS.no_data)}
+                </Text>
               </View>
             </View>
+            <SpeakButton text={buildOrganSpeech(organ, t)} label={t('organDetail.readAloud')} />
           </View>
+          {headline && (
+            <Text
+              style={[styles.heroHeadline, { color: outOfRange.length ? palette.fg : healthStatusColors.good.fg }]}
+            >
+              {headline}
+            </Text>
+          )}
           <Text style={typography.bodySecondary}>
             {organ.trackedCount === 0
-              ? `No ${organ.label.toLowerCase()} results yet — upload a report that includes these tests to start tracking.`
-              : `Health Score = the share of your latest ${organ.label.toLowerCase()} results that fall in range (${organ.normalCount} of ${organ.normalCount + organ.attentionCount} evaluable results).`}
+              ? t('organDetail.noResultsYet', { organ: organ.label.toLowerCase() })
+              : summary || t('organDetail.cardNotEvaluated', { count: organ.trackedCount, plural: organ.trackedCount === 1 ? '' : 's' })}
           </Text>
-          <Text style={styles.disclaimer}>
-            Uses the range printed on your report when there is one to read; otherwise a general WHO / ICMR / FDA-aligned
-            clinical reference range. This is a summary of your own data, not a diagnosis - always discuss results with
-            your doctor.
-          </Text>
+          {/* A card's own context (e.g. that a tumor marker alone can't show or
+              rule out cancer) belongs next to the results it qualifies, not
+              below the fold - so once anything is tracked it moves up here. */}
+          {organ.trackedCount > 0 && organ.note ? <Text style={styles.cardNote}>{organ.note}</Text> : null}
+          {evaluated > 0 && <Text style={typography.caption}>{t('organDetail.notOrganFunction')}</Text>}
+          <Text style={styles.disclaimer}>{t('organDetail.disclaimer')}</Text>
         </View>
 
-        {organ.suggestedTests?.length > 0 && (
-          <View style={[styles.suggestedBox, cardShadow]}>
-            <Text style={typography.heading}>Tests that feed this card</Text>
-            <Text style={typography.bodySecondary}>
-              Ask a doctor which of these fit you, or upload a report that includes them to start tracking:
-            </Text>
-            <View style={styles.suggestedChipRow}>
-              {organ.suggestedTests.map((test) => (
-                <View key={test} style={styles.suggestedChip}>
-                  <Text style={styles.suggestedChipText}>{test}</Text>
-                </View>
-              ))}
-            </View>
-            {organ.note && <Text style={styles.disclaimer}>{organ.note}</Text>}
-          </View>
-        )}
+        {organ.trackedCount === 0 && suggestedBox}
 
-        <Text style={[typography.heading, styles.sectionSpacing]}>Tracked tests</Text>
+        <Text style={[typography.heading, styles.sectionSpacing]}>{t('organDetail.trackedTests')}</Text>
         {organ.parameters.length === 0 ? (
-          <Text style={[typography.bodySecondary, styles.emptySection]}>Nothing tracked here yet.</Text>
+          <Text style={[typography.bodySecondary, styles.emptySection]}>{t('organDetail.emptyTracked')}</Text>
         ) : (
           organ.parameters.map((parameter) => (
             <ParameterRow
               key={parameter.code || parameter.displayName}
               parameter={parameter}
+              t={t}
               onPress={() =>
                 parameter.code
                   ? navigation.navigate('ParameterTrend', { code: parameter.code, displayName: parameter.displayName })
@@ -164,6 +229,8 @@ export default function OrganDetailScreen({ route, navigation }) {
             />
           ))
         )}
+
+        {organ.trackedCount > 0 && suggestedBox}
       </ScrollView>
 
       <ResultSummaryModal
@@ -220,8 +287,8 @@ const styles = StyleSheet.create({
   heroScoreBlock: {
     gap: 4,
   },
-  heroScore: {
-    fontSize: 34,
+  heroHeadline: {
+    fontSize: 20,
     fontWeight: '800',
   },
   statusPill: {
@@ -233,6 +300,14 @@ const styles = StyleSheet.create({
   statusPillText: {
     fontSize: 12,
     fontWeight: '700',
+  },
+  cardNote: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.textPrimary,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radii.md,
+    padding: spacing.sm,
   },
   disclaimer: {
     fontSize: 11,
@@ -296,6 +371,11 @@ const styles = StyleSheet.create({
   },
   rowNameText: {
     flexShrink: 1,
+  },
+  relevance: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   rowValueBlock: {
     alignItems: 'flex-end',

@@ -1,5 +1,6 @@
-const Anthropic = require('@anthropic-ai/sdk');
+const { getAiClient, stripInternalIds } = require('../../ai/privacyGateway');
 const config = require('../../config');
+const { recordAiUsage, FEATURES } = require('../../services/aiUsageService');
 
 // Translates the generic {systemPrompt, messages, tools} contract to and
 // from the Anthropic Messages/tool-use API. This file is the ONLY place
@@ -29,15 +30,15 @@ function toAnthropicMessages(messages) {
     if (message.role === 'tool_result') {
       return {
         role: 'user',
-        content: [{ type: 'tool_result', tool_use_id: message.toolCallId, content: JSON.stringify(message.result) }],
+        content: [{ type: 'tool_result', tool_use_id: message.toolCallId, content: JSON.stringify(stripInternalIds(message.result)) }],
       };
     }
     throw new Error(`Unknown generic message role "${message.role}"`);
   });
 }
 
-async function converse({ systemPrompt, messages, tools }) {
-  const client = new Anthropic({ apiKey: config.anthropicApiKey });
+async function converse({ systemPrompt, messages, tools, userId }) {
+  const client = await getAiClient({ subjectUserId: userId, purpose: 'chat' });
 
   const anthropicTools = tools.map((tool) => ({
     name: tool.name,
@@ -55,6 +56,7 @@ async function converse({ systemPrompt, messages, tools }) {
     },
     { timeout: 30_000 }
   );
+  recordAiUsage(FEATURES.CHAT, response);
 
   const toolUseBlocks = response.content.filter((block) => block.type === 'tool_use');
   const usage = { tokensIn: response.usage?.input_tokens ?? null, tokensOut: response.usage?.output_tokens ?? null };

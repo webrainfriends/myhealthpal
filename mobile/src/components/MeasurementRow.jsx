@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { colors, radii, spacing, typography } from '../theme/theme';
+import { useT } from '../i18n/I18nContext';
 import ParameterPickerModal from './ParameterPickerModal';
 
-function MappingChip({ measurement, editable, onPress }) {
-  let label = 'Unmapped';
+function MappingChip({ measurement, editable, onPress, t }) {
+  let label = t('measurement.unmapped');
   let style = styles.chipUnmapped;
   if (measurement.ambiguous_candidate_ids) {
-    label = 'Ambiguous mapping';
+    label = t('measurement.ambiguousMapping');
     style = styles.chipAmbiguous;
   } else if (measurement.parameter_display_name) {
     label = measurement.parameter_display_name;
@@ -22,6 +23,7 @@ function MappingChip({ measurement, editable, onPress }) {
 }
 
 export default function MeasurementRow({ measurement, editable, onChange, onChangeMapping, onResolveDuplicate }) {
+  const t = useT();
   const [mappingModalVisible, setMappingModalVisible] = useState(false);
   const isAbnormal = measurement.status_flag && !/normal/i.test(measurement.status_flag);
   const showsNormalized =
@@ -42,33 +44,33 @@ export default function MeasurementRow({ measurement, editable, onChange, onChan
         ) : (
           <Text style={typography.heading}>{measurement.raw_test_name}</Text>
         )}
-        {measurement.needs_review ? <Text style={styles.reviewTag}>Needs review</Text> : null}
+        {measurement.needs_review ? <Text style={styles.reviewTag}>{t('measurement.needsReview')}</Text> : null}
       </View>
 
-      <MappingChip measurement={measurement} editable={editable} onPress={() => setMappingModalVisible(true)} />
+      <MappingChip measurement={measurement} editable={editable} onPress={() => setMappingModalVisible(true)} t={t} />
 
       {measurement.duplicate_status === 'confirmed_duplicate' ? (
-        <Text style={styles.duplicateNote}>Skipped as a duplicate of an earlier confirmed result</Text>
+        <Text style={styles.duplicateNote}>{t('measurement.duplicateSkipped')}</Text>
       ) : null}
       {measurement.duplicate_status === 'confirmed_distinct' ? (
-        <Text style={styles.duplicateKeptNote}>Kept as a new, distinct result</Text>
+        <Text style={styles.duplicateKeptNote}>{t('measurement.duplicateKept')}</Text>
       ) : null}
       {isSuspectedDuplicate ? (
         <View style={styles.duplicateBlock}>
-          <Text style={styles.duplicateNote}>Possible duplicate of an earlier confirmed result</Text>
+          <Text style={styles.duplicateNote}>{t('measurement.duplicateSuspected')}</Text>
           {editable && onResolveDuplicate ? (
             <View style={styles.duplicateActions}>
               <TouchableOpacity
                 style={[styles.duplicateActionButton, styles.duplicateSkipButton]}
                 onPress={() => onResolveDuplicate('skip')}
               >
-                <Text style={styles.duplicateSkipLabel}>Skip (it's a duplicate)</Text>
+                <Text style={styles.duplicateSkipLabel}>{t('measurement.skipDuplicate')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.duplicateActionButton, styles.duplicateKeepButton]}
                 onPress={() => onResolveDuplicate('keep')}
               >
-                <Text style={styles.duplicateKeepLabel}>Keep as new result</Text>
+                <Text style={styles.duplicateKeepLabel}>{t('measurement.keepAsNew')}</Text>
               </TouchableOpacity>
             </View>
           ) : null}
@@ -77,7 +79,7 @@ export default function MeasurementRow({ measurement, editable, onChange, onChan
 
       <View style={styles.valueRow}>
         <View style={styles.valueField}>
-          <Text style={typography.caption}>VALUE</Text>
+          <Text style={typography.caption}>{t('measurement.value')}</Text>
           {editable ? (
             <TextInput
               style={styles.input}
@@ -89,7 +91,7 @@ export default function MeasurementRow({ measurement, editable, onChange, onChan
           )}
         </View>
         <View style={styles.valueField}>
-          <Text style={typography.caption}>UNIT</Text>
+          <Text style={typography.caption}>{t('measurement.unit')}</Text>
           {editable ? (
             <TextInput
               style={styles.input}
@@ -104,13 +106,13 @@ export default function MeasurementRow({ measurement, editable, onChange, onChan
 
       {showsNormalized ? (
         <Text style={typography.caption}>
-          Normalized: {measurement.normalized_value} {measurement.normalized_unit}
+          {t('measurement.normalized', { value: measurement.normalized_value, unit: measurement.normalized_unit })}
         </Text>
       ) : null}
 
       <View style={styles.valueRow}>
         <View style={styles.valueField}>
-          <Text style={typography.caption}>REFERENCE RANGE</Text>
+          <Text style={typography.caption}>{t('measurement.referenceRange')}</Text>
           {editable ? (
             <TextInput
               style={styles.input}
@@ -122,7 +124,7 @@ export default function MeasurementRow({ measurement, editable, onChange, onChan
           )}
         </View>
         <View style={styles.valueField}>
-          <Text style={typography.caption}>FLAG</Text>
+          <Text style={typography.caption}>{t('measurement.flag')}</Text>
           {editable ? (
             <TextInput
               style={styles.input}
@@ -139,8 +141,8 @@ export default function MeasurementRow({ measurement, editable, onChange, onChan
         visible={mappingModalVisible}
         onClose={() => setMappingModalVisible(false)}
         onSelect={(parameterId) => onChangeMapping(parameterId)}
-        title="Map to a known test"
-        noneLabel="None of these — leave unmapped"
+        title={t('measurement.mapToKnownTest')}
+        noneLabel={t('measurement.noneOfThese')}
       />
     </View>
   );

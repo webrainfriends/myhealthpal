@@ -1,8 +1,12 @@
 const express = require('express');
-const fs = require('fs');
 const pool = require('../db/pool');
 const config = require('../config');
 const { upload, extensionOf } = require('../middleware/upload');
+const { secureStore, encryptionInsertParts, deleteStoredFile } = require('../security/secureUpload');
+const { requireConsent } = require('../security/consentService');
+const { toPublicRecord } = require('../security/reportAccess');
+const { signMedicationPhotoDownloadToken } = require('../services/authService');
+const audit = require('../security/auditLog');
 const { enqueueMedicationScanProcessing, computeEndDate } = require('../medications/medicationScanService');
 const { syncParameterLinks, findKnowledgeEntry } = require('../medications/medicationLinkingService');
 const { getMedicationKnowledge } = require('../medications/medicationKnowledgeService');
@@ -16,10 +20,21 @@ const router = express.Router();
 // SUPPORTED_EXTENSIONS.
 const SCAN_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'pdf']);
 
+// A directly-attached medication photo is always a plain photo, never a
+// PDF scan.
+const PHOTO_EXTENSIONS = new Set(['jpg', 'jpeg', 'png']);
+const PHOTO_SOURCES = new Set(['camera', 'library', 'file']);
+const MAX_PHOTOS_PER_MEDICATION = 2;
+
 // req.user is set by the requireAuth middleware (app.js) from a verified
 // session token - never trust a client-supplied id for this.
 function currentUserId(req) {
   return req.user.id;
+}
+
+async function loadOwnedMedication(userId, medicationId) {
+  const { rows } = await pool.query('SELECT * FROM medications WHERE id = $1 AND user_id = $2', [medicationId, userId]);
+  return rows[0] || null;
 }
 
 router.get('/', async (req, res, next) => {
@@ -92,27 +107,29 @@ router.post('/scans', (req, res, next) => {
 
       const extension = extensionOf(req.file.originalname);
       if (!SCAN_EXTENSIONS.has(extension)) {
-        fs.unlinkSync(req.file.path);
         return res.status(400).json({ error: 'Unsupported file type. Use a JPG/PNG photo or a PDF scan.' });
       }
       if (req.file.size === 0) {
-        fs.unlinkSync(req.file.path);
         return res.status(400).json({ error: 'The uploaded file is empty or corrupt.' });
       }
 
       const scanType = req.body.scan_type === 'tablet_photo' ? 'tablet_photo' : 'prescription';
+      await requireConsent(currentUserId(req), 'medical_record_storage');
+      const meta = await secureStore({ userId: currentUserId(req), buffer: req.file.buffer, extension });
+      req.file.buffer = null;
+      const enc = encryptionInsertParts(meta, 7);
       const { rows } = await pool.query(
         `INSERT INTO medication_scans
-           (user_id, scan_type, original_filename, mime_type, file_extension, file_size_bytes, storage_path)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+           (user_id, scan_type, original_filename, mime_type, file_extension, file_size_bytes, ${enc.columns.join(', ')})
+         VALUES ($1, $2, $3, $4, $5, $6, ${enc.placeholders.join(', ')})
          RETURNING *`,
-        [currentUserId(req), scanType, req.file.originalname, req.file.mimetype, extension, req.file.size, req.file.path]
+        [currentUserId(req), scanType, req.file.originalname, req.file.mimetype, extension, req.file.size, ...enc.values]
       );
       const scan = rows[0];
 
       enqueueMedicationScanProcessing(scan.id);
 
-      res.status(201).json({ scan });
+      res.status(201).json({ scan: toPublicRecord(scan) });
     } catch (dbErr) {
       next(dbErr);
     }
@@ -131,7 +148,29 @@ router.get('/scans/:id', async (req, res, next) => {
     const medications = await pool.query('SELECT * FROM medications WHERE scan_id = $1 ORDER BY created_at ASC', [
       req.params.id,
     ]);
-    res.json({ scan, medications: medications.rows });
+    res.json({ scan: toPublicRecord(scan), medications: medications.rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Permanently deletes a scan's photo/document (encrypted object and its
+// wrapped key) plus any not-yet-confirmed items read from it. Confirmed
+// items the person already kept stay (their scan link is cleared by
+// ON DELETE SET NULL).
+router.delete('/scans/:id', async (req, res, next) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM medication_scans WHERE id = $1 AND user_id = $2', [
+      req.params.id,
+      currentUserId(req),
+    ]);
+    const scan = rows[0];
+    if (!scan) return res.status(404).json({ error: 'Scan not found' });
+    await pool.query('DELETE FROM medications WHERE scan_id = $1 AND is_confirmed = false', [scan.id]);
+    await pool.query('DELETE FROM medication_scans WHERE id = $1', [scan.id]);
+    await deleteStoredFile(scan).catch(() => {});
+    await audit.record({ eventType: 'REPORT_DELETED', userId: scan.user_id, resourceType: 'medication_scan', purpose: 'user_request' });
+    res.status(204).send();
   } catch (err) {
     next(err);
   }
@@ -169,9 +208,10 @@ router.post('/', async (req, res, next) => {
       `INSERT INTO medications (
          user_id, name, generic_name, brand_name, form, dosage_amount, dosage_unit,
          frequency_per_day, times_of_day, route, instructions, prescribed_for, prescribing_doctor,
+         prescribing_clinic, prescription_date,
          start_date, duration_days, end_date, quantity_dispensed, quantity_unit, expiry_date, ingredients_raw,
-         source_type, status, notes, is_confirmed
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,'manual',$21,$22,true)
+         medicine_system, source_type, status, notes, is_confirmed
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,'manual',$24,$25,true)
        RETURNING *`,
       [
         currentUserId(req),
@@ -187,6 +227,8 @@ router.post('/', async (req, res, next) => {
         body.instructions || null,
         body.prescribed_for || null,
         body.prescribing_doctor || null,
+        body.prescribing_clinic || null,
+        body.prescription_date || null,
         body.start_date || null,
         body.duration_days ?? null,
         endDate,
@@ -194,6 +236,7 @@ router.post('/', async (req, res, next) => {
         body.quantity_unit || null,
         body.expiry_date || null,
         body.ingredients_raw || null,
+        body.medicine_system || 'allopathic',
         body.status || 'active',
         body.notes || null,
       ]
@@ -220,12 +263,122 @@ router.get('/:id', async (req, res, next) => {
 
     const entry = findKnowledgeEntry(medication);
     const forecast = await buildMedicationForecast(medication, entry);
+    const photos = await pool.query('SELECT * FROM medication_photos WHERE medication_id = $1 ORDER BY created_at ASC', [
+      req.params.id,
+    ]);
 
     res.json({
       medication,
       knowledge: await getMedicationKnowledge(medication, req.user.preferred_language),
       forecast,
+      photos: photos.rows.map(toPublicRecord),
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Lets the user attach up to MAX_PHOTOS_PER_MEDICATION photos of the
+// physical medicine to a tracked medication, taken/picked directly (as
+// opposed to the scan's own photo auto-attached in medicationScanService.js
+// when the medication was read from a prescription/tablet scan).
+router.post('/:id/photos', (req, res, next) => {
+  upload.single('file')(req, res, async (err) => {
+    try {
+      const medication = await loadOwnedMedication(currentUserId(req), req.params.id);
+      if (!medication) return res.status(404).json({ error: 'Medication not found' });
+
+      if (err && err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({
+          error: `File exceeds the ${Math.round(config.maxUploadBytes / (1024 * 1024))}MB upload limit.`,
+        });
+      }
+      if (err) return next(err);
+      if (!req.file) {
+        return res.status(400).json({ error: 'No file was provided. Attach a file under the "file" field.' });
+      }
+
+      const extension = extensionOf(req.file.originalname);
+      if (!PHOTO_EXTENSIONS.has(extension)) {
+        return res.status(400).json({ error: 'Unsupported file type. Use a JPG or PNG photo.' });
+      }
+      if (req.file.size === 0) {
+        return res.status(400).json({ error: 'The uploaded file is empty or corrupt.' });
+      }
+
+      const { rows: countRows } = await pool.query(
+        'SELECT COUNT(*)::int AS count FROM medication_photos WHERE medication_id = $1',
+        [req.params.id]
+      );
+      if (countRows[0].count >= MAX_PHOTOS_PER_MEDICATION) {
+        return res
+          .status(400)
+          .json({ error: `A medication can have at most ${MAX_PHOTOS_PER_MEDICATION} photos. Delete one first.` });
+      }
+
+      const source = PHOTO_SOURCES.has(req.body.source) ? req.body.source : 'file';
+      await requireConsent(currentUserId(req), 'medical_record_storage');
+      const meta = await secureStore({ userId: currentUserId(req), buffer: req.file.buffer, extension });
+      req.file.buffer = null;
+      const enc = encryptionInsertParts(meta, 8);
+      const { rows } = await pool.query(
+        `INSERT INTO medication_photos
+           (medication_id, user_id, source, original_filename, mime_type, file_extension, file_size_bytes, ${enc.columns.join(', ')})
+         VALUES ($1, $2, $3, $4, $5, $6, $7, ${enc.placeholders.join(', ')})
+         RETURNING *`,
+        [
+          req.params.id,
+          currentUserId(req),
+          source,
+          req.file.originalname,
+          req.file.mimetype,
+          extension,
+          req.file.size,
+          ...enc.values,
+        ]
+      );
+
+      res.status(201).json({ photo: toPublicRecord(rows[0]) });
+    } catch (dbErr) {
+      next(dbErr);
+    }
+  });
+});
+
+// Mints a short-lived, single-photo-scoped token for viewing the photo -
+// same reasoning as GET /api/reports/:id/file-url (see routes/reports.js).
+router.get('/:id/photos/:photoId/file-url', async (req, res, next) => {
+  try {
+    const medication = await loadOwnedMedication(currentUserId(req), req.params.id);
+    if (!medication) return res.status(404).json({ error: 'Medication not found' });
+
+    const { rows } = await pool.query('SELECT id FROM medication_photos WHERE id = $1 AND medication_id = $2', [
+      req.params.photoId,
+      req.params.id,
+    ]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Photo not found' });
+
+    const token = signMedicationPhotoDownloadToken({ userId: currentUserId(req), photoId: req.params.photoId });
+    res.json({ url: `/api/files/medication-photo/${req.params.photoId}?token=${token}` });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/:id/photos/:photoId', async (req, res, next) => {
+  try {
+    const medication = await loadOwnedMedication(currentUserId(req), req.params.id);
+    if (!medication) return res.status(404).json({ error: 'Medication not found' });
+
+    const { rows } = await pool.query(
+      'DELETE FROM medication_photos WHERE id = $1 AND medication_id = $2 RETURNING *',
+      [req.params.photoId, req.params.id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Photo not found' });
+
+    await deleteStoredFile(rows[0]).catch(() => {});
+    await audit.record({ eventType: 'REPORT_DELETED', userId: rows[0].user_id, resourceType: 'medication_photo', purpose: 'user_request' });
+    res.status(204).send();
   } catch (err) {
     next(err);
   }
@@ -244,12 +397,15 @@ const EDITABLE_FIELDS = [
   'instructions',
   'prescribed_for',
   'prescribing_doctor',
+  'prescribing_clinic',
+  'prescription_date',
   'start_date',
   'duration_days',
   'quantity_dispensed',
   'quantity_unit',
   'expiry_date',
   'ingredients_raw',
+  'medicine_system',
   'status',
   'notes',
 ];
@@ -277,9 +433,9 @@ router.patch('/:id', async (req, res, next) => {
       `UPDATE medications SET
          name = $2, generic_name = $3, brand_name = $4, form = $5, dosage_amount = $6, dosage_unit = $7,
          frequency_per_day = $8, times_of_day = $9, route = $10, instructions = $11, prescribed_for = $12,
-         prescribing_doctor = $13, start_date = $14, duration_days = $15, end_date = $16,
-         quantity_dispensed = $17, quantity_unit = $18, expiry_date = $19, ingredients_raw = $20,
-         status = $21, notes = $22, updated_at = now()
+         prescribing_doctor = $13, prescribing_clinic = $14, prescription_date = $15, start_date = $16, duration_days = $17, end_date = $18,
+         quantity_dispensed = $19, quantity_unit = $20, expiry_date = $21, ingredients_raw = $22,
+         medicine_system = $23, status = $24, notes = $25, updated_at = now()
        WHERE id = $1
        RETURNING *`,
       [
@@ -296,6 +452,8 @@ router.patch('/:id', async (req, res, next) => {
         next_.instructions,
         next_.prescribed_for,
         next_.prescribing_doctor,
+        next_.prescribing_clinic,
+        next_.prescription_date,
         next_.start_date,
         next_.duration_days,
         next_.end_date,
@@ -303,6 +461,7 @@ router.patch('/:id', async (req, res, next) => {
         next_.quantity_unit,
         next_.expiry_date,
         next_.ingredients_raw,
+        next_.medicine_system,
         next_.status,
         next_.notes,
       ]

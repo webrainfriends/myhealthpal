@@ -1,4 +1,4 @@
-# Deploys MyHealthPal to the EC2 host below by SSHing in, pulling the
+# Deploys EyeMyHealth to the EC2 host below by SSHing in, pulling the
 # latest code, and running the API directly with Node.js + pm2 - no
 # Dockerfile/image build needed for it. mobile/ (the Expo app - otherwise a
 # phone/simulator-only React Native app) is exported as a static web build
@@ -28,6 +28,13 @@
 #    bound to localhost at the OS level (Node's default), so don't open it
 #    in the security group either - leaving it closed there is what keeps
 #    it unreachable except through nginx.
+#    For the custom domain (APP_DOMAIN below), also allow inbound TCP 80
+#    and 443 from the internet, and point DNS A records for the domain and
+#    its www. subdomain at this instance's public IP. Until both are done
+#    the domain setup simply waits (the :NGINX_PORT URL keeps working);
+#    the first deploy after that obtains the HTTPS certificate. Optionally
+#    add a LETSENCRYPT_EMAIL repository secret for certificate expiry
+#    notices (renewal itself is automatic).
 # 3. In this repository's Settings -> Secrets and variables -> Actions, add
 #    a repository secret named EC2_SSH_KEY containing the private key
 #    (PEM) that matches the EC2 instance's key pair (the same key used by
@@ -55,6 +62,17 @@
 #    Apple as a Return URL - it stays hidden client-side until both are true,
 #    which the plain http:// URL this workflow deploys to does not satisfy
 #    on its own.
+# 6. Optional: add repository secrets GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET,
+#    GMAIL_REDIRECT_URI, and GMAIL_TOKEN_ENCRYPTION_KEY to offer the Gmail
+#    integration (Settings -> Connected Health Sources - import lab reports
+#    from Gmail). This is a *separate* Google Cloud OAuth client from
+#    GOOGLE_CLIENT_ID above: create a Web application client with the
+#    Gmail API's gmail.readonly scope enabled, and register
+#    GMAIL_REDIRECT_URI (e.g. https://eyemyhealth.com/api/integrations/gmail/callback,
+#    or the :NGINX_PORT URL if APP_DOMAIN is off) as an exact-match redirect
+#    URI on it. GMAIL_CLIENT_SECRET and GMAIL_TOKEN_ENCRYPTION_KEY
+#    (`openssl rand -hex 32`) are real secrets. Leave GMAIL_CLIENT_ID unset
+#    to hide the feature entirely.
 #
 # server/.env (DB password, DATABASE_URL) and the myhealthpal-postgres
 # container are created once, directly on the host, the first time this
@@ -78,6 +96,9 @@ env:
   APP_DIR: myhealthpal
   APP_PORT: 4010
   NGINX_PORT: 5250
+  # The app's own domain, served on 80/443 in addition to NGINX_PORT (see
+  # scripts/configure-domain.sh). Set to empty to turn it off.
+  APP_DOMAIN: eyemyhealth.com
 
 permissions:
   contents: read
@@ -105,7 +126,7 @@ jobs:
           username: ${{ env.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: 15m
-          envs: APP_DIR,BRANCH,REPO_URL,APP_PORT,NGINX_PORT,PUBLIC_HOST,ANTHROPIC_API_KEY,GOOGLE_CLIENT_ID,APPLE_CLIENT_ID
+          envs: APP_DIR,BRANCH,REPO_URL,APP_PORT,NGINX_PORT,APP_DOMAIN,LETSENCRYPT_EMAIL,PUBLIC_HOST,ANTHROPIC_API_KEY,GOOGLE_CLIENT_ID,APPLE_CLIENT_ID,GMAIL_CLIENT_ID,GMAIL_CLIENT_SECRET,GMAIL_REDIRECT_URI,GMAIL_TOKEN_ENCRYPTION_KEY,KMS_KEY_ID,KMS_REGION
           script_stop: true
           script: |
             set -euo pipefail
@@ -114,9 +135,51 @@ jobs:
               git clone --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
             fi
             cd "$APP_DIR"
+            # Remembered so a failed security preflight below can put the
+            # previous code back before exiting - the running app (and the
+            # published web build) are only switched once it passes.
+            PREV_SHA=$(git rev-parse HEAD 2>/dev/null || echo "")
             git fetch origin "$BRANCH"
             git checkout "$BRANCH"
             git reset --hard "origin/$BRANCH"
+
+            abort_deploy() {
+              echo "::error::$1"
+              if [ -n "$PREV_SHA" ]; then
+                echo "[deploy] restoring previous code ($PREV_SHA); the running app was not touched"
+                git reset --hard "$PREV_SHA"
+                (cd server && npm ci --omit=dev) || true
+              fi
+              exit 1
+            }
+
+            # Medical reports are stored only encrypted, with per-file keys
+            # wrapped by AWS KMS (docs/security/key-management.md). The app
+            # refuses to start without it, so check before switching
+            # anything: a missing key/role fails this deploy while the
+            # current version keeps serving.
+            echo "[deploy] security preflight: encrypted vault + AWS KMS"
+            VAULT_DIR=/var/lib/myhealthpal/vault
+            sudo mkdir -p "$VAULT_DIR"
+            sudo chown "$(id -un):$(id -gn)" "$VAULT_DIR"
+            sudo chmod 700 "$VAULT_DIR"
+            if [ -z "${KMS_KEY_ID:-}" ]; then
+              abort_deploy "KMS_KEY_ID is not set. Create a KMS key, attach an EC2 instance role that can use it, and add the KMS_KEY_ID repository secret - see docs/security/key-management.md."
+            fi
+            # A GitHub secret can carry an invisible trailing newline/CR
+            # depending on how it was originally pasted in; KMS rejects a
+            # keyId with one attached as NotFoundException, which looks
+            # identical in the logs to a real permissions problem. Strip
+            # whitespace here so a correct value behaves the same whether
+            # typed by hand or sourced from the secret.
+            KMS_KEY_ID="$(printf '%s' "$KMS_KEY_ID" | tr -d '\r\n' | xargs)"
+            KMS_REGION="$(printf '%s' "${KMS_REGION:-ap-southeast-1}" | tr -d '\r\n' | xargs)"
+            (cd server && npm ci --omit=dev) || abort_deploy "npm ci failed"
+            if ! (cd server && NODE_ENV=production KEY_PROVIDER=aws-kms KMS_KEY_ID="$KMS_KEY_ID" KMS_REGION="${KMS_REGION:-ap-southeast-1}" \
+                  ENCRYPTED_STORE_DIR="$VAULT_DIR" JWT_SECRET=preflight-only LOCAL_DEV_MASTER_KEY= LEGACY_PLAINTEXT_READS=deny \
+                  node scripts/check-kms.js); then
+              abort_deploy "This server cannot use the KMS key. Check the instance role's kms:GenerateDataKey/Decrypt/ReEncrypt*/DescribeKey permissions - see docs/security/key-management.md."
+            fi
 
             if ! command -v docker >/dev/null 2>&1; then
               curl -fsSL https://get.docker.com | sudo sh
@@ -156,11 +219,25 @@ jobs:
 
             echo "[deploy] configuring nginx on port ${NGINX_PORT}"
             printf '%s\n' \
+              'log_format myhealthpal_noquery '"'"'$remote_addr - $remote_user [$time_local] "$request_method $uri $server_protocol" $status $body_bytes_sent "-" "$http_user_agent"'"'"';' \
+              '' \
               'server {' \
               "    listen ${NGINX_PORT};" \
               '    server_name _;' \
               '' \
               '    client_max_body_size 25m;' \
+              '' \
+              '    # Original-report links carry a short-lived token in the' \
+              '    # query string - logged without it.' \
+              '    location /api/files/ {' \
+              '        access_log /var/log/nginx/access.log myhealthpal_noquery;' \
+              "        proxy_pass http://127.0.0.1:${APP_PORT};" \
+              '        proxy_http_version 1.1;' \
+              '        proxy_set_header Host $host;' \
+              '        proxy_set_header X-Real-IP $remote_addr;' \
+              '        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' \
+              '        proxy_set_header X-Forwarded-Proto $scheme;' \
+              '    }' \
               '' \
               '    location /api/ {' \
               "        proxy_pass http://127.0.0.1:${APP_PORT};" \
@@ -180,6 +257,14 @@ jobs:
             sudo ln -sf /etc/nginx/sites-available/myhealthpal /etc/nginx/sites-enabled/myhealthpal
             sudo nginx -t
             sudo systemctl reload nginx
+
+            # Custom domain (eyemyhealth.com + www) on ports 80/443, forwarding
+            # to the :NGINX_PORT site above - an addition alongside it, never a
+            # replacement. Its own nginx site file, validated and rolled back
+            # on any error, and HTTPS via Let's Encrypt once DNS points here;
+            # it never fails the deploy. See scripts/configure-domain.sh.
+            DOMAIN="$APP_DOMAIN" UPSTREAM_PORT="$NGINX_PORT" LETSENCRYPT_EMAIL="${LETSENCRYPT_EMAIL:-}" \
+              bash scripts/configure-domain.sh || echo "[deploy] custom domain setup skipped - the :${NGINX_PORT} site is unaffected"
 
             DB_CONTAINER=myhealthpal-postgres
             DB_HOST_PORT=6250
@@ -284,6 +369,49 @@ jobs:
             grep -q '^APPLE_CLIENT_ID=' .env || echo 'APPLE_CLIENT_ID=' >> .env
             sed -i "s#^GOOGLE_CLIENT_ID=.*#GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}#" .env
             sed -i "s#^APPLE_CLIENT_ID=.*#APPLE_CLIENT_ID=${APPLE_CLIENT_ID:-}#" .env
+
+            # Gmail integration (Settings -> Connected Health Sources) - a
+            # separate Google Cloud OAuth client from GOOGLE_CLIENT_ID above
+            # (needs a client secret + redirect URI for the server-side
+            # offline-token flow). Rewritten every deploy so
+            # setting/rotating any of these takes effect on the next push;
+            # unset GMAIL_CLIENT_ID -> the feature stays hidden
+            # (GET /api/integrations/gmail/status reports configured:false).
+            grep -q '^GMAIL_CLIENT_ID=' .env || echo 'GMAIL_CLIENT_ID=' >> .env
+            grep -q '^GMAIL_CLIENT_SECRET=' .env || echo 'GMAIL_CLIENT_SECRET=' >> .env
+            grep -q '^GMAIL_REDIRECT_URI=' .env || echo 'GMAIL_REDIRECT_URI=' >> .env
+            sed -i "s#^GMAIL_CLIENT_ID=.*#GMAIL_CLIENT_ID=${GMAIL_CLIENT_ID:-}#" .env
+            sed -i "s#^GMAIL_CLIENT_SECRET=.*#GMAIL_CLIENT_SECRET=${GMAIL_CLIENT_SECRET:-}#" .env
+            sed -i "s#^GMAIL_REDIRECT_URI=.*#GMAIL_REDIRECT_URI=${GMAIL_REDIRECT_URI:-}#" .env
+
+            # Encrypts stored Gmail refresh tokens at rest - same reasoning
+            # as JWT_SECRET above: generate once (first deploy only) and
+            # never regenerate on our own, since rotating it would make
+            # every already-stored refresh token undecryptable (affected
+            # users would need to reconnect Gmail). If the repo secret is
+            # set, it wins every deploy - that means the operator is
+            # explicitly managing/rotating it themselves.
+            grep -q '^GMAIL_TOKEN_ENCRYPTION_KEY=' .env || echo 'GMAIL_TOKEN_ENCRYPTION_KEY=' >> .env
+            if [ -n "${GMAIL_TOKEN_ENCRYPTION_KEY:-}" ]; then
+              sed -i "s#^GMAIL_TOKEN_ENCRYPTION_KEY=.*#GMAIL_TOKEN_ENCRYPTION_KEY=${GMAIL_TOKEN_ENCRYPTION_KEY}#" .env
+            elif [ -z "$(grep '^GMAIL_TOKEN_ENCRYPTION_KEY=' .env | cut -d= -f2-)" ]; then
+              echo "[deploy] generating GMAIL_TOKEN_ENCRYPTION_KEY (first deploy only)"
+              sed -i "s#^GMAIL_TOKEN_ENCRYPTION_KEY=.*#GMAIL_TOKEN_ENCRYPTION_KEY=$(openssl rand -hex 32)#" .env
+            fi
+
+            # Encrypted-vault settings (checked by the preflight above and
+            # again by the app at startup). Rewritten every deploy.
+            set_env() {
+              grep -q "^$1=" .env || echo "$1=" >> .env
+              sed -i "s#^$1=.*#$1=$2#" .env
+            }
+            set_env NODE_ENV production
+            set_env KEY_PROVIDER aws-kms
+            set_env KMS_KEY_ID "$KMS_KEY_ID"
+            set_env KMS_REGION "${KMS_REGION:-ap-southeast-1}"
+            set_env ENCRYPTED_STORE_DIR "$VAULT_DIR"
+            set_env LEGACY_PLAINTEXT_READS deny
+            set_env LOCAL_DEV_MASTER_KEY ""
             cd ..
 
             echo "[deploy] installing app dependencies"
@@ -296,10 +424,20 @@ jobs:
             # insights all key off of. Safe/cheap to run on every deploy.
             npm run seed
 
+            # One-time (idempotent) encryption of reports/scans uploaded
+            # before the vault existed: encrypt -> verify -> delete the
+            # plaintext. Prints counts only. A row that fails stays as it is
+            # and is retried on the next deploy.
+            echo "[deploy] encrypting any legacy plaintext uploads"
+            node scripts/encrypt-legacy-uploads.js || echo "::warning::Some legacy uploads could not be encrypted (see counts above); they will be retried on the next deploy."
+
             pm2 describe myhealthpal-server > /dev/null 2>&1 && pm2 restart myhealthpal-server --update-env || pm2 start src/index.js --name myhealthpal-server
             pm2 save
 
             echo "Deployed. API listening on: http://${PUBLIC_HOST}:${NGINX_PORT}"
+            if [ -n "$APP_DOMAIN" ]; then
+              echo "Also served at: http(s)://${APP_DOMAIN} (https once DNS points here and the certificate is issued)"
+            fi
         env:
           BRANCH: ${{ github.ref_name }}
           REPO_URL: https://github.com/${{ github.repository }}.git
@@ -307,3 +445,16 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           APPLE_CLIENT_ID: ${{ secrets.APPLE_CLIENT_ID }}
+          GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
+          GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
+          GMAIL_REDIRECT_URI: ${{ secrets.GMAIL_REDIRECT_URI }}
+          GMAIL_TOKEN_ENCRYPTION_KEY: ${{ secrets.GMAIL_TOKEN_ENCRYPTION_KEY }}
+          LETSENCRYPT_EMAIL: ${{ secrets.LETSENCRYPT_EMAIL }}
+          # AWS KMS key (ARN, id or alias) that wraps every medical file's
+          # data key - see docs/security/key-management.md. Listed above in
+          # `envs:` too: that's what actually forwards it into the SSH
+          # session: a variable missing from BOTH this env: block (which
+          # sources it from the secret) and envs: (which forwards it) stays
+          # unset on the remote host even once the secret itself is set.
+          KMS_KEY_ID: ${{ secrets.KMS_KEY_ID }}
+          KMS_REGION: ap-southeast-1

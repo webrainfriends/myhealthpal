@@ -3,7 +3,7 @@ const config = require('../config');
 const authService = require('../services/authService');
 const { verifyGoogleIdToken } = require('../services/googleAuthService');
 const { verifyAppleIdentityToken } = require('../services/appleAuthService');
-const { requireAuth } = require('../middleware/auth');
+const { requireAccountAuth } = require('../middleware/auth');
 const { SUPPORTED_LANGUAGES, normalizeLanguage } = require('../services/languageService');
 const pool = require('../db/pool');
 
@@ -16,6 +16,9 @@ function publicUser(user) {
     displayName: user.display_name,
     authProvider: user.auth_provider,
     preferredLanguage: user.preferred_language,
+    // Lets the client show/hide the admin session-cleanup screen without
+    // ever shipping the admin email list itself into the app bundle.
+    isAdmin: Boolean(user.email) && config.adminEmails.includes(user.email.toLowerCase()),
   };
 }
 
@@ -23,11 +26,17 @@ function publicUser(user) {
 // IDs are not secrets (they're embedded in every client-side auth request
 // regardless of who can see this endpoint), so exposing them unauthenticated
 // is safe - this is only ever config, never a credential.
-router.get('/config', (req, res) => {
-  res.json({
-    googleClientId: config.googleClientId,
-    appleClientId: config.appleClientId,
-  });
+router.get('/config', async (req, res, next) => {
+  try {
+    const count = await authService.countUsers();
+    res.json({
+      googleClientId: config.googleClientId,
+      appleClientId: config.appleClientId,
+      registrationOpen: count < config.maxRegisteredUsers,
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 router.post('/guest', async (req, res, next) => {
@@ -46,6 +55,9 @@ router.post('/google', async (req, res) => {
     const user = await authService.upsertOAuthUser({ provider: 'google', providerUserId, email, displayName });
     res.json({ token: authService.signSession(user), user: publicUser(user) });
   } catch (err) {
+    if (err.code === 'registration_closed') {
+      return res.status(403).json({ code: 'registration_closed', error: err.message });
+    }
     // eslint-disable-next-line no-console
     console.error('Google sign-in failed:', err.message);
     if (err.message.includes('not configured')) return res.status(503).json({ error: err.message });
@@ -64,6 +76,9 @@ router.post('/apple', async (req, res) => {
     const user = await authService.upsertOAuthUser({ provider: 'apple', providerUserId, email, displayName });
     res.json({ token: authService.signSession(user), user: publicUser(user) });
   } catch (err) {
+    if (err.code === 'registration_closed') {
+      return res.status(403).json({ code: 'registration_closed', error: err.message });
+    }
     // eslint-disable-next-line no-console
     console.error('Apple sign-in failed:', err.message);
     if (err.message.includes('not configured')) return res.status(503).json({ error: err.message });
@@ -71,8 +86,10 @@ router.post('/apple', async (req, res) => {
   }
 });
 
-router.get('/me', requireAuth, (req, res) => {
-  res.json({ user: publicUser(req.user) });
+// /me is always the signed-in account itself, never a family profile it's
+// currently acting as (X-Profile-Id) - see routes/family.js for those.
+router.get('/me', requireAccountAuth, (req, res) => {
+  res.json({ user: publicUser(req.accountUser) });
 });
 
 // Lists the languages a user can pick for AI-generated explanatory text
@@ -85,7 +102,7 @@ router.get('/languages', (req, res) => {
   res.json({ languages: SUPPORTED_LANGUAGES });
 });
 
-router.patch('/me', requireAuth, async (req, res, next) => {
+router.patch('/me', requireAccountAuth, async (req, res, next) => {
   try {
     if (req.body.preferred_language === undefined) {
       return res.status(400).json({ error: 'preferred_language is required.' });
@@ -93,7 +110,7 @@ router.patch('/me', requireAuth, async (req, res, next) => {
     const language = normalizeLanguage(req.body.preferred_language);
     const { rows } = await pool.query(
       `UPDATE users SET preferred_language = $2 WHERE id = $1 RETURNING *`,
-      [req.user.id, language]
+      [req.accountUser.id, language]
     );
     res.json({ user: publicUser(rows[0]) });
   } catch (err) {

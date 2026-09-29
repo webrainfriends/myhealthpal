@@ -1,7 +1,22 @@
-const Anthropic = require('@anthropic-ai/sdk');
+const { getAiClient } = require('../ai/privacyGateway');
+const pool = require('../db/pool');
 const config = require('../config');
+const { recordAiUsage, FEATURES } = require('../services/aiUsageService');
 const { NUTRIENT_FIELDS, nutrientToolProperties } = require('../extraction/providers/nutrientFields');
 const { computeConsiderations, fetchActiveMedications, fetchAbnormalDietRelevantLabs } = require('./dietInsightService');
+const { classifyMealType } = require('./dietScanService');
+
+const MEAL_TYPES = ['breakfast', 'lunch', 'snack', 'dinner', 'supper'];
+
+// Mirrors routes/activity.js's fixed, app-wide daily goals - duplicated
+// rather than imported so this service doesn't depend on a route module;
+// see that file's own comment for why these aren't yet per-user.
+const ACTIVITY_GOALS = { steps: 10000, exerciseMinutes: 30 };
+
+// Mirrors routes/recipePreferences.js's allow-lists/defaults - duplicated
+// for the same reason (a service shouldn't import a route module).
+const DEFAULT_DIET_TYPES = ['vegetarian', 'vegan'];
+const DEFAULT_CUISINES = ['south_indian', 'western'];
 
 // AI recipe generation, grounded the same way diet recommendations are:
 // computeConsiderations() (dietInsightService.js) turns the person's active
@@ -10,8 +25,9 @@ const { computeConsiderations, fetchActiveMedications, fetchAbnormalDietRelevant
 // only allowed to explain a recipe's fit in terms of considerations it was
 // actually given - never a fabricated health rationale.
 const SAFETY_TAIL =
-  ' This is an AI-generated recipe suggestion, not medical or dietary advice - check with a healthcare professional ' +
-  'or dietitian if you have specific dietary restrictions.';
+  ' This is an AI-generated recipe suggestion, not medical or dietary advice, and not a checked food/medication ' +
+  'interaction review - check with a healthcare professional or dietitian if you have specific dietary restrictions, ' +
+  'allergies, or medications that could interact with an ingredient.';
 
 const SYSTEM_PROMPT = [
   'You are a nutrition-aware recipe generator.',
@@ -70,7 +86,17 @@ const RECIPE_TOOL = {
   },
 };
 
-function buildUserMessage({ mealType, preferences, considerations }) {
+// Stated once here regardless of whether the person also typed it into
+// free-text preferences this time - a stored allergy (Settings > Health
+// profile) is a hard constraint every single request, not just when
+// remembered to mention it.
+function describeAllergiesForPrompt(allergies) {
+  return allergies.length > 0
+    ? `This person has told us they are allergic to: ${allergies.join(', ')}. Never include any of these, or an obvious variant of one, as an ingredient.`
+    : 'No known allergies are on file for this person.';
+}
+
+function buildUserMessage({ mealType, preferences, considerations, allergies = [] }) {
   const parts = [
     mealType ? `Meal type: ${mealType}.` : 'Meal type: not specified - any meal is fine.',
     preferences && preferences.trim() ? `Preferences/constraints: ${preferences.trim()}.` : 'No specific preferences given.',
@@ -80,6 +106,7 @@ function buildUserMessage({ mealType, preferences, considerations }) {
       ? `Real dietary considerations for this person (from their active medications/lab results): ${considerations.map((c) => c.label).join(', ')}.`
       : 'No dietary considerations are on file for this person.'
   );
+  parts.push(describeAllergiesForPrompt(allergies));
   return parts.join(' ');
 }
 
@@ -96,6 +123,9 @@ function mapRecipeResult(input) {
 
   return {
     title: input.title ? String(input.title) : 'Untitled recipe',
+    // Only present on a batch (generate_recipes) result - a single
+    // generate_recipe result carries no meal_type input and maps to null.
+    mealType: MEAL_TYPES.includes(input.meal_type) ? input.meal_type : null,
     description: input.description ? String(input.description) : null,
     servings: typeof input.servings === 'number' ? input.servings : null,
     prepTimeMinutes: typeof input.prep_time_minutes === 'number' ? input.prep_time_minutes : null,
@@ -107,7 +137,40 @@ function mapRecipeResult(input) {
     dietaryTags: Array.isArray(input.dietary_tags) ? input.dietary_tags.filter((t) => typeof t === 'string' && t.trim()) : [],
     whyThisRecipe: input.why_this_recipe ? `${input.why_this_recipe}${SAFETY_TAIL}` : null,
     nutritionPerServing,
+    // Always present (possibly empty) so the client never has to guess
+    // whether the check ran - filled in by flagAllergyMatches below.
+    allergyWarnings: [],
   };
+}
+
+async function fetchAllergies(userId) {
+  const { rows } = await pool.query('SELECT allergen FROM user_allergies WHERE user_id = $1', [userId]);
+  return rows.map((r) => r.allergen);
+}
+
+// Naive English singularization (strip one trailing "s") so "Peanuts" as a
+// stored allergen still matches an ingredient written as "peanut butter" -
+// the singular root is a substring of the plural either way, so this only
+// needs to run on the allergen side.
+function singularize(word) {
+  return word.length > 3 && word.endsWith('s') ? word.slice(0, -1) : word;
+}
+
+// Deterministic safety net, independent of whether the model actually
+// honored the "never include a known allergen" instruction: a plain,
+// case-insensitive substring match of each stored allergen against the
+// recipe's own ingredient list. Only catches the allergen appearing by name
+// (or an obvious plural) in an ingredient, never a category term like "tree
+// nuts" matching "almonds" - that needs real food-allergen knowledge this
+// check doesn't have. Never silently drops or edits the recipe - just flags
+// it, so the person (not the AI) makes the call.
+function flagAllergyMatches(recipe, allergies) {
+  if (!recipe || allergies.length === 0) return recipe;
+  const matched = allergies.filter((allergen) => {
+    const needle = singularize(allergen.trim().toLowerCase());
+    return needle && recipe.ingredients.some((i) => i.item.toLowerCase().includes(needle));
+  });
+  return matched.length > 0 ? { ...recipe, allergyWarnings: matched } : recipe;
 }
 
 // context lets the route pass in medications/abnormalLabs it may have
@@ -118,26 +181,459 @@ async function generateRecipe(userId, { mealType, preferences } = {}) {
     throw new Error('AI recipe generation requires ANTHROPIC_API_KEY to be set.');
   }
 
-  const [medications, abnormalLabs] = await Promise.all([
+  const [medications, abnormalLabs, allergies] = await Promise.all([
     fetchActiveMedications(userId),
     fetchAbnormalDietRelevantLabs(userId),
+    fetchAllergies(userId),
   ]);
   const considerations = computeConsiderations(medications, abnormalLabs);
 
-  const client = new Anthropic({ apiKey: config.anthropicApiKey });
+  const client = await getAiClient({ subjectUserId: userId, purpose: 'recipe' });
   const response = await client.messages.create({
     model: config.anthropicModel,
     max_tokens: 2048,
     system: SYSTEM_PROMPT,
     tools: [RECIPE_TOOL],
     tool_choice: { type: 'tool', name: RECIPE_TOOL.name },
-    messages: [{ role: 'user', content: buildUserMessage({ mealType, preferences, considerations }) }],
+    messages: [{ role: 'user', content: buildUserMessage({ mealType, preferences, considerations, allergies }) }],
   });
+  recordAiUsage(FEATURES.RECIPES, response);
 
   const toolUse = response.content.find((block) => block.type === 'tool_use');
-  const recipe = toolUse ? mapRecipeResult(toolUse.input) : null;
+  const recipe = toolUse ? flagAllergyMatches(mapRecipeResult(toolUse.input), allergies) : null;
 
   return { recipe, considerations: considerations.map((c) => ({ key: c.key, label: c.label })) };
 }
 
-module.exports = { generateRecipe, mapRecipeResult, buildUserMessage };
+// The same fixed daily goals routes/activity.js scores rings against -
+// used here only to describe activity level in words (e.g. "low activity"),
+// never to change what's stored.
+async function fetchRecentActivity(userId, windowDays = 14) {
+  const { rows } = await pool.query(
+    `SELECT steps, exercise_minutes FROM activity_logs
+     WHERE user_id = $1 AND log_date >= CURRENT_DATE - ($2::int - 1)`,
+    [userId, windowDays]
+  );
+  return rows;
+}
+
+function describeActivity(rows) {
+  const loggedSteps = rows.filter((r) => r.steps != null);
+  const loggedExercise = rows.filter((r) => r.exercise_minutes != null);
+  if (loggedSteps.length === 0 && loggedExercise.length === 0) return null;
+
+  const avgSteps = loggedSteps.length > 0
+    ? Math.round(loggedSteps.reduce((sum, r) => sum + r.steps, 0) / loggedSteps.length)
+    : null;
+  const avgExerciseMinutes = loggedExercise.length > 0
+    ? Math.round(loggedExercise.reduce((sum, r) => sum + r.exercise_minutes, 0) / loggedExercise.length)
+    : null;
+
+  const level = avgSteps == null
+    ? null
+    : avgSteps >= ACTIVITY_GOALS.steps
+      ? 'active'
+      : avgSteps >= ACTIVITY_GOALS.steps * 0.5
+        ? 'moderately active'
+        : 'low activity';
+
+  return { avgSteps, avgExerciseMinutes, level };
+}
+
+async function fetchWeightGoal(userId) {
+  const { rows } = await pool.query('SELECT * FROM user_weight_goals WHERE user_id = $1', [userId]);
+  const row = rows[0];
+  if (!row || (row.current_weight_kg == null && row.target_weight_kg == null)) return null;
+  return {
+    currentWeightKg: row.current_weight_kg != null ? Number(row.current_weight_kg) : null,
+    targetWeightKg: row.target_weight_kg != null ? Number(row.target_weight_kg) : null,
+    targetDate: row.target_date ? new Date(row.target_date).toISOString().slice(0, 10) : null,
+  };
+}
+
+async function fetchRecipePreferences(userId) {
+  const { rows } = await pool.query(
+    'SELECT preference_type, preference_value FROM user_recipe_preferences WHERE user_id = $1',
+    [userId]
+  );
+  if (rows.length === 0) return { dietTypes: DEFAULT_DIET_TYPES, cuisines: DEFAULT_CUISINES };
+  return {
+    dietTypes: rows.filter((r) => r.preference_type === 'diet_type').map((r) => r.preference_value),
+    cuisines: rows.filter((r) => r.preference_type === 'cuisine').map((r) => r.preference_value),
+  };
+}
+
+function describeWeightGoalForPrompt(weightGoal) {
+  if (!weightGoal || weightGoal.currentWeightKg == null || weightGoal.targetWeightKg == null) {
+    return 'No weight goal is on file for this person.';
+  }
+  const { currentWeightKg, targetWeightKg, targetDate } = weightGoal;
+  const direction = targetWeightKg < currentWeightKg ? 'lose' : targetWeightKg > currentWeightKg ? 'gain' : 'maintain';
+  const byDate = targetDate ? ` by ${targetDate}` : '';
+  return `This person's weight goal: ${direction} weight, from ${currentWeightKg}kg toward a target of ${targetWeightKg}kg${byDate}.`;
+}
+
+function describeActivityForPrompt(activity) {
+  if (!activity || activity.level == null) return 'No recent activity data is on file for this person.';
+  const exercisePart = activity.avgExerciseMinutes != null ? `, ${activity.avgExerciseMinutes} exercise minutes/day` : '';
+  return `Recent activity level: ${activity.level} (averaging ${activity.avgSteps} steps/day${exercisePart}).`;
+}
+
+function describePreferencesForPrompt(preferences) {
+  const dietPart = preferences.dietTypes.length > 0
+    ? preferences.dietTypes.join('/').replace(/_/g, ' ')
+    : 'no specific diet type';
+  const cuisinePart = preferences.cuisines.length > 0
+    ? preferences.cuisines.map((c) => c.replace(/_/g, ' ')).join('/')
+    : 'no specific cuisine';
+  return `Preferred diet type(s): ${dietPart}. Preferred cuisine(s): ${cuisinePart}.`;
+}
+
+const FEED_SYSTEM_PROMPT = [
+  'You are a nutrition-aware recipe generator producing a personalized batch of recipe ideas automatically - the',
+  'person has not typed any request, so you must infer what would help them from the real signals given: their',
+  'dietary considerations (from active medications/abnormal lab results), recent activity level, weight goal, and',
+  'saved diet-type/cuisine preferences.',
+  'Generate the requested number of complete, distinct, realistic recipes a home cook could actually follow. Vary',
+  'them across meal types (breakfast/lunch/snack/dinner/supper) unless a single meal type was requested, and make',
+  'sure no two recipes in the batch are near-duplicates of each other or of any title in the "already suggested"',
+  'list.',
+  'Respect every stated diet-type/cuisine preference as a hard constraint, never a suggestion to override.',
+  'When dietary considerations are given, let them meaningfully shape each recipe (e.g. lower sodium for a',
+  'blood-pressure consideration, steadier/lower added sugar for a blood-sugar consideration, fiber-forward and',
+  'lower saturated fat for a cholesterol consideration) and explain briefly, in why_this_recipe, how it does -',
+  'citing ONLY the considerations actually given, never inventing a health rationale that was not provided.',
+  'When a weight-loss goal is given, favor a sensible calorie-per-serving for that goal; when an activity level is',
+  'given, favor higher-protein/higher-energy recipes for an active person and lighter, nutrient-dense ones for a',
+  'low-activity person - mention either in why_this_recipe only when it genuinely applies to that recipe. If none',
+  'of these signals apply to a given recipe, why_this_recipe should describe why it fits the meal type/preferences',
+  'instead, with no health claims at all.',
+  'Estimate the nutrition per serving using standard nutritional data, the same way you would when logging a food.',
+  'Keep each recipe concise: a one-sentence description, at most 10 ingredients, at most 8 short instruction steps,',
+  'and a why_this_recipe of one or two sentences.',
+  'This is a recipe-generation task, not a diagnosis or treatment plan: never suggest a medication change and',
+  'never claim a recipe treats or cures a condition.',
+].join(' ');
+
+// Recipes per feed request. Each one is roughly 800-1,200 output tokens
+// (13 nutrient fields, ingredients, steps), so a small batch keeps the cost
+// of one "Generate" tap predictable. The per-recipe output budget has
+// headroom so a batch finishes instead of being cut off: a cut-off tool
+// call used to lose the *whole* batch while still being billed for it.
+const FEED_MAX_COUNT = 5;
+const FEED_OUTPUT_TOKENS_PER_RECIPE = 1500;
+
+const RECIPE_LIST_TOOL = {
+  name: 'generate_recipes',
+  description:
+    'Generate a batch of complete, distinct recipes: ingredients, ordered instructions, and estimated nutrition per serving for each.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      recipes: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            title: { type: 'string' },
+            meal_type: { type: 'string', enum: MEAL_TYPES, description: 'Which meal this recipe is best suited for.' },
+            description: { type: 'string', description: 'One or two sentence overview of the dish.' },
+            servings: { type: 'number' },
+            prep_time_minutes: { type: ['number', 'null'] },
+            cook_time_minutes: { type: ['number', 'null'] },
+            ingredients: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  item: { type: 'string' },
+                  amount: { type: 'string', description: 'e.g. "2 cups", "1 tbsp", "to taste".' },
+                },
+                required: ['item', 'amount'],
+              },
+            },
+            instructions: { type: 'array', items: { type: 'string' }, description: 'Ordered step-by-step instructions.' },
+            dietary_tags: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'e.g. "vegetarian", "high-fiber", "low-sodium" - only tags that genuinely apply.',
+            },
+            why_this_recipe: {
+              type: 'string',
+              description: "Why this recipe fits this person's signals - see system prompt for the grounding rule.",
+            },
+            ...nutrientToolProperties('one serving of this recipe'),
+          },
+          required: ['title', 'meal_type', 'description', 'servings', 'ingredients', 'instructions', 'why_this_recipe'],
+        },
+      },
+    },
+    required: ['recipes'],
+  },
+};
+
+function buildFeedUserMessage({ mealType, count, considerations, activity, weightGoal, preferences, excludeTitles, allergies = [] }) {
+  const parts = [
+    `Generate ${count} recipes.`,
+    mealType ? `Meal type: all should be ${mealType}.` : 'Meal type: vary across breakfast/lunch/snack/dinner/supper.',
+    describePreferencesForPrompt(preferences),
+    considerations.length > 0
+      ? `Real dietary considerations for this person (from their active medications/lab results): ${considerations.map((c) => c.label).join(', ')}.`
+      : 'No dietary considerations are on file for this person.',
+    describeActivityForPrompt(activity),
+    describeWeightGoalForPrompt(weightGoal),
+    describeAllergiesForPrompt(allergies),
+  ];
+  if (excludeTitles.length > 0) {
+    parts.push(`Do not repeat any of these already-suggested recipe titles: ${excludeTitles.join('; ')}.`);
+  }
+  return parts.join(' ');
+}
+
+// The usable recipes in a feed response. When the output was cut off at
+// max_tokens, the last recipe in the partially-parsed array is the one
+// being written at the cutoff - its ingredients, steps, or nutrition may be
+// missing even if it looks well-formed - so it is dropped. Anything without
+// a title, ingredients, and instructions is dropped too, rather than shown
+// as a recipe nobody could cook.
+function completeRecipesFrom(response) {
+  const toolUse = response?.content?.find((block) => block.type === 'tool_use');
+  let rawRecipes = Array.isArray(toolUse?.input?.recipes) ? toolUse.input.recipes : [];
+  if (response?.stop_reason === 'max_tokens') rawRecipes = rawRecipes.slice(0, -1);
+  return rawRecipes
+    .map(mapRecipeResult)
+    .filter((r) => r && r.title !== 'Untitled recipe' && r.ingredients.length > 0 && r.instructions.length > 0);
+}
+
+// Auto-generates a personalized batch of recipes with no meal type or free
+// text typed by the user - grounded the same way generateRecipe() is, plus
+// recent activity, weight goal, and saved diet-type/cuisine preferences.
+// excludeTitles lets the caller page through without repeats: the mobile
+// "Generate more" button passes every title already shown so far.
+async function generateRecipeFeed(userId, { mealType, count = FEED_MAX_COUNT, excludeTitles = [] } = {}) {
+  if (!config.anthropicApiKey) {
+    throw new Error('AI recipe generation requires ANTHROPIC_API_KEY to be set.');
+  }
+
+  const [medications, abnormalLabs, activityRows, weightGoal, preferences, allergies] = await Promise.all([
+    fetchActiveMedications(userId),
+    fetchAbnormalDietRelevantLabs(userId),
+    fetchRecentActivity(userId),
+    fetchWeightGoal(userId),
+    fetchRecipePreferences(userId),
+    fetchAllergies(userId),
+  ]);
+  const considerations = computeConsiderations(medications, abnormalLabs);
+  const activity = describeActivity(activityRows);
+
+  const client = await getAiClient({ subjectUserId: userId, purpose: 'recipe' });
+  // Streamed rather than .create(): if the output does hit max_tokens, the
+  // SDK's stream still partially parses the cut-off tool input, so every
+  // recipe finished before the cutoff is kept (see completeRecipesFrom)
+  // instead of the whole paid-for batch coming back empty.
+  const response = await client.messages.streamFinal({
+      model: config.anthropicModel,
+      max_tokens: FEED_OUTPUT_TOKENS_PER_RECIPE * count + 512,
+      system: FEED_SYSTEM_PROMPT,
+      tools: [RECIPE_LIST_TOOL],
+      tool_choice: { type: 'tool', name: RECIPE_LIST_TOOL.name },
+      messages: [
+        {
+          role: 'user',
+          content: buildFeedUserMessage({ mealType, count, considerations, activity, weightGoal, preferences, excludeTitles, allergies }),
+        },
+      ],
+    });
+  recordAiUsage(FEATURES.RECIPES, response);
+
+  const excludeTitlesLower = new Set(excludeTitles.map((t) => t.toLowerCase().trim()));
+  const recipes = completeRecipesFrom(response)
+    .filter((r) => !excludeTitlesLower.has(r.title.toLowerCase().trim()))
+    .map((r) => flagAllergyMatches(r, allergies));
+
+  return {
+    recipes,
+    considerations: considerations.map((c) => ({ key: c.key, label: c.label })),
+    signals: {
+      activityLevel: activity?.level || null,
+      weightGoalSet: Boolean(weightGoal),
+      dietTypes: preferences.dietTypes,
+      cuisines: preferences.cuisines,
+    },
+  };
+}
+
+// Recipe suggestions kept per user (see 019_recipe_suggestions.sql) - a
+// personal "recipe box" of everything ever generated, not just the current
+// batch. Capped so it stays a recent, relevant list rather than growing
+// forever; trimming the oldest UNADDED rows first means a recipe the user
+// actually logged stays visible (and food_entries keeps its own copy of
+// the nutrition regardless - see the migration's ON DELETE SET NULL).
+const MAX_SAVED_SUGGESTIONS_PER_USER = 60;
+
+const SUGGESTION_COLUMNS = [
+  'requested_meal_type', 'title', 'meal_type', 'description', 'servings', 'prep_time_minutes', 'cook_time_minutes',
+  'ingredients', 'instructions', 'dietary_tags', 'why_this_recipe', ...NUTRIENT_FIELDS,
+];
+
+function mapSuggestionRow(row) {
+  const nutritionPerServing = {};
+  for (const field of NUTRIENT_FIELDS) {
+    nutritionPerServing[field] = row[field] != null ? Number(row[field]) : null;
+  }
+  return {
+    id: row.id,
+    title: row.title,
+    mealType: row.meal_type,
+    description: row.description,
+    servings: row.servings != null ? Number(row.servings) : null,
+    prepTimeMinutes: row.prep_time_minutes,
+    cookTimeMinutes: row.cook_time_minutes,
+    ingredients: row.ingredients || [],
+    instructions: row.instructions || [],
+    dietaryTags: row.dietary_tags || [],
+    whyThisRecipe: row.why_this_recipe,
+    nutritionPerServing,
+    addedAt: row.added_at,
+    createdAt: row.created_at,
+  };
+}
+
+async function insertOneSuggestion(userId, recipe, requestedMealType) {
+  const values = [
+    userId,
+    requestedMealType || null,
+    recipe.title,
+    recipe.mealType,
+    recipe.description,
+    recipe.servings,
+    recipe.prepTimeMinutes,
+    recipe.cookTimeMinutes,
+    JSON.stringify(recipe.ingredients),
+    JSON.stringify(recipe.instructions),
+    JSON.stringify(recipe.dietaryTags),
+    recipe.whyThisRecipe,
+    ...NUTRIENT_FIELDS.map((f) => recipe.nutritionPerServing[f] ?? null),
+  ];
+  const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
+  const { rows } = await pool.query(
+    `INSERT INTO recipe_suggestions (user_id, ${SUGGESTION_COLUMNS.join(', ')}) VALUES (${placeholders}) RETURNING id, created_at`,
+    values
+  );
+  return { ...recipe, id: rows[0].id, addedAt: null, createdAt: rows[0].created_at };
+}
+
+// Persists every recipe from a just-generated batch, then trims the
+// user's saved suggestions back down to the cap (oldest, never-added ones
+// first). Returns the same recipes with their new database ids attached,
+// so the client can reference a specific suggestion (e.g. to log it) with
+// no separate lookup.
+async function saveRecipeSuggestions(userId, recipes, requestedMealType) {
+  const saved = [];
+  for (const recipe of recipes) {
+    saved.push(await insertOneSuggestion(userId, recipe, requestedMealType));
+  }
+
+  await pool.query(
+    `DELETE FROM recipe_suggestions WHERE id IN (
+       SELECT id FROM recipe_suggestions WHERE user_id = $1
+       ORDER BY (added_at IS NOT NULL), created_at DESC
+       OFFSET $2
+     )`,
+    [userId, MAX_SAVED_SUGGESTIONS_PER_USER]
+  );
+
+  return saved;
+}
+
+// Same single-row insert as saveRecipeSuggestions, without the trim: a diet
+// schedule entry (diet_schedule_entries.recipe_suggestion_id) references its
+// recipe permanently, unlike a browsable feed suggestion that's expected to
+// eventually age out - trimming it out from under an active schedule would
+// silently orphan the entry (ON DELETE SET NULL). Used by
+// recipeBackfillService.js and scheduleGenerationService.js instead of
+// saveRecipeSuggestions for exactly this reason.
+async function saveScheduleRecipeSuggestion(userId, recipe, requestedMealType) {
+  return insertOneSuggestion(userId, recipe, requestedMealType);
+}
+
+// The user's saved recipe suggestions - a free, non-AI read, so the
+// Recipes screen (and the Diet screen's quick-pick list) can show what was
+// already generated with no token cost. mealType filters by the recipe's
+// own meal_type (not the filter a past generation request used), so
+// picking "Lunch" surfaces every lunch-suited recipe ever saved.
+async function listSavedRecipeSuggestions(userId, { mealType, limit = 20 } = {}) {
+  const conditions = ['user_id = $1'];
+  const params = [userId];
+  if (mealType) {
+    params.push(mealType);
+    conditions.push(`meal_type = $${params.length}`);
+  }
+  params.push(Math.min(Math.max(Number(limit) || 20, 1), 60));
+  const { rows } = await pool.query(
+    `SELECT * FROM recipe_suggestions WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC LIMIT $${params.length}`,
+    params
+  );
+  return rows.map(mapSuggestionRow);
+}
+
+// Converts a saved suggestion straight into a food_entries row - the
+// "select this recipe as my diet" action, usable from both the Recipes
+// screen and the Diet screen's quick-pick list. Scoped to userId the same
+// way every other diet route is; a suggestion id belonging to someone else
+// resolves to null rather than leaking its content or logging into the
+// wrong account.
+async function logRecipeSuggestion(userId, suggestionId, { consumedAt } = {}) {
+  const { rows } = await pool.query('SELECT * FROM recipe_suggestions WHERE id = $1 AND user_id = $2', [
+    suggestionId,
+    userId,
+  ]);
+  const suggestion = rows[0];
+  if (!suggestion) return null;
+
+  const when = consumedAt instanceof Date && !Number.isNaN(consumedAt.getTime()) ? consumedAt : new Date();
+  const mealType = suggestion.meal_type || classifyMealType(when);
+
+  const columns = ['user_id', 'name', 'meal_type', 'consumed_at', 'source_type', 'notes', 'ai_verified', 'is_confirmed', 'recipe_suggestion_id', ...NUTRIENT_FIELDS];
+  const values = [
+    userId,
+    suggestion.title,
+    mealType,
+    when,
+    'manual',
+    suggestion.description || null,
+    true,
+    true,
+    suggestion.id,
+    ...NUTRIENT_FIELDS.map((f) => suggestion[f]),
+  ];
+  const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
+  const { rows: inserted } = await pool.query(
+    `INSERT INTO food_entries (${columns.join(', ')}) VALUES (${placeholders}) RETURNING *`,
+    values
+  );
+
+  await pool.query('UPDATE recipe_suggestions SET added_at = COALESCE(added_at, now()) WHERE id = $1', [suggestion.id]);
+
+  return inserted[0];
+}
+
+module.exports = {
+  generateRecipe,
+  generateRecipeFeed,
+  completeRecipesFrom,
+  saveRecipeSuggestions,
+  saveScheduleRecipeSuggestion,
+  listSavedRecipeSuggestions,
+  logRecipeSuggestion,
+  FEED_MAX_COUNT,
+  mapRecipeResult,
+  buildUserMessage,
+  buildFeedUserMessage,
+  describeActivity,
+  // Reused by scheduleGenerationService.js so a kitchen-generated schedule
+  // respects the same saved cuisine/diet-type preferences (and defaults) a
+  // recipe feed does - one source of truth, not a second query duplicating it.
+  fetchRecipePreferences,
+  describePreferencesForPrompt,
+};

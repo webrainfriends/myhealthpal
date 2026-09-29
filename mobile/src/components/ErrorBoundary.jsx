@@ -1,6 +1,23 @@
 import { Component } from 'react';
 import { SafeAreaView, StyleSheet, Text, TouchableOpacity } from 'react-native';
 import { colors, radii, spacing, typography } from '../theme/theme';
+import { useT } from '../i18n/I18nContext';
+
+// A functional wrapper so the fallback UI can call useT() - the boundary
+// itself must stay a class component (getDerivedStateFromError/
+// componentDidCatch have no hook equivalent).
+function ErrorFallback({ onRetry }) {
+  const t = useT();
+  return (
+    <SafeAreaView style={styles.container}>
+      <Text style={typography.heading}>{t('errorBoundary.title')}</Text>
+      <Text style={[typography.bodySecondary, styles.message]}>{t('errorBoundary.message')}</Text>
+      <TouchableOpacity style={styles.button} onPress={onRetry}>
+        <Text style={styles.buttonLabel}>{t('errorBoundary.tryAgain')}</Text>
+      </TouchableOpacity>
+    </SafeAreaView>
+  );
+}
 
 // A single bad record (e.g. an unexpected shape from a newly uploaded
 // report) must not take down the whole app - without this, any render
@@ -21,17 +38,7 @@ export default class ErrorBoundary extends Component {
 
   render() {
     if (this.state.hasError) {
-      return (
-        <SafeAreaView style={styles.container}>
-          <Text style={typography.heading}>Something went wrong</Text>
-          <Text style={[typography.bodySecondary, styles.message]}>
-            This screen ran into a problem. Your data and session are safe.
-          </Text>
-          <TouchableOpacity style={styles.button} onPress={this.reset}>
-            <Text style={styles.buttonLabel}>Try again</Text>
-          </TouchableOpacity>
-        </SafeAreaView>
-      );
+      return <ErrorFallback onRetry={this.reset} />;
     }
     return this.props.children;
   }

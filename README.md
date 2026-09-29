@@ -1,4 +1,4 @@
-# MyHealthPal
+# EyeMyHealth
 
 A light-themed React Native (Expo) app on top of an Express + PostgreSQL API,
 covering:
@@ -21,6 +21,19 @@ covering:
   calories/macros, auto-tagged by meal (breakfast/lunch/snack/dinner/supper)
   from the time logged, plus a pattern analysis with recommendations that
   considers the user's confirmed lab results and active medications.
+- Retest Radar: a "check again by" countdown for every out-of-range result
+  and every medicine linked to a lab value, a small weekly action to tick
+  off until then, and push reminders two weeks before and on the date
+  (see "Retest Radar" below).
+- Family Health Eye: one account looks after parents and family members.
+  It can add a "managed" profile for someone who won't use the app, or
+  follow another account that shares itself with an invite code (view-only
+  or full access). Caregivers get that person's recheck reminders too.
+- An encrypted medical-record vault: every uploaded report, scan, and photo is
+  stored only as AES-256-GCM ciphertext under a per-file key wrapped by AWS
+  KMS. Consent choices are explicit (storage, AI document reading, AI
+  insights), every AI call goes through one privacy gateway, access is
+  audited, and deletion is permanent (see "Security & privacy" below).
 - Guest, Google, and Apple sign-in, with every user's reports, timeline,
   dashboard, insights, and chat history strictly scoped to their own signed-in
   session and never visible to anyone else.
@@ -36,6 +49,9 @@ covering:
 ```bash
 cd server
 cp .env.example .env   # adjust DATABASE_URL if needed
+# Local dev: files are encrypted with a dev-only key provider
+echo "KEY_PROVIDER=local-dev" >> .env
+echo "LOCAL_DEV_MASTER_KEY=$(openssl rand -hex 32)" >> .env
 npm install
 npm run migrate        # creates schema
 npm run seed           # (re)seeds the Health Parameter Registry
@@ -69,6 +85,7 @@ dedicated, isolated container sidesteps.
 | AWS region | `ap-southeast-1` |
 | SSH user | `ubuntu` |
 | App URL after deploy (web app + API) | `http://ec2-13-250-133-109.ap-southeast-1.compute.amazonaws.com:5250` |
+| App domain (web app + API) | `https://eyemyhealth.com` (+ `www.`) — once DNS points at the host; see step 8 |
 | Internal API port (nginx -> API) | `4010`, `127.0.0.1` only |
 | Web build root | `/var/www/myhealthpal-web` (rewritten every deploy) |
 
@@ -121,10 +138,53 @@ One-time setup before the first deploy:
    `APPLE_CLIENT_ID`. Apple additionally requires the page to be served over
    **HTTPS** (or `localhost`) and that same origin to be domain-verified -
    the plain `http://` URL this workflow deploys to does not satisfy that,
-   so the button stays hidden until the site is put behind TLS (a reverse
-   proxy/cert setup, e.g. Let's Encrypt via certbot, is not something this
-   workflow sets up). Leave unset (or unmet) to simply not offer this
-   option - guest sign-in always still works.
+   so the button stays hidden until the site is served over HTTPS - use
+   the `https://eyemyhealth.com` origin from step 8 for this. Leave unset
+   (or unmet) to simply not offer this option - guest sign-in always still
+   works.
+7. **Optional: offer the Gmail integration** (Settings -> Connected Health
+   Sources - import lab reports/medical documents straight out of Gmail).
+   This is a *separate* OAuth client from `GOOGLE_CLIENT_ID` above: create
+   another OAuth 2.0 **Web application** Client ID at [Google Cloud Console
+   -> APIs & Services -> Credentials](https://console.cloud.google.com/apis/credentials),
+   enable the **Gmail API** on the project, add the `gmail.readonly` scope,
+   and under **Authorized redirect URIs** register this deploy's callback
+   URL exactly - `https://eyemyhealth.com/api/integrations/gmail/callback`
+   once the domain (step 8) is live, or
+   `http://ec2-13-250-133-109.ap-southeast-1.compute.amazonaws.com:5250/api/integrations/gmail/callback`
+   otherwise. Add four repo secrets: `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`
+   (the client's actual secret - keep it private), `GMAIL_REDIRECT_URI` (the
+   same URL just registered above), and `GMAIL_TOKEN_ENCRYPTION_KEY` (any
+   random 32-byte hex value, e.g. `openssl rand -hex 32` - encrypts stored
+   Gmail refresh tokens at rest; once set, avoid changing it, since rotating
+   it makes already-connected users' stored tokens undecryptable and they'd
+   need to reconnect). Leave `GMAIL_CLIENT_ID` unset to simply not offer this
+   option - it's fully optional and unrelated to guest/Google/Apple sign-in.
+8. **The app's domain, `eyemyhealth.com`.** Every deploy also serves the
+   app at `eyemyhealth.com` and `www.eyemyhealth.com` on the standard ports
+   (80/443), in addition to — not instead of — the `:5250` URL above
+   (`scripts/configure-domain.sh`; set `APP_DOMAIN` in
+   `.github/workflows/deploy.yml` to change or disable it). It adds its own
+   nginx site that forwards those hostnames to the existing `:5250` site,
+   is checked with `nginx -t` and rolled back on any error, never claims
+   the host's default site (other apps on ports 80/443 keep their own
+   hostnames), and never fails the deploy. To make it live:
+   - At your domain registrar's DNS settings, add **A records** for
+     `eyemyhealth.com` (`@`) and `www` pointing to **`13.250.133.109`**
+     (if that isn't an Elastic IP, allocate one first — a plain EC2 public
+     IP changes whenever the instance is stopped/started).
+   - In the instance's security group, allow inbound TCP **80** and
+     **443** from the internet.
+   - Push/re-run the deploy. The first deploy after DNS resolves to the
+     host obtains a free Let's Encrypt HTTPS certificate (renewed
+     automatically by certbot's timer) and redirects `http://` to
+     `https://`. Until then the domain is served over plain HTTP, or skipped
+     if DNS isn't pointed yet — the deploy log's `[domain]` lines say which.
+   - Optional: a `LETSENCRYPT_EMAIL` repo secret for certificate expiry
+     notices.
+   - If you use Google sign-in, add `https://eyemyhealth.com` (and
+     `https://www.eyemyhealth.com`) to the OAuth client's **Authorized
+     JavaScript origins** too.
 
 That's it — every push to `main` after that pulls the latest code, rebuilds
 the web app, runs `npm ci` for the API, applies migrations, restarts the
@@ -647,6 +707,125 @@ degrades to a clear "isn't available in this build" error/`false` return
 (`isBleAvailable()`, `isStepSyncAvailable()`) rather than crashing, so the
 rest of the app still runs fine under Expo Go with this one feature
 disabled.
+### Retest Radar
+
+Gives people a reason to open the app between lab visits. A plan in
+`retest_plans` (migration `020_retest_plans.sql`) is a "check again by" date
+for one parameter. The date is computed only by rules in
+`server/src/retest/retestRules.js`, never by an LLM:
+
+- **Out-of-range latest result:** the due date is the result date plus a
+  per-parameter cadence, for example HbA1c 90 days, lipids 180, vitamin D and
+  B12 84, TSH 42, anything else 90. A flag containing "critical" or "panic"
+  brings it down to 14 days.
+- **Linked medicine started after the latest result:** the due date is the
+  medicine's start date plus the end of its onset window
+  (`medication_parameter_links.typical_onset_weeks_*`). A result already
+  measured inside that window means the effect has been checked, so this rule
+  stops applying.
+- **Both rules apply:** the earlier date wins.
+
+Plans are recomputed on load (`GET /api/retest`) and by the reminder job, the
+same pull model as medication alerts:
+
+- A newer confirmed result for the parameter closes the plan (`done`).
+- A dismissed or snoozed plan stays that way until its situation changes.
+- Each plan carries a fixed, non-numeric weekly action (for example "15
+  minutes of morning sunlight on 3 days this week"). Ticking it records a
+  `retest_checkins` row for that week, which feeds the week streak.
+
+Endpoints, all under `requireAuth`:
+
+- `GET /api/retest`
+- `POST /api/retest/:id/snooze | dismiss | checkin`
+- `PUT /api/retest/settings` (reminders on/off)
+- `POST`/`DELETE /api/retest/push-token`
+
+How reminders are sent:
+
+- The API process runs `retestReminderService.runReminders` every hour.
+  Pushes go through Expo's push service only between 03:00 and 15:00 UTC.
+- Each user gets at most one combined push per run, covering: two weeks
+  before the date, on the date, and the weekly action.
+- Each reminder is recorded in `retest_reminders_sent`, so it is never
+  repeated.
+- Set `RETEST_REMINDERS=off` to disable the job.
+- `npm run retest-reminders` sends one pass immediately, ignoring the time
+  window.
+
+On mobile, `mobile/src/notifications/retestNotifications.js` registers the
+device's Expo push token after sign-in. Push tokens need an EAS `projectId`
+in `app.json` (`extra.eas.projectId`) and a physical device. Without them
+(web, simulator, no projectId), the same reminders are scheduled as local
+notifications instead. Tapping any of them opens the Retest Radar screen.
+
+### Family Health Eye
+
+Every family member is an ordinary `users` row, so every existing table and
+route scopes their data with no changes. Migration `021_family_profiles.sql`
+adds:
+
+- a `managed` `auth_provider`: a profile with no sign-in of its own
+- `family_links (owner_user_id, member_user_id, relation, access)`, where
+  `access` is `manage` or `view`
+- `family_invites`: single-use codes that expire after 7 days
+
+How profile switching works:
+
+- The client sends `X-Profile-Id` to act as a linked profile.
+- `requireAuth` honors the header only when a `family_links` row grants it,
+  and refuses every non-GET request on a `view` link.
+- `req.accountUser` is always the signed-in account; `req.user` is the
+  active profile.
+- `requireAccountAuth` ignores the header entirely. It covers account-level
+  routes: `/api/auth`, `/api/family`, and `/api/account` (push tokens,
+  reminder settings).
+- AI usage is always billed to the signed-in account.
+
+Family routes:
+
+- `GET /api/family`: returns this account's profiles, plus who can see its
+  own data.
+- `POST`/`PATCH`/`DELETE /api/family/members[/:id]`: create a managed
+  profile, set its name, relation or summary language, or remove it.
+  Removing the last manager of a managed profile deletes the profile and all
+  its data.
+- `POST /api/family/invites` and `POST /api/family/invites/redeem`: share or
+  join a profile by code.
+- `DELETE /api/family/shared-with/:userId`: revoke someone's access to your
+  own data.
+
+The Retest Radar reminder job notifies each profile's own devices, and every
+linked caregiver's devices too ("Time to recheck Dad's HbA1c"). Tapping a
+caregiver's reminder opens that profile.
+
+Retest Radar's **Book test** button opens `LAB_BOOKING_URL_TEMPLATE`, with
+`{test}` replaced by the test name. The default is a nearby-labs map search;
+point it at a lab partner's booking page when you have one. The button shows
+prominently once a recheck is 14 days away or less.
+
+### Security & privacy
+
+Medical files are never stored as plaintext. Uploads stay in memory until
+they are validated, then encrypted into `ENCRYPTED_STORE_DIR`:
+- AES-256-GCM, with a per-file data key
+- the data key is wrapped by AWS KMS in production, or by the `local-dev`
+  provider in development
+
+Consent is recorded separately for storage, AI document processing and AI
+insights, and enforced at upload and in the AI privacy gateway
+(`server/src/ai/privacyGateway.js`). Access, AI processing and deletions are
+written to an append-only `security_audit_events` table, which holds no PHI.
+
+Scripts, all idempotent, with `--dry-run` printing counts only:
+- `npm run check-kms`
+- `npm run encrypt-legacy-uploads`
+- `npm run rewrap-keys`
+- `npm run reencrypt-files`
+
+Production setup (KMS key, EC2 instance role, `KMS_KEY_ID` secret), the
+threat model, and the AI data flows are documented in
+[`docs/security/`](docs/security/medical-report-security.md).
 
 ### Known scope limits
 
@@ -700,6 +879,16 @@ disabled.
   reason — reverse-engineered protocol, not an official spec.
 - No push/local alerting — "needs attention" is a pull (dashboard) view, not
   a background-triggered alert.
+- Only one data source exists: report upload (`reports.source_type =
+  'report_upload'`). Apple Health, Samsung Health, Accu-Chek, Libre, etc.
+  aren't implemented — there's no credentialed access to those APIs in this
+  environment — but `source_type` and the dedicated `measurement_sources`/
+  `health_measurements` provenance model exist specifically so a future
+  connector is a new writer into the same tables, not a schema change.
+  Dashboard/timeline source filters are wired but only ever see one value
+  today.
+- The only push/local alerting is Retest Radar's reminders. "Needs attention"
+  and medication alerts are still pull (on-load) views.
 - Insight thresholds (15%/30% change, 3-point trend/repeat windows) are fixed
   constants, not per-user/per-parameter configuration; exploratory
   correlations and wearable/glucose-pattern insight types from the issue's
@@ -730,7 +919,21 @@ classification, unpair keeping reading history), and — the most
 safety-critical one — `chatTools.security.test.js`, which creates two real
 database users and asserts one cannot retrieve the other's report through
 any tool, including a deliberately smuggled `userId` argument. These need a
-reachable `DATABASE_URL` (same as the server itself).
+reachable `DATABASE_URL` (same as the server itself), plus
+`KEY_PROVIDER=local-dev` and a `LOCAL_DEV_MASTER_KEY` (`openssl rand -hex 32`)
+for the encrypted-vault paths.
+
+The `security.*.test.js` suites cover issue #104:
+- encryption round trips and tamper detection
+- keys bound to their owner and object; no raw data keys in the database
+- key rotation and cipher-version migration
+- legacy plaintext migration
+- content, ZIP-bomb and macro checks; log redaction
+- consent enforcement in the AI gateway, including a check that nothing
+  bypasses it
+- end-to-end HTTP tests: another user can't reach any report route;
+  swapped, forged, expired or reused download links fail; permanent
+  deletion works
 
 `cd mobile && npm test` runs `node --test` over `mobile/test/`:
 `ble.parsers.test.js` decodes hand-built Blood Pressure/Glucose/Weight

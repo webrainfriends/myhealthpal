@@ -1,6 +1,7 @@
-const Anthropic = require('@anthropic-ai/sdk');
+const { getAiClient, isAllowed } = require('../ai/privacyGateway');
 const pool = require('../db/pool');
 const config = require('../config');
+const { recordAiUsage, FEATURES } = require('../services/aiUsageService');
 const { findKnowledgeEntry } = require('../medications/medicationLinkingService');
 
 // General-population dietary guideline defaults (not personalized, not a
@@ -372,21 +373,27 @@ async function rephraseTipWithClaude(client, tip) {
     ].join(' '),
     messages: [{ role: 'user', content: JSON.stringify({ type: tip.type, severity: tip.severity, title: tip.title, data: tip.templateData }) }],
   });
+  recordAiUsage(FEATURES.DIET_TIPS, response);
   const textBlock = response.content.find((b) => b.type === 'text');
   return textBlock ? textBlock.text.trim() : null;
 }
 
-async function finalizeTips(tips) {
+async function finalizeTips(tips, userId) {
   const withSafetyTail = tips.map((t) => ({
     ...t,
     heuristicDetail: t.severity === 'info' ? t.heuristicDetail : `${t.heuristicDetail}${SAFETY_TAIL}`,
   }));
 
-  if (config.dietProvider !== 'claude' || !config.anthropicApiKey || withSafetyTail.length === 0) {
+  if (
+    config.dietProvider !== 'claude' ||
+    !config.anthropicApiKey ||
+    withSafetyTail.length === 0 ||
+    !(await isAllowed({ subjectUserId: userId, purpose: 'diet_insight' }))
+  ) {
     return { tips: withSafetyTail.map((t) => ({ type: t.type, severity: t.severity, title: t.title, detail: t.heuristicDetail })), provider: 'heuristic', model: null };
   }
 
-  const client = new Anthropic({ apiKey: config.anthropicApiKey });
+  const client = await getAiClient({ subjectUserId: userId, purpose: 'diet_insight' });
   const finalTips = [];
   let usedClaude = false;
   for (const tip of withSafetyTail) {
@@ -430,7 +437,7 @@ async function generateRecommendations(userId, windowDays = 14) {
       : `Over the last ${metrics.loggedDayCount} logged day${metrics.loggedDayCount === 1 ? '' : 's'} (${metrics.entriesAnalyzedCount} entries), you averaged about ${metrics.avgDailyCalories} calories/day.` +
         (tips.length === 0 ? ' No notable patterns stood out - keep it up.' : ` ${tips.length} thing${tips.length === 1 ? '' : 's'} stood out below.`);
 
-  const { tips: finalTips, provider, model } = await finalizeTips(tips);
+  const { tips: finalTips, provider, model } = await finalizeTips(tips, userId);
 
   const evidence = { metrics, flags, considerations: considerations.map(({ key, label, medicationNames, labFindings }) => ({ key, label, medicationNames, labFindings })) };
 
@@ -490,4 +497,16 @@ module.exports = {
   // pattern-analysis tips are - one query, one source of truth.
   fetchActiveMedications,
   fetchAbnormalDietRelevantLabs,
+  // Reused by scheduleImpactService.js so a schedule's worsens/improves
+  // verdict is judged against the exact same daily-intake thresholds these
+  // pattern tips already use - one set of numbers, not two that can drift.
+  SODIUM_DAILY_LIMIT_MG,
+  SUGAR_DAILY_LIMIT_G,
+  FIBER_DAILY_TARGET_G,
+  IRON_DAILY_TARGET_MG,
+  CHOLESTEROL_DAILY_LIMIT_MG,
+  // Reused by scheduleImpactService.js for the same hallucination guard on
+  // any Claude-rephrased impact-flag text.
+  allowedNumbersFromEvidence,
+  textOnlyReferencesAllowedNumbers,
 };

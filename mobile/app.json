@@ -1,12 +1,12 @@
 {
   "expo": {
-    "name": "MyHealthPal",
+    "name": "EyeMyHealth",
     "slug": "myhealthpal",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "backgroundColor": "#F7F9FC",
+    "backgroundColor": "#F7F5FF",
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
@@ -17,7 +17,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#F7F9FC",
+        "backgroundColor": "#6C4DFF",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -47,6 +47,13 @@
       "react-native-health",
       "react-native-health-connect",
       "expo-dev-client"
+      "expo-notifications",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "EyeMyHealth uses your location to show the local weather and air quality on your dashboard."
+        }
+      ]
     ]
   }
 }

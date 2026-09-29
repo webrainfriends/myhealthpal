@@ -2,16 +2,24 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import RootNavigator from './src/navigation/RootNavigator';
 import { AuthProvider } from './src/auth/AuthContext';
+import { I18nProvider } from './src/i18n/I18nContext';
+import { VoiceProvider } from './src/voice/VoiceContext';
 import ErrorBoundary from './src/components/ErrorBoundary';
+import AlertHost from './src/components/AlertHost';
 
 export default function App() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <StatusBar style="dark" />
-        <ErrorBoundary>
-          <RootNavigator />
-        </ErrorBoundary>
+        <I18nProvider>
+          <VoiceProvider>
+            <StatusBar style="dark" />
+            <ErrorBoundary>
+              <RootNavigator />
+            </ErrorBoundary>
+            <AlertHost />
+          </VoiceProvider>
+        </I18nProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );

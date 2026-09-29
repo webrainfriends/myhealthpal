@@ -3,8 +3,10 @@ import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ActivityRings from '../components/ActivityRings';
 import PrimaryButton from '../components/PrimaryButton';
+import SpeakButton from '../components/SpeakButton';
 import { activityRingColors, cardShadow, colors, radii, spacing, typography } from '../theme/theme';
 import { fetchActivitySummary, logActivity } from '../api/client';
+import { useT } from '../i18n/I18nContext';
 import { showAlert } from '../utils/alert';
 import { parseCalendarDate } from '../utils/date';
 
@@ -27,18 +29,28 @@ function RingLegendRow({ label, value, unit, goal, color }) {
 // Calories/distance come from imported wearable exports (see
 // activityImportService.js) - there's no goal or ring for them, just a
 // factual readout, so they're skipped entirely on days with neither value.
-function ImportedStatsRow({ caloriesBurned, distanceMeters }) {
+function ImportedStatsRow({ caloriesBurned, distanceMeters, t }) {
   if (caloriesBurned === null && distanceMeters === null) return null;
   return (
     <View style={styles.importedStatsRow}>
       {caloriesBurned !== null && (
-        <Text style={typography.bodySecondary}>{Math.round(caloriesBurned)} cal burned</Text>
+        <Text style={typography.bodySecondary}>{t('activity.caloriesBurned', { count: Math.round(caloriesBurned) })}</Text>
       )}
       {distanceMeters !== null && (
         <Text style={typography.bodySecondary}>{(distanceMeters / 1000).toFixed(2)} km</Text>
       )}
     </View>
   );
+}
+
+// Builds the sentence SpeakButton reads for today's activity: each ring's
+// value against its goal, the same numbers RingLegendRow shows below.
+function buildActivitySpeech(current, goals, t) {
+  return [
+    `${t('activity.move')}: ${current.steps ?? 0}${t('activity.steps')} / ${goals.steps}${t('activity.steps')}.`,
+    `${t('activity.exercise')}: ${current.exerciseMinutes ?? 0}${t('activity.min')} / ${goals.exerciseMinutes}${t('activity.min')}.`,
+    `${t('activity.stand')}: ${current.standHours ?? 0}${t('activity.hr')} / ${goals.standHours}${t('activity.hr')}.`,
+  ].join(' ');
 }
 
 function formatDayLabel(dateStr) {
@@ -76,6 +88,7 @@ function StepsHistoryChart({ history }) {
 }
 
 export default function ActivityScreen() {
+  const t = useT();
   const [summary, setSummary] = useState(null);
   const [draft, setDraft] = useState({ steps: '', exercise_minutes: '', stand_hours: '' });
   const [busy, setBusy] = useState(false);
@@ -104,7 +117,7 @@ export default function ActivityScreen() {
       setDraft({ steps: '', exercise_minutes: '', stand_hours: '' });
       await load();
     } catch (err) {
-      showAlert('Could not save activity', err.message);
+      showAlert(t('activity.couldNotSave'), err.message);
     } finally {
       setBusy(false);
     }
@@ -113,7 +126,7 @@ export default function ActivityScreen() {
   if (!summary) {
     return (
       <SafeAreaView style={styles.container}>
-        <Text style={[typography.bodySecondary, styles.centeredText]}>Loading…</Text>
+        <Text style={[typography.bodySecondary, styles.centeredText]}>{t('activity.loading')}</Text>
       </SafeAreaView>
     );
   }
@@ -129,80 +142,92 @@ export default function ActivityScreen() {
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={[styles.heroCard, cardShadow]}>
-          {!isCurrentToday && current.date && (
-            <Text style={typography.bodySecondary}>Last synced {formatFullDayLabel(current.date)}</Text>
-          )}
+          <View style={styles.heroTopRow}>
+            {!isCurrentToday && current.date ? (
+              <Text style={typography.bodySecondary}>
+                {t('activity.lastSynced', { date: formatFullDayLabel(current.date) })}
+              </Text>
+            ) : (
+              <View />
+            )}
+            <SpeakButton
+              text={buildActivitySpeech(current, goals, t)}
+              label={t('activity.readAloud')}
+            />
+          </View>
           <View style={styles.ringsWrap}>
             <ActivityRings rings={rings} size={180} strokeWidth={18} gap={6} />
           </View>
           <View style={styles.legend}>
             <RingLegendRow
-              label="Move"
+              label={t('activity.move')}
               value={current.steps}
-              unit=" steps"
+              unit={t('activity.steps')}
               goal={goals.steps}
               color={activityRingColors.steps.fg}
             />
             <RingLegendRow
-              label="Exercise"
+              label={t('activity.exercise')}
               value={current.exerciseMinutes}
-              unit=" min"
+              unit={t('activity.min')}
               goal={goals.exerciseMinutes}
               color={activityRingColors.exerciseMinutes.fg}
             />
             <RingLegendRow
-              label="Stand"
+              label={t('activity.stand')}
               value={current.standHours}
-              unit=" hr"
+              unit={t('activity.hr')}
               goal={goals.standHours}
               color={activityRingColors.standHours.fg}
             />
           </View>
-          <ImportedStatsRow caloriesBurned={current.caloriesBurned} distanceMeters={current.distanceMeters} />
+          <ImportedStatsRow caloriesBurned={current.caloriesBurned} distanceMeters={current.distanceMeters} t={t} />
         </View>
 
         <View style={styles.section}>
-          <Text style={[typography.heading, styles.sectionHeading]}>Log today</Text>
+          <Text style={[typography.heading, styles.sectionHeading]}>{t('activity.logToday')}</Text>
           <View style={styles.formRow}>
             <View style={styles.formField}>
-              <Text style={styles.fieldLabel}>Steps</Text>
+              <Text style={styles.fieldLabel}>{t('activity.stepsLabel')}</Text>
               <TextInput
                 style={styles.input}
                 value={draft.steps}
-                onChangeText={(t) => setDraft((d) => ({ ...d, steps: t }))}
+                onChangeText={(text) => setDraft((d) => ({ ...d, steps: text }))}
                 placeholder={String(today.steps ?? 0)}
                 placeholderTextColor={colors.textTertiary}
                 keyboardType="number-pad"
               />
             </View>
             <View style={styles.formField}>
-              <Text style={styles.fieldLabel}>Exercise (min)</Text>
+              <Text style={styles.fieldLabel}>{t('activity.exerciseLabel')}</Text>
               <TextInput
                 style={styles.input}
                 value={draft.exercise_minutes}
-                onChangeText={(t) => setDraft((d) => ({ ...d, exercise_minutes: t }))}
+                onChangeText={(text) => setDraft((d) => ({ ...d, exercise_minutes: text }))}
                 placeholder={String(today.exerciseMinutes ?? 0)}
                 placeholderTextColor={colors.textTertiary}
                 keyboardType="number-pad"
               />
             </View>
             <View style={styles.formField}>
-              <Text style={styles.fieldLabel}>Stand (hr)</Text>
+              <Text style={styles.fieldLabel}>{t('activity.standLabel')}</Text>
               <TextInput
                 style={styles.input}
                 value={draft.stand_hours}
-                onChangeText={(t) => setDraft((d) => ({ ...d, stand_hours: t }))}
+                onChangeText={(text) => setDraft((d) => ({ ...d, stand_hours: text }))}
                 placeholder={String(today.standHours ?? 0)}
                 placeholderTextColor={colors.textTertiary}
                 keyboardType="number-pad"
               />
             </View>
           </View>
-          <PrimaryButton title="Save" onPress={handleSave} loading={busy} />
+          <PrimaryButton title={t('activity.save')} onPress={handleSave} loading={busy} />
         </View>
 
         <View style={styles.section}>
-          <Text style={[typography.heading, styles.sectionHeading]}>Steps, last {history.length} days</Text>
+          <Text style={[typography.heading, styles.sectionHeading]}>
+            {t('activity.stepsHistory', { count: history.length })}
+          </Text>
           <StepsHistoryChart history={history} />
         </View>
       </ScrollView>
@@ -230,6 +255,12 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     alignItems: 'center',
     gap: spacing.md,
+  },
+  heroTopRow: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   ringsWrap: {
     width: 180,

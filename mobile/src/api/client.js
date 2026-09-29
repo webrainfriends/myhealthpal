@@ -27,6 +27,16 @@ export function setUnauthorizedHandler(handler) {
   onUnauthorized = handler;
 }
 
+// The family member's profile currently being viewed (Family Health Eye),
+// or null for the signed-in account's own. Set by AuthContext; sent as
+// X-Profile-Id, which the server only honors for a profile this account has
+// been granted (and ignores on account routes like /api/auth and
+// /api/family).
+let activeProfileId = null;
+export function setActiveProfileId(profileId) {
+  activeProfileId = profileId || null;
+}
+
 // Every authenticated call funnels through here so the session token is
 // attached exactly once, in one place, rather than at each of the 20+ call
 // sites below - and so a 401 (expired/invalid/revoked session) is handled
@@ -36,6 +46,7 @@ async function apiFetch(path, options = {}) {
   const token = loadToken();
   const headers = { ...(options.headers || {}) };
   if (token) headers.Authorization = `Bearer ${token}`;
+  if (activeProfileId) headers['X-Profile-Id'] = activeProfileId;
 
   // Belt-and-suspenders alongside the server's own Cache-Control: no-store -
   // every call here is a signed-in user's current data (report processing
@@ -54,6 +65,11 @@ async function handleResponse(response) {
   if (!response.ok) {
     const error = new Error(body?.error || `Request failed with status ${response.status}`);
     error.status = response.status;
+    // e.g. 'consent_required' / 'ai_consent_required' / 'upload_rejected'
+    // - lets screens react (open the Privacy & AI screen) instead of only
+    // showing the message.
+    error.code = body?.code || null;
+    error.consentType = body?.consentType || null;
     throw error;
   }
   return body;
@@ -94,6 +110,13 @@ export async function signInApple(identityToken, fullName) {
 
 export async function fetchMe() {
   const response = await apiFetch('/api/auth/me');
+  return handleResponse(response);
+}
+
+// The signed-in user's AI token usage - this session, the last `days`
+// days, and all-time - for Settings > AI usage.
+export async function fetchAiUsage(days = 30) {
+  const response = await apiFetch(`/api/ai-usage?days=${encodeURIComponent(days)}`);
   return handleResponse(response);
 }
 
@@ -330,6 +353,192 @@ export async function sendInsightFeedback(insightId, feedback) {
   return handleResponse(response);
 }
 
+export async function fetchRetestPlans() {
+  const response = await apiFetch('/api/retest');
+  return handleResponse(response);
+}
+
+export async function snoozeRetestPlan(planId, days = 7) {
+  const response = await apiFetch(`/api/retest/${planId}/snooze`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ days }),
+  });
+  return handleResponse(response);
+}
+
+export async function dismissRetestPlan(planId) {
+  const response = await apiFetch(`/api/retest/${planId}/dismiss`, { method: 'POST' });
+  return handleResponse(response);
+}
+
+export async function setRetestCheckin(planId, done) {
+  const response = await apiFetch(`/api/retest/${planId}/checkin`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ done }),
+  });
+  return handleResponse(response);
+}
+
+export async function fetchHealthProfile() {
+  const response = await apiFetch('/api/health-profile');
+  return handleResponse(response);
+}
+
+export async function addWeightEntry(weightKg) {
+  const response = await apiFetch('/api/health-profile/weight', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ weightKg }),
+  });
+  return handleResponse(response);
+}
+
+export async function addHeightEntry(heightCm) {
+  const response = await apiFetch('/api/health-profile/height', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ heightCm }),
+  });
+  return handleResponse(response);
+}
+
+export async function addAllergy(allergen) {
+  const response = await apiFetch('/api/health-profile/allergies', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ allergen }),
+  });
+  return handleResponse(response);
+}
+
+export async function removeAllergy(allergyId) {
+  const response = await apiFetch(`/api/health-profile/allergies/${allergyId}`, { method: 'DELETE' });
+  return handleResponse(response);
+}
+
+export async function deleteAccount() {
+  const response = await apiFetch('/api/account', { method: 'DELETE' });
+  if (!response.ok) return handleResponse(response);
+  return null;
+}
+
+// Admin-only (server checks config.adminEmails; the client only ever shows
+// this screen when GET /api/auth/me returned isAdmin, and any other account
+// gets a 403 from the server itself) session cleanup - see server's
+// routes/admin.js.
+export async function fetchAdminSessions() {
+  const response = await apiFetch('/api/admin/sessions');
+  return handleResponse(response);
+}
+
+export async function deleteAdminSession(userId) {
+  const response = await apiFetch(`/api/admin/sessions/${userId}`, { method: 'DELETE' });
+  if (!response.ok) return handleResponse(response);
+  return null;
+}
+
+// Multi-select delete: deletes exactly the checked-off logins in one request.
+export async function bulkDeleteAdminSessions(userIds) {
+  const response = await apiFetch('/api/admin/sessions/bulk-delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userIds }),
+  });
+  return handleResponse(response);
+}
+
+export async function cleanupGuestSessions() {
+  const response = await apiFetch('/api/admin/sessions/cleanup/guests', { method: 'DELETE' });
+  return handleResponse(response);
+}
+
+export async function updateRetestSettings(remindersEnabled) {
+  const response = await apiFetch('/api/account/retest-settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ remindersEnabled }),
+  });
+  return handleResponse(response);
+}
+
+export async function registerPushToken(token, platform) {
+  const response = await apiFetch('/api/account/push-token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, platform }),
+  });
+  return handleResponse(response);
+}
+
+// Privacy & AI consents for the active profile (the signed-in account, or
+// a managed family member the caregiver decides for).
+export async function fetchConsents() {
+  const response = await apiFetch('/api/consents');
+  return handleResponse(response);
+}
+
+export async function setConsent(type, granted) {
+  const response = await apiFetch(`/api/consents/${type}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ granted, platform: Platform.OS }),
+  });
+  return handleResponse(response);
+}
+
+export async function fetchFamily() {
+  const response = await apiFetch('/api/family');
+  return handleResponse(response);
+}
+
+export async function createFamilyMember(displayName, relation) {
+  const response = await apiFetch('/api/family/members', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ displayName, relation }),
+  });
+  return handleResponse(response);
+}
+
+export async function updateFamilyMember(memberId, changes) {
+  const response = await apiFetch(`/api/family/members/${memberId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(changes),
+  });
+  return handleResponse(response);
+}
+
+export async function removeFamilyMember(memberId) {
+  const response = await apiFetch(`/api/family/members/${memberId}`, { method: 'DELETE' });
+  return handleResponse(response);
+}
+
+export async function createFamilyInvite({ profileId, access }) {
+  const response = await apiFetch('/api/family/invites', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ profileId, access }),
+  });
+  return handleResponse(response);
+}
+
+export async function redeemFamilyInvite(code) {
+  const response = await apiFetch('/api/family/invites/redeem', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
+  });
+  return handleResponse(response);
+}
+
+export async function revokeFamilyAccess(userId) {
+  const response = await apiFetch(`/api/family/shared-with/${userId}`, { method: 'DELETE' });
+  return handleResponse(response);
+}
+
 export async function createChatSession() {
   const response = await apiFetch('/api/chat/sessions', { method: 'POST' });
   return handleResponse(response);
@@ -417,6 +626,41 @@ export async function fetchMedicationScan(scanId) {
 export async function retryMedicationScan(scanId) {
   const response = await apiFetch(`/api/medications/scans/${scanId}/retry`, { method: 'POST' });
   return handleResponse(response);
+}
+
+export async function uploadMedicationPhoto(medicationId, file, source) {
+  const formData = new FormData();
+  if (file.file) {
+    formData.append('file', file.file, file.name);
+  } else {
+    formData.append('file', {
+      uri: file.uri,
+      name: file.name,
+      type: file.mimeType || 'application/octet-stream',
+    });
+  }
+  if (source) formData.append('source', source);
+
+  const response = await apiFetch(`/api/medications/${medicationId}/photos`, {
+    method: 'POST',
+    body: formData,
+    // Do not set Content-Type manually - see uploadReport() above.
+  });
+  return handleResponse(response);
+}
+
+export async function fetchMedicationPhotoUrl(medicationId, photoId) {
+  const response = await apiFetch(`/api/medications/${medicationId}/photos/${photoId}/file-url`);
+  const data = await handleResponse(response);
+  // Server-relative - see fetchReportFileUrl() above for why it's made
+  // absolute here rather than through apiFetch.
+  return `${API_BASE_URL}${data.url}`;
+}
+
+export async function deleteMedicationPhoto(medicationId, photoId) {
+  const response = await apiFetch(`/api/medications/${medicationId}/photos/${photoId}`, { method: 'DELETE' });
+  if (!response.ok) return handleResponse(response);
+  return null;
 }
 
 export async function fetchMedicationAlerts(state = 'active') {
@@ -528,6 +772,48 @@ export async function generateDietRecipe(fields) {
   return handleResponse(response);
 }
 
+// The signed-in user's already-generated recipe suggestions (see
+// dietRecipeService.saveRecipeSuggestions server-side) - a free read, no AI
+// call. Backs both the Recipes screen on open and the Diet screen's
+// quick-pick list, so returning to either never re-spends tokens on ideas
+// already generated.
+export async function fetchSavedRecipes({ mealType, limit } = {}) {
+  const params = new URLSearchParams();
+  if (mealType) params.set('meal_type', mealType);
+  if (limit) params.set('limit', String(limit));
+  const query = params.toString();
+  const response = await apiFetch(`/api/diet/recipes/feed${query ? `?${query}` : ''}`);
+  return handleResponse(response);
+}
+
+// Generates a new batch of AI recipe ideas - this is the only diet-recipe
+// call that spends AI tokens, so it only ever fires from an explicit
+// "Generate" tap, never automatically. Every recipe returned is already
+// saved server-side (it comes back with an id) - see fetchSavedRecipes
+// above to read it back later at no cost. excludeTitles carries every
+// title already shown so the new batch doesn't repeat them.
+export async function generateRecipeFeed({ mealType, excludeTitles = [], limit = 5 } = {}) {
+  const response = await apiFetch('/api/diet/recipes/feed', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ meal_type: mealType || undefined, exclude_titles: excludeTitles, limit }),
+  });
+  return handleResponse(response);
+}
+
+// Logs a saved recipe suggestion as a food_entries row - the "select this
+// as my diet" action, used from both the Recipes screen and the Diet
+// screen's quick-pick list. No AI call: the nutrition was already
+// estimated when the recipe was generated.
+export async function logRecipeSuggestion(recipeSuggestionId, { consumedAt } = {}) {
+  const response = await apiFetch(`/api/diet/recipes/${recipeSuggestionId}/log`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ consumed_at: consumedAt || undefined }),
+  });
+  return handleResponse(response);
+}
+
 export async function fetchGmailStatus() {
   const response = await apiFetch('/api/integrations/gmail/status');
   return handleResponse(response);
@@ -578,6 +864,213 @@ export async function saveRecipePreferences(dietTypes, cuisines) {
     body: JSON.stringify({ dietTypes, cuisines }),
   });
   return handleResponse(response);
+}
+
+export async function fetchWeightGoal() {
+  const response = await apiFetch('/api/weight-goal');
+  return handleResponse(response);
+}
+
+export async function saveWeightGoal({ currentWeightKg, targetWeightKg, targetDate }) {
+  const response = await apiFetch('/api/weight-goal', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ currentWeightKg, targetWeightKg, targetDate }),
+  });
+  return handleResponse(response);
+}
+
+// --- Mini kitchen (pantry) ---
+
+export async function fetchKitchenItems({ category, search, availableOnly } = {}) {
+  const params = new URLSearchParams();
+  if (category) params.set('category', category);
+  if (search) params.set('search', search);
+  if (availableOnly) params.set('available_only', 'true');
+  const query = params.toString();
+  const response = await apiFetch(`/api/kitchen/items${query ? `?${query}` : ''}`);
+  return handleResponse(response);
+}
+
+export async function addKitchenItem(fields) {
+  const response = await apiFetch('/api/kitchen/items', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  });
+  return handleResponse(response);
+}
+
+export async function updateKitchenItem(itemId, fields) {
+  const response = await apiFetch(`/api/kitchen/items/${itemId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  });
+  return handleResponse(response);
+}
+
+export async function deleteKitchenItem(itemId) {
+  const response = await apiFetch(`/api/kitchen/items/${itemId}`, { method: 'DELETE' });
+  if (!response.ok) return handleResponse(response);
+  return null;
+}
+
+// --- Diet schedules ---
+
+export async function fetchDietSchedules() {
+  const response = await apiFetch('/api/diet-schedules');
+  return handleResponse(response);
+}
+
+export async function fetchDietSchedule(scheduleId) {
+  const response = await apiFetch(`/api/diet-schedules/${scheduleId}`);
+  return handleResponse(response);
+}
+
+export async function createManualDietSchedule({ title, durationDays, startDate, entries }) {
+  const response = await apiFetch('/api/diet-schedules', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title,
+      duration_days: durationDays,
+      start_date: startDate,
+      entries: entries.map((e) => ({ day_number: e.dayNumber, meal_type: e.mealType, dish_name: e.dishName })),
+    }),
+  });
+  return handleResponse(response);
+}
+
+export async function generateDietScheduleFromKitchen({ title, durationDays, startDate, kitchenItemIds, mealTypesPerDay }) {
+  const response = await apiFetch('/api/diet-schedules/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title,
+      duration_days: durationDays,
+      start_date: startDate,
+      kitchen_item_ids: kitchenItemIds,
+      meal_types_per_day: mealTypesPerDay,
+    }),
+  });
+  return handleResponse(response);
+}
+
+// Same {uri, name, mimeType, file} shape the document/image pickers hand
+// back everywhere else (see uploadReport/uploadDietScan above) - any format
+// the report pipeline already reads (PDF/DOCX/XLSX/CSV/photo) works here too.
+export async function importDietSchedule(file, { durationDays, startDate }) {
+  const formData = new FormData();
+  if (file.file) {
+    formData.append('file', file.file, file.name);
+  } else {
+    formData.append('file', { uri: file.uri, name: file.name, type: file.mimeType || 'application/octet-stream' });
+  }
+  formData.append('duration_days', String(durationDays));
+  formData.append('start_date', startDate);
+
+  const response = await apiFetch('/api/diet-schedules/import', { method: 'POST', body: formData });
+  return handleResponse(response);
+}
+
+export async function fetchDietScheduleImport(importId) {
+  const response = await apiFetch(`/api/diet-schedules/imports/${importId}`);
+  return handleResponse(response);
+}
+
+export async function deleteDietSchedule(scheduleId) {
+  const response = await apiFetch(`/api/diet-schedules/${scheduleId}`, { method: 'DELETE' });
+  if (!response.ok) return handleResponse(response);
+  return null;
+}
+
+export async function updateDietScheduleEntry(entryId, { dishName, mealType }) {
+  const response = await apiFetch(`/api/diet-schedules/entries/${entryId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dish_name: dishName, meal_type: mealType }),
+  });
+  return handleResponse(response);
+}
+
+export async function logDietScheduleEntry(entryId, consumedAt) {
+  const response = await apiFetch(`/api/diet-schedules/entries/${entryId}/log`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ consumed_at: consumedAt || undefined }),
+  });
+  return handleResponse(response);
+}
+
+export async function retryDietScheduleEntryRecipe(entryId) {
+  const response = await apiFetch(`/api/diet-schedules/entries/${entryId}/retry-recipe`, { method: 'POST' });
+  return handleResponse(response);
+}
+
+export async function fetchDietScheduleImpact(scheduleId, { refresh } = {}) {
+  const path = refresh ? `/api/diet-schedules/${scheduleId}/impact/refresh` : `/api/diet-schedules/${scheduleId}/impact`;
+  const response = await apiFetch(path, refresh ? { method: 'POST' } : undefined);
+  return handleResponse(response);
+}
+
+// --- Water intake ---
+
+export async function fetchWaterSummary(date) {
+  const response = await apiFetch(`/api/water/summary${date ? `?date=${date}` : ''}`);
+  return handleResponse(response);
+}
+
+export async function logWaterEntry(amountMl, loggedAt) {
+  const response = await apiFetch('/api/water/entries', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ amount_ml: amountMl, logged_at: loggedAt || undefined }),
+  });
+  return handleResponse(response);
+}
+
+export async function deleteWaterEntry(entryId) {
+  const response = await apiFetch(`/api/water/entries/${entryId}`, { method: 'DELETE' });
+  if (!response.ok) return handleResponse(response);
+  return null;
+}
+
+export async function refreshWaterTarget() {
+  const response = await apiFetch('/api/water/target/refresh', { method: 'POST' });
+  return handleResponse(response);
+}
+
+export async function updateWaterSettings(remindersEnabled) {
+  const response = await apiFetch('/api/account/water-settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ remindersEnabled }),
+  });
+  return handleResponse(response);
+}
+
+// --- Recipe reactions (Love/Like/Unlike) ---
+
+export async function fetchRecipeReactions(recipeSuggestionIds) {
+  if (!recipeSuggestionIds || recipeSuggestionIds.length === 0) return { reactions: {} };
+  const response = await apiFetch(`/api/recipe-reactions?ids=${recipeSuggestionIds.join(',')}`);
+  return handleResponse(response);
+}
+
+export async function setRecipeReaction(recipeSuggestionId, reactionType) {
+  const response = await apiFetch(`/api/recipe-reactions/${recipeSuggestionId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reactionType }),
+  });
+  return handleResponse(response);
+}
+
+export async function clearRecipeReaction(recipeSuggestionId) {
+  const response = await apiFetch(`/api/recipe-reactions/${recipeSuggestionId}`, { method: 'DELETE' });
+  if (!response.ok) return handleResponse(response);
+  return null;
 }
 
 export { API_BASE_URL };

@@ -1,12 +1,16 @@
 const pool = require('../db/pool');
 const { getAdapter } = require('../adapters');
-const { generateSummary } = require('./summaryService');
+const { generateSummary, generateImagingSummary } = require('./summaryService');
 const { runExtraction } = require('../extraction/extractionService');
 const { detectAndPersistReportDates } = require('../extraction/reportDateService');
 const { reconcileMeasurementDuplicatesForReport } = require('../extraction/dedupService');
 const { reconcileReportDuplicate } = require('../extraction/reportDedupService');
 const { refreshSummaryForReport } = require('../extraction/reportNarrativeService');
 const { importActivityTablesFrom } = require('./activityImportService');
+const { loadFileBuffer } = require('../security/secureUpload');
+const { withTimeout } = require('../lib/withTimeout');
+const config = require('../config');
+const { logError } = require('../lib/safeLog');
 
 // In-process async runner: kicks off processing without blocking the upload
 // response. Swappable for a real queue (BullMQ/SQS/etc.) behind the same
@@ -14,8 +18,7 @@ const { importActivityTablesFrom } = require('./activityImportService');
 function enqueueProcessing(reportId) {
   setImmediate(() => {
     processReport(reportId).catch((err) => {
-      // eslint-disable-next-line no-console
-      console.error(`Unhandled error processing report ${reportId}:`, err);
+      logError(`Unhandled error processing report ${reportId}`, err);
     });
   });
 }
@@ -64,7 +67,10 @@ async function processReport(reportId) {
       throw new Error(`No ingestion adapter registered for .${report.file_extension} files`);
     }
 
-    const document = await adapter.extract(report.storage_path);
+    // Decrypted into memory only for the duration of processing - never
+    // written to disk. Parsers run under a time limit (untrusted input).
+    let fileBuffer = await loadFileBuffer(report, { purpose: 'report_extraction' });
+    const document = await withTimeout(adapter.extract(fileBuffer), config.security.parserTimeoutMs, 'Reading the document');
 
     // A wearable/health-tracker "Activity" sheet (steps/calories/distance)
     // isn't a lab result and must never reach the extraction providers
@@ -90,14 +96,26 @@ async function processReport(reportId) {
           reportId,
           userId: report.user_id,
           document,
-          filePath: report.storage_path,
+          fileBuffer,
           mimeType: report.mime_type,
         });
+    fileBuffer = null;
     const activityNote =
       activityImportedDays > 0
         ? `Imported ${activityImportedDays} day${activityImportedDays === 1 ? '' : 's'} of activity data (steps, and calories/distance where present) - see the Activity screen.`
         : null;
-    const summary = [activityNote, generateSummary(measurements)].filter(Boolean).join(' ');
+    // An imaging/radiology report (X-ray, CT, MRI, ...) legitimately has zero
+    // health_measurements - its clinically relevant content is the narrative
+    // findings/impression below, not a discrete parameter list - so it needs
+    // its own summary rather than generateSummary's "no parameters could be
+    // extracted" message, which would misrepresent a successful extraction.
+    const isImagingReport = Boolean(docInfo?.findings || docInfo?.impression || docInfo?.modality);
+    const summary = [
+      activityNote,
+      isImagingReport ? generateImagingSummary(docInfo) : generateSummary(measurements),
+    ]
+      .filter(Boolean)
+      .join(' ');
 
     const { effectiveDate } = await detectAndPersistReportDates({
       reportId,
@@ -128,6 +146,11 @@ async function processReport(reportId) {
            report_type = COALESCE($5, report_type),
            notes = COALESCE($6, notes),
            alerts = COALESCE($7, alerts),
+           modality = COALESCE($8, modality),
+           body_region = COALESCE($9, body_region),
+           findings = COALESCE($10, findings),
+           impression = COALESCE($11, impression),
+           recommendations = COALESCE($12, recommendations),
            updated_at = now()
        WHERE id = $1`,
       [
@@ -138,6 +161,11 @@ async function processReport(reportId) {
         docInfo?.reportType || null,
         docInfo?.notes?.length ? docInfo.notes.join('\n') : null,
         docInfo?.alerts?.length ? docInfo.alerts.join('\n') : null,
+        docInfo?.modality || null,
+        docInfo?.bodyRegion || null,
+        docInfo?.findings || null,
+        docInfo?.impression || null,
+        docInfo?.recommendations || null,
       ]
     );
 

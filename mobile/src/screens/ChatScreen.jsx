@@ -11,10 +11,13 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import SpeakButton from '../components/SpeakButton';
 import { colors, radii, spacing, typography } from '../theme/theme';
 import { createChatSession, fetchChatMessages, sendChatMessage } from '../api/client';
+import { useT } from '../i18n/I18nContext';
+import { useVoice } from '../voice/VoiceContext';
 
-function EvidenceChips({ evidence, navigation }) {
+function EvidenceChips({ evidence, navigation, t }) {
   if (!evidence || evidence.length === 0) return null;
   const reportIds = [...new Set(evidence.filter((e) => e.type === 'report').map((e) => e.id))];
   const medications = [
@@ -26,7 +29,7 @@ function EvidenceChips({ evidence, navigation }) {
     <View style={styles.evidenceRow}>
       {reportIds.map((id) => (
         <TouchableOpacity key={id} style={styles.evidenceChip} onPress={() => navigation.navigate('ReportDetail', { reportId: id })}>
-          <Text style={styles.evidenceChipText}>View source</Text>
+          <Text style={styles.evidenceChipText}>{t('chat.viewSource')}</Text>
         </TouchableOpacity>
       ))}
       {medications.map((m) => (
@@ -35,26 +38,33 @@ function EvidenceChips({ evidence, navigation }) {
           style={styles.evidenceChip}
           onPress={() => navigation.navigate('MedicationDetail', { medicationId: m.id })}
         >
-          <Text style={styles.evidenceChipText}>{m.label ? `View ${m.label}` : 'View medication'}</Text>
+          <Text style={styles.evidenceChipText}>{m.label ? t('chat.viewNamed', { name: m.label }) : t('chat.viewMedication')}</Text>
         </TouchableOpacity>
       ))}
     </View>
   );
 }
 
-function MessageBubble({ message, navigation }) {
+function MessageBubble({ message, navigation, t }) {
   const isUser = message.role === 'user';
   return (
     <View style={[styles.bubbleRow, isUser && styles.bubbleRowUser]}>
       <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAssistant]}>
         <Text style={[typography.body, isUser && styles.bubbleUserText]}>{message.content}</Text>
       </View>
-      {!isUser && <EvidenceChips evidence={message.evidence} navigation={navigation} />}
+      {!isUser && (
+        <View style={styles.assistantFooter}>
+          <SpeakButton id={message.id} text={message.content} label={t('chat.readAloud')} />
+          <EvidenceChips evidence={message.evidence} navigation={navigation} t={t} />
+        </View>
+      )}
     </View>
   );
 }
 
 export default function ChatScreen({ navigation }) {
+  const t = useT();
+  const { enabled: voiceEnabled, speak } = useVoice();
   const [sessionId, setSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -84,10 +94,14 @@ export default function ChatScreen({ navigation }) {
     try {
       const { message } = await sendChatMessage(sessionId, text);
       setMessages((prev) => [...prev, message]);
+      // Voice Mode reads each new answer aloud automatically, on top of the
+      // per-bubble Listen button - so a person who can't see the screen
+      // gets the reply without having to find and tap anything.
+      if (voiceEnabled) speak(message.content, { id: message.id });
     } catch (err) {
       setMessages((prev) => [
         ...prev,
-        { id: `error-${Date.now()}`, role: 'assistant', content: `Sorry, something went wrong: ${err.message}`, evidence: [] },
+        { id: `error-${Date.now()}`, role: 'assistant', content: t('chat.sorryError', { message: err.message }), evidence: [] },
       ]);
     } finally {
       setSending(false);
@@ -108,14 +122,14 @@ export default function ChatScreen({ navigation }) {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
-          ListHeaderComponent={<Text style={[typography.title, styles.title]}>Ask MyHealthPal</Text>}
-          ListEmptyComponent={
-            <Text style={[typography.bodySecondary, styles.empty]}>
-              Ask about your reports, trends, or medications — e.g. "Summarize my latest report", "Show my HbA1c trend", or
-              "When does my Metformin run out?".
-            </Text>
+          ListHeaderComponent={
+            <View>
+              <Text style={[typography.title, styles.title]}>{t('chat.title')}</Text>
+              {voiceEnabled && <Text style={styles.autoReadHint}>{t('chat.autoReadHint')}</Text>}
+            </View>
           }
-          renderItem={({ item }) => <MessageBubble message={item} navigation={navigation} />}
+          ListEmptyComponent={<Text style={[typography.bodySecondary, styles.empty]}>{t('chat.empty')}</Text>}
+          renderItem={({ item }) => <MessageBubble message={item} navigation={navigation} t={t} />}
         />
         {sending && <ActivityIndicator style={styles.loading} color={colors.primary} />}
         <View style={styles.inputRow}>
@@ -123,13 +137,13 @@ export default function ChatScreen({ navigation }) {
             style={styles.input}
             value={input}
             onChangeText={setInput}
-            placeholder="Ask a question about your health data…"
+            placeholder={t('chat.placeholder')}
             placeholderTextColor={colors.textTertiary}
             multiline
             onSubmitEditing={handleSend}
           />
           <TouchableOpacity style={styles.sendButton} onPress={handleSend} disabled={sending || !input.trim()}>
-            <Text style={styles.sendLabel}>Send</Text>
+            <Text style={styles.sendLabel}>{t('chat.send')}</Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -148,6 +162,12 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   title: {
+    marginBottom: spacing.md,
+  },
+  autoReadHint: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    color: colors.textTertiary,
     marginBottom: spacing.md,
   },
   empty: {
@@ -178,11 +198,17 @@ const styles = StyleSheet.create({
   bubbleUserText: {
     color: colors.surface,
   },
+  assistantFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: 4,
+  },
   evidenceRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.xs,
-    marginTop: 4,
   },
   evidenceChip: {
     backgroundColor: colors.primaryMuted,

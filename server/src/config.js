@@ -38,6 +38,19 @@ if (!gmailTokenEncryptionKey) {
   );
 }
 
+// Optional per-model price overrides for AI usage cost estimates (see
+// services/aiUsageService.js), USD per 1M tokens, e.g.
+// AI_PRICING_JSON='{"claude-sonnet-5":{"input":2,"output":10}}'. Also takes
+// optional cacheWrite/cacheRead rates. Merged over the built-in table.
+let aiPricingOverrides = {};
+if (process.env.AI_PRICING_JSON) {
+  try {
+    aiPricingOverrides = JSON.parse(process.env.AI_PRICING_JSON);
+  } catch (err) {
+    throw new Error(`AI_PRICING_JSON is not valid JSON: ${err.message}`);
+  }
+}
+
 const SUPPORTED_EXTENSIONS = {
   pdf: { mimeTypes: ['application/pdf'] },
   jpg: { mimeTypes: ['image/jpeg'] },
@@ -55,8 +68,54 @@ module.exports = {
   databaseUrl: process.env.DATABASE_URL,
   uploadDir: path.resolve(__dirname, '..', process.env.UPLOAD_DIR || 'uploads'),
   maxUploadBytes: Number(process.env.MAX_UPLOAD_BYTES) || 20 * 1024 * 1024,
+  // Closed-beta ceiling on total `users` rows (guest, Google, Apple, and
+  // managed family profiles all count) - see authService.withRegistrationCap.
+  maxRegisteredUsers: Number(process.env.MAX_REGISTERED_USERS) || 20,
+  // Email addresses (case-insensitive) allowed to use the admin session
+  // cleanup screen (routes/admin.js) - lists every registered/guest login
+  // and can delete one, or every guest login, on the spot. Comma-separated
+  // for more than one; the app's own email/password is never involved,
+  // this only ever gates against the signed-in account's verified
+  // Google/Apple email.
+  adminEmails: (process.env.ADMIN_EMAILS || 'rraja.edge@gmail.com')
+    .split(',')
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean),
+  // Retest Radar's "Book test" link. {test} is replaced with the URL-encoded
+  // test name - point this at a lab partner's search/booking page when one
+  // exists; the default is a nearby-labs map search.
+  labBookingUrlTemplate:
+    process.env.LAB_BOOKING_URL_TEMPLATE || 'https://www.google.com/maps/search/{test}+test+lab+near+me',
   supportedExtensions: SUPPORTED_EXTENSIONS,
   jwtSecret,
+  nodeEnv: process.env.NODE_ENV || 'development',
+  // Encrypted medical-file vault (issue #104, docs/security/). Every
+  // uploaded report/scan is stored only as AES-256-GCM ciphertext under
+  // encryptedStoreDir; its per-file key is wrapped by the key provider
+  // (AWS KMS in production). See security/configValidation.js for what
+  // production refuses to start without.
+  security: {
+    keyProvider: process.env.KEY_PROVIDER || null,
+    kmsKeyId: process.env.KMS_KEY_ID || null,
+    kmsRegion: process.env.KMS_REGION || process.env.AWS_REGION || 'ap-southeast-1',
+    localDevMasterKey: process.env.LOCAL_DEV_MASTER_KEY || null,
+    encryptedStoreDir: process.env.ENCRYPTED_STORE_DIR
+      ? path.resolve(process.env.ENCRYPTED_STORE_DIR)
+      : path.resolve(__dirname, '..', 'vault'),
+    downloadTokenTtlSeconds: Number(process.env.DOWNLOAD_TOKEN_TTL_SECONDS) || 300,
+    downloadTokenSingleUse: process.env.DOWNLOAD_TOKEN_SINGLE_USE === 'true',
+    // 'allow' only while legacy plaintext uploads still exist (before
+    // scripts/encrypt-legacy-uploads.js has run); deploy.yml sets 'deny'.
+    legacyPlaintextReads: process.env.LEGACY_PLAINTEXT_READS === 'allow' ? 'allow' : 'deny',
+    malwareScanner: process.env.MALWARE_SCANNER || 'none',
+    clamdHost: process.env.CLAMD_HOST || '127.0.0.1',
+    clamdPort: Number(process.env.CLAMD_PORT) || 3310,
+    parserTimeoutMs: Number(process.env.PARSER_TIMEOUT_MS) || 60000,
+    retentionUnconfirmedScanDays: Number(process.env.RETENTION_UNCONFIRMED_SCAN_DAYS) || null,
+    // Keys the privacy-safe IP hash in audit events; derived from
+    // JWT_SECRET when unset so it's stable across restarts.
+    auditHashKey: process.env.AUDIT_HASH_KEY || null,
+  },
   googleClientId: process.env.GOOGLE_CLIENT_ID || null,
   // Gmail integration (issue #54) - a *separate* OAuth client from
   // GOOGLE_CLIENT_ID above: that one only verifies a client-issued identity
@@ -106,4 +165,5 @@ module.exports = {
   chatProvider: process.env.CHAT_PROVIDER || (process.env.ANTHROPIC_API_KEY ? 'claude' : 'unavailable'),
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || null,
   anthropicModel: process.env.ANTHROPIC_MODEL || 'claude-sonnet-5',
+  aiPricingOverrides,
 };

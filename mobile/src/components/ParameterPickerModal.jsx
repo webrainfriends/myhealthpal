@@ -3,8 +3,10 @@ import { FlatList, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radii, spacing, typography } from '../theme/theme';
 import { searchHealthParameters } from '../api/client';
+import { useT } from '../i18n/I18nContext';
 
-export default function ParameterPickerModal({ visible, onClose, onSelect, title = 'Choose a test', noneLabel }) {
+export default function ParameterPickerModal({ visible, onClose, onSelect, title, noneLabel }) {
+  const t = useT();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
 
@@ -30,14 +32,14 @@ export default function ParameterPickerModal({ visible, onClose, onSelect, title
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <Text style={typography.title}>{title}</Text>
+          <Text style={typography.title}>{title || t('pickerModal.defaultTitle')}</Text>
           <TouchableOpacity onPress={onClose}>
-            <Text style={styles.closeLabel}>Close</Text>
+            <Text style={styles.closeLabel}>{t('common.close')}</Text>
           </TouchableOpacity>
         </View>
         <TextInput
           style={styles.search}
-          placeholder="Search (e.g. cholesterol, hemoglobin)"
+          placeholder={t('pickerModal.searchPlaceholder')}
           placeholderTextColor={colors.textTertiary}
           value={query}
           onChangeText={setQuery}
@@ -71,7 +73,7 @@ export default function ParameterPickerModal({ visible, onClose, onSelect, title
               </Text>
             </TouchableOpacity>
           )}
-          ListEmptyComponent={<Text style={[typography.bodySecondary, styles.empty]}>No matches.</Text>}
+          ListEmptyComponent={<Text style={[typography.bodySecondary, styles.empty]}>{t('pickerModal.noMatches')}</Text>}
         />
       </SafeAreaView>
     </Modal>

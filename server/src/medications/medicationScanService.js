@@ -1,5 +1,9 @@
 const pool = require('../db/pool');
 const { getAdapter } = require('../adapters');
+const { loadFileBuffer } = require('../security/secureUpload');
+const { withTimeout } = require('../lib/withTimeout');
+const { logError } = require('../lib/safeLog');
+const config = require('../config');
 const provider = require('../extraction/providers/medicationExtractionProvider');
 
 // In-process async runner, same pattern as services/ingestionService.js's
@@ -8,8 +12,7 @@ const provider = require('../extraction/providers/medicationExtractionProvider')
 function enqueueMedicationScanProcessing(scanId) {
   setImmediate(() => {
     processMedicationScan(scanId).catch((err) => {
-      // eslint-disable-next-line no-console
-      console.error(`Unhandled error processing medication scan ${scanId}:`, err);
+      logError(`Unhandled error processing medication scan ${scanId}`, err);
     });
   });
 }
@@ -39,9 +42,12 @@ async function processMedicationScan(scanId) {
       throw new Error(`No ingestion adapter registered for .${scan.file_extension} files`);
     }
 
-    const document = await adapter.extract(scan.storage_path);
+    // Decrypted into memory only while processing (never written to disk).
+    const fileBuffer = await loadFileBuffer(scan, { purpose: 'medication_scan', resourceType: 'medication_scan' });
+    const document = await withTimeout(adapter.extract(fileBuffer), config.security.parserTimeoutMs, 'Reading the scan');
     const { medications, documentInfo, rawModelOutput } = await provider.extract(document, {
-      filePath: scan.storage_path,
+      fileBuffer,
+      userId: scan.user_id,
       mimeType: scan.mime_type,
       scanType: scan.scan_type,
     });
@@ -52,10 +58,10 @@ async function processMedicationScan(scanId) {
         `INSERT INTO medications (
            user_id, scan_id, name, generic_name, dosage_amount, dosage_unit, form,
            frequency_per_day, times_of_day, route, instructions, prescribed_for,
-           prescribing_doctor, start_date, duration_days, end_date,
+           prescribing_doctor, prescribing_clinic, prescription_date, start_date, duration_days, end_date,
            quantity_dispensed, quantity_unit, expiry_date, ingredients_raw,
            source_type, status, extraction_confidence, needs_review, is_confirmed
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,'active',$22,$23,false)
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,'active',$23,$24,false)
          RETURNING id`,
         [
           scan.user_id,
@@ -71,6 +77,8 @@ async function processMedicationScan(scanId) {
           med.instructions,
           med.prescribed_for,
           documentInfo?.prescribingDoctor || null,
+          documentInfo?.pharmacyOrClinic || null,
+          documentInfo?.prescriptionDate || null,
           med.start_date,
           med.duration_days,
           computeEndDate(med.start_date, med.duration_days),
@@ -83,7 +91,18 @@ async function processMedicationScan(scanId) {
           med.needs_review,
         ]
       );
-      insertedIds.push(inserted[0].id);
+      const medicationId = inserted[0].id;
+      insertedIds.push(medicationId);
+
+      // Attach the scan's own photo as this medicine's first photo - see
+      // migration 029's comment on why this carries no encryption columns
+      // of its own and is instead served by decrypting the scan.
+      await pool.query(
+        `INSERT INTO medication_photos
+           (medication_id, user_id, scan_id, source, original_filename, mime_type, file_extension, file_size_bytes)
+         VALUES ($1, $2, $3, 'scan', $4, $5, $6, $7)`,
+        [medicationId, scan.user_id, scanId, scan.original_filename, scan.mime_type, scan.file_extension, scan.file_size_bytes]
+      );
     }
 
     await pool.query(
@@ -91,9 +110,15 @@ async function processMedicationScan(scanId) {
       [scanId, medications.length > 0 ? 'Needs Review' : 'Completed', rawModelOutput ? JSON.stringify(rawModelOutput) : null]
     );
   } catch (err) {
+    // Reading a photo needs the AI provider; without the person's consent
+    // the scan stops here with an explanation instead of being sent.
+    const message =
+      err.code === 'ai_consent_required'
+        ? 'AI photo reading is turned off for this profile. Turn on "AI document processing" in Settings → Privacy & AI, then retry - or enter the details manually.'
+        : err.message;
     await pool.query(
       `UPDATE medication_scans SET ingestion_status = 'Failed', processing_error = $2, updated_at = now() WHERE id = $1`,
-      [scanId, err.message]
+      [scanId, message]
     );
   }
 }

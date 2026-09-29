@@ -73,7 +73,7 @@ export default function GmailIntegrationScreen({ navigation }) {
   }
 
   function handleDisconnect() {
-    showAlert('Disconnect Gmail?', 'MyHealthPal will stop searching your Gmail. Reports already imported are kept.', [
+    showAlert('Disconnect Gmail?', 'EyeMyHealth will stop searching your Gmail. Reports already imported are kept.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Disconnect',
@@ -102,7 +102,7 @@ export default function GmailIntegrationScreen({ navigation }) {
       setCandidates(found);
       setSelected(new Set());
       if (found.length === 0) {
-        showAlert('No new health emails found', 'MyHealthPal did not find any likely medical reports in the searched window.');
+        showAlert('No new health emails found', 'EyeMyHealth did not find any likely medical reports in the searched window.');
       }
     } catch (err) {
       if (err.status === 409) {
@@ -193,7 +193,7 @@ export default function GmailIntegrationScreen({ navigation }) {
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={typography.bodySecondary}>
-          MyHealthPal only searches for likely medical emails with attachments (lab reports, prescriptions, discharge
+          EyeMyHealth only searches for likely medical emails with attachments (lab reports, prescriptions, discharge
           summaries) - never your full inbox, and never anything until you choose to search and select what to
           import.
         </Text>

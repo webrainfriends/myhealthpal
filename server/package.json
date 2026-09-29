@@ -1,7 +1,7 @@
 {
   "name": "myhealthpal-server",
   "version": "1.0.0",
-  "description": "MyHealthPal ingestion API: Express + PostgreSQL service for uploading and processing health reports",
+  "description": "EyeMyHealth ingestion API: Express + PostgreSQL service for uploading and processing health reports",
   "main": "src/index.js",
   "type": "commonjs",
   "scripts": {
@@ -10,10 +10,18 @@
     "migrate": "node db/migrate.js",
     "seed": "node db/seed.js",
     "fixtures": "node scripts/generate-fixtures.js",
-    "test": "node --test"
+    "ai-usage-report": "node scripts/ai-usage-report.js",
+    "retest-reminders": "node scripts/send-retest-reminders.js",
+    "test": "node --test",
+    "encrypt-legacy-uploads": "node scripts/encrypt-legacy-uploads.js",
+    "rewrap-keys": "node scripts/rewrap-keys.js",
+    "reencrypt-files": "node scripts/reencrypt-files.js",
+    "check-kms": "node scripts/check-kms.js",
+    "delete-stale-guests": "node scripts/delete-stale-guests.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",
+    "@aws-sdk/client-kms": "^3.1141.0",
     "@napi-rs/canvas": "^1.0.9",
     "cors": "^2.8.5",
     "csv-parse": "^7.0.2",

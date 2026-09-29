@@ -1,63 +1,93 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import ActivityRings from './ActivityRings';
-import { activityRingColors, cardShadow, colors, radii, spacing, typography } from '../theme/theme';
+import GradientFill from './brand/GradientFill';
+import { gradients } from '../theme/theme';
+import { useT } from '../i18n/I18nContext';
 import { formatCalendarDate } from '../utils/date';
+
+// Candy-bright ring colors for THIS card only (not the shared
+// activityRingColors token, which is tuned for white backgrounds elsewhere
+// like ActivityScreen) - white/yellow/sky-blue pop against the lime gradient
+// instead of blending into it.
+const HERO_RING_COLORS = {
+  steps: { fg: '#FFFFFF', track: 'rgba(255, 255, 255, 0.28)' },
+  exerciseMinutes: { fg: '#FFE27A', track: 'rgba(255, 255, 255, 0.28)' },
+  standHours: { fg: '#8FE3FF', track: 'rgba(255, 255, 255, 0.28)' },
+};
 
 function formatShortDate(dateStr) {
   return formatCalendarDate(dateStr, { month: 'short', day: 'numeric' }) || '';
 }
 
-// Compact dashboard preview of the most recent day's three rings -
-// deliberately its own card, not part of the organ-score grid above it (see
-// organHealthService.js for why activity is never scored like a lab
-// result). `current` falls back to the latest logged day when nothing is
-// logged for today itself (see /api/activity/summary) - a wearable export
-// upload is common and rarely includes literally today, so this card
-// mustn't show an empty ring just because of that lag.
+// Dashboard tile - a vibrant gradient "hero" card (matching the water
+// bottle and mascot's illustrated style) rather than a flat tinted
+// rectangle, with the original Apple Health-style rings restored as its
+// centerpiece instead of a small icon.
 export default function ActivityCard({ current, isCurrentToday, onPress }) {
+  const t = useT();
+  const hasData = Boolean(current?.steps || current?.exerciseMinutes || current?.standHours);
   const rings = current
     ? [
-        { percent: current.rings.steps, ...activityRingColors.steps },
-        { percent: current.rings.exerciseMinutes, ...activityRingColors.exerciseMinutes },
-        { percent: current.rings.standHours, ...activityRingColors.standHours },
+        { percent: current.rings.steps, ...HERO_RING_COLORS.steps },
+        { percent: current.rings.exerciseMinutes, ...HERO_RING_COLORS.exerciseMinutes },
+        { percent: current.rings.standHours, ...HERO_RING_COLORS.standHours },
       ]
     : [];
-  const hasData = current?.steps || current?.exerciseMinutes || current?.standHours;
 
   return (
-    <TouchableOpacity style={[styles.card, cardShadow]} onPress={onPress} activeOpacity={0.8}>
-      <View style={styles.ringsWrap}>
-        <ActivityRings rings={rings} size={72} strokeWidth={8} gap={3} />
-      </View>
-      <View style={styles.textBlock}>
-        <Text style={typography.heading}>Activity</Text>
-        <Text style={typography.bodySecondary} numberOfLines={2}>
-          {hasData
-            ? `${current.steps ?? 0} steps · ${current.exerciseMinutes ?? 0} min exercise${
-                isCurrentToday ? '' : ` · ${formatShortDate(current.date)}`
-              }`
-            : 'Log today’s steps and exercise'}
+    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
+      <GradientFill colors={gradients.lime} />
+      <View style={[styles.bubble, styles.bubbleOne]} />
+      <View style={[styles.bubble, styles.bubbleTwo]} />
+
+      <ActivityRings rings={rings} size={52} strokeWidth={7} gap={3} />
+      <Text style={styles.value} numberOfLines={1}>
+        {hasData ? current.steps ?? 0 : '—'}
+      </Text>
+      <Text style={styles.label} numberOfLines={1}>
+        {t('activity.stepsLabel')}
+      </Text>
+      {hasData && !isCurrentToday && (
+        <Text style={styles.caption} numberOfLines={1}>
+          {formatShortDate(current.date)}
         </Text>
-      </View>
+      )}
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    padding: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  ringsWrap: {
-    width: 72,
-    height: 72,
-  },
-  textBlock: {
     flex: 1,
-    gap: 2,
+    minHeight: 132,
+    borderRadius: 24,
+    padding: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    overflow: 'hidden',
+  },
+  bubble: {
+    position: 'absolute',
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+  },
+  bubbleOne: { width: 70, height: 70, top: -26, right: -22 },
+  bubbleTwo: { width: 46, height: 46, bottom: -18, left: -14 },
+  value: {
+    marginTop: 4,
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  label: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: 'rgba(255, 255, 255, 0.85)',
+  },
+  caption: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: 'rgba(255, 255, 255, 0.7)',
   },
 });

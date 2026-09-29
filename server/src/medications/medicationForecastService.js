@@ -1,5 +1,6 @@
 const pool = require('../db/pool');
 const { getReferenceRange, scoreAgainstRange } = require('./referenceRangeService');
+const { referenceSourceFor } = require('./citationSources');
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -103,7 +104,16 @@ async function buildMedicationForecast(medication, knowledgeEntry, today = new D
         ? { value, unit: measurement.normalized_unit || measurement.raw_unit, effectiveDate: measurement.effective_date }
         : null,
       standardRange: range
-        ? { low: range.range_low, high: range.range_high, unit: range.unit, source: range.source, citation: range.citation }
+        ? {
+            low: range.range_low,
+            high: range.range_high,
+            unit: range.unit,
+            source: range.source,
+            citation: range.citation,
+            // An authentic, government/WHO-backed page a user can click
+            // through to read more - never a guessed link (citationSources.js).
+            citationSource: referenceSourceFor(range.source, range.source_url),
+          }
         : null,
       standardStatus: scoreResult.status,
       inStandardRange: scoreResult.inRange,

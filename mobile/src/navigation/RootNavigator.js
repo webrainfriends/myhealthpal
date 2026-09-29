@@ -1,9 +1,11 @@
-import { ActivityIndicator, Platform, Pressable, View } from 'react-native';
-import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
+import { useEffect } from 'react';
+import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native';
+import { NavigationContainer, DefaultTheme, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import DashboardScreen from '../screens/DashboardScreen';
 import TimelineScreen from '../screens/TimelineScreen';
+import MoreScreen from '../screens/MoreScreen';
 import UploadScreen from '../screens/UploadScreen';
 import ReportDetailScreen from '../screens/ReportDetailScreen';
 import ParameterTrendScreen from '../screens/ParameterTrendScreen';
@@ -21,13 +23,28 @@ import DietScreen from '../screens/DietScreen';
 import DietScanReviewScreen from '../screens/DietScanReviewScreen';
 import DietEntryFormScreen from '../screens/DietEntryFormScreen';
 import DietStatsScreen from '../screens/DietStatsScreen';
-import DietRecipeScreen from '../screens/DietRecipeScreen';
+import RecipesScreen from '../screens/RecipesScreen';
+import DietSchedulesScreen from '../screens/DietSchedulesScreen';
+import DietScheduleFormScreen from '../screens/DietScheduleFormScreen';
+import DietScheduleDetailScreen from '../screens/DietScheduleDetailScreen';
+import KitchenScreen from '../screens/KitchenScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import RecipePreferencesScreen from '../screens/RecipePreferencesScreen';
+import HealthProfileScreen from '../screens/HealthProfileScreen';
 import GmailIntegrationScreen from '../screens/GmailIntegrationScreen';
 import LoginScreen from '../screens/LoginScreen';
 import LanguagePreferenceScreen from '../screens/LanguagePreferenceScreen';
+import VoiceAccessibilityScreen from '../screens/VoiceAccessibilityScreen';
+import AiUsageScreen from '../screens/AiUsageScreen';
+import AdminSessionsScreen from '../screens/AdminSessionsScreen';
+import RetestRadarScreen from '../screens/RetestRadarScreen';
+import FamilyScreen from '../screens/FamilyScreen';
+import PrivacyConsentScreen from '../screens/PrivacyConsentScreen';
+import { onRetestNotificationTap, registerForRetestPush } from '../notifications/retestNotifications';
+import { onWaterNotificationTap } from '../notifications/waterNotifications';
 import { useAuth } from '../auth/AuthContext';
+import { useT } from '../i18n/I18nContext';
+import Mascot from '../components/brand/Mascot';
 import { colors } from '../theme/theme';
 
 const navigationTheme = {
@@ -55,17 +72,21 @@ const linking = {
       Tabs: {
         screens: {
           DashboardTab: '',
-          TimelineTab: 'timeline',
           ChatTab: 'ask',
           UploadTab: 'upload',
           MedicationsTab: 'medications',
+          MoreTab: 'more',
         },
       },
+      Timeline: 'timeline',
       ReportDetail: 'report/:reportId',
       ParameterTrend: 'trend/:code',
       OrganDetail: 'organ/:organKey',
       Insights: 'insights',
       NeedsAttention: 'needs-attention',
+      RetestRadar: 'retest',
+      Family: 'family',
+      PrivacyConsent: 'privacy',
       MedicationDetail: 'medications/:medicationId',
       MedicationScanReview: 'medications/scans/:scanId',
       Activity: 'activity',
@@ -74,22 +95,39 @@ const linking = {
       DietScanReview: 'diet/scans/:scanId',
       DietEntryForm: 'diet/entries/:entryId?',
       DietStats: 'diet/stats',
-      DietRecipe: 'diet/recipe',
+      Recipes: 'recipes',
+      DietSchedules: 'diet/schedules',
+      DietScheduleForm: 'diet/schedules/new',
+      DietScheduleDetail: 'diet/schedules/:scheduleId',
+      Kitchen: 'kitchen',
       Settings: 'settings',
       RecipePreferences: 'settings/recipe-preferences',
+      HealthProfile: 'settings/health-profile',
       GmailIntegration: 'settings/gmail',
+      LanguagePreference: 'settings/language',
+      VoiceAccessibility: 'settings/voice',
+      AiUsage: 'settings/ai-usage',
+      AdminSessions: 'settings/admin-sessions',
     },
   },
 };
 
+// Emoji tab icons match the emoji iconography used across the app's cards;
+// inactive tabs are dimmed rather than recolored, since emoji ignore tint.
+function tabIcon(glyph) {
+  return ({ focused }) => <Text style={{ fontSize: focused ? 22 : 20, opacity: focused ? 1 : 0.55 }}>{glyph}</Text>;
+}
+
 function Tabs() {
+  const t = useT();
   return (
     <Tab.Navigator
       screenOptions={{
         headerStyle: { backgroundColor: colors.surface },
         headerTintColor: colors.textPrimary,
         headerShadowVisible: false,
-        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border },
+        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border, borderTopWidth: 1 },
+        tabBarLabelStyle: { fontWeight: '600' },
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textTertiary,
         // react-native-web's Pressable renders the `href` React Navigation
@@ -116,21 +154,72 @@ function Tabs() {
         ),
       }}
     >
-      <Tab.Screen name="DashboardTab" component={DashboardScreen} options={{ title: 'Dashboard', headerShown: false }} />
-      <Tab.Screen name="TimelineTab" component={TimelineScreen} options={{ title: 'Timeline', headerShown: false }} />
-      <Tab.Screen name="MedicationsTab" component={MedicationsScreen} options={{ title: 'Medications', headerShown: false }} />
-      <Tab.Screen name="ChatTab" component={ChatScreen} options={{ title: 'Ask', headerShown: false }} />
-      <Tab.Screen name="UploadTab" component={UploadScreen} options={{ title: 'Upload', headerShown: false }} />
+      <Tab.Screen
+        name="DashboardTab"
+        component={DashboardScreen}
+        options={{ title: t('nav.dashboard'), tabBarIcon: tabIcon('🏠'), headerShown: false }}
+      />
+      <Tab.Screen
+        name="MedicationsTab"
+        component={MedicationsScreen}
+        options={{ title: t('nav.medications'), tabBarIcon: tabIcon('💊'), headerShown: false }}
+      />
+      <Tab.Screen
+        name="ChatTab"
+        component={ChatScreen}
+        options={{ title: t('nav.ask'), tabBarIcon: tabIcon('💬'), headerShown: false }}
+      />
+      <Tab.Screen
+        name="UploadTab"
+        component={UploadScreen}
+        options={{ title: t('nav.upload'), tabBarIcon: tabIcon('📤'), headerShown: false }}
+      />
+      <Tab.Screen
+        name="MoreTab"
+        component={MoreScreen}
+        options={{ title: t('nav.more'), tabBarIcon: tabIcon('✨'), headerShown: false }}
+      />
     </Tab.Navigator>
   );
 }
 
+const navigationRef = createNavigationContainerRef();
+
 export default function RootNavigator() {
-  const { user, loading } = useAuth();
+  const { user, loading, activeProfile, switchProfileById } = useAuth();
+  const t = useT();
+  const userId = user?.id;
+
+  // Once per signed-in account on this device: let the server push Retest
+  // Radar reminders here, and open Retest Radar when one is tapped.
+  useEffect(() => {
+    if (!userId) return undefined;
+    registerForRetestPush();
+    return onRetestNotificationTap(async (screen, data) => {
+      // A caregiver's reminder is about a family member - open their
+      // profile first (the navigator remounts, so navigate after a tick).
+      if (data?.profileId !== undefined) await switchProfileById(data.profileId);
+      setTimeout(() => {
+        if (navigationRef.isReady()) navigationRef.navigate(screen);
+      }, 0);
+    });
+  }, [userId, switchProfileById]);
+
+  // Opens the Dashboard tab (where the water bottle tracker lives) when the
+  // daily water-reminder notification is tapped (see
+  // notifications/waterNotifications.js - local-only, no server push
+  // registration needed for this one).
+  useEffect(() => {
+    if (!userId) return undefined;
+    return onWaterNotificationTap((screen) => {
+      if (navigationRef.isReady()) navigationRef.navigate(screen);
+    });
+  }, [userId]);
 
   if (loading) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, backgroundColor: colors.background }}>
+        <Mascot size={96} />
         <ActivityIndicator color={colors.primary} />
       </View>
     );
@@ -141,25 +230,32 @@ export default function RootNavigator() {
   }
 
   return (
-    <NavigationContainer theme={navigationTheme} linking={linking}>
+    // Keyed by the active profile: switching to a family member remounts
+    // every screen, so nothing shows the previous person's data.
+    <NavigationContainer key={activeProfile?.id || 'self'} ref={navigationRef} theme={navigationTheme} linking={linking}>
       <Stack.Navigator
         screenOptions={{
           headerStyle: { backgroundColor: colors.surface },
-          headerTintColor: colors.textPrimary,
+          headerTintColor: colors.primary,
+          headerTitleStyle: { color: colors.textPrimary, fontWeight: '700' },
           headerShadowVisible: false,
         }}
       >
         <Stack.Screen name="Tabs" component={Tabs} options={{ headerShown: false }} />
-        <Stack.Screen name="ReportDetail" component={ReportDetailScreen} options={{ title: 'Report' }} />
-        <Stack.Screen name="ParameterTrend" component={ParameterTrendScreen} options={{ title: 'Trend' }} />
-        <Stack.Screen name="OrganDetail" component={OrganDetailScreen} options={{ title: 'Organ health' }} />
-        <Stack.Screen name="Insights" component={InsightsScreen} options={{ title: 'AI insights' }} />
-        <Stack.Screen name="NeedsAttention" component={NeedsAttentionScreen} options={{ title: 'Needs attention' }} />
-        <Stack.Screen name="MedicationDetail" component={MedicationDetailScreen} options={{ title: 'Medication' }} />
+        <Stack.Screen name="Timeline" component={TimelineScreen} options={{ title: t('nav.timeline') }} />
+        <Stack.Screen name="ReportDetail" component={ReportDetailScreen} options={{ title: t('nav.report') }} />
+        <Stack.Screen name="ParameterTrend" component={ParameterTrendScreen} options={{ title: t('nav.trend') }} />
+        <Stack.Screen name="OrganDetail" component={OrganDetailScreen} options={{ title: t('nav.organHealth') }} />
+        <Stack.Screen name="Insights" component={InsightsScreen} options={{ title: t('nav.insights') }} />
+        <Stack.Screen name="NeedsAttention" component={NeedsAttentionScreen} options={{ title: t('nav.needsAttention') }} />
+        <Stack.Screen name="RetestRadar" component={RetestRadarScreen} options={{ title: t('nav.retestRadar') }} />
+        <Stack.Screen name="Family" component={FamilyScreen} options={{ title: t('nav.family') }} />
+        <Stack.Screen name="PrivacyConsent" component={PrivacyConsentScreen} options={{ title: t('nav.privacy') }} />
+        <Stack.Screen name="MedicationDetail" component={MedicationDetailScreen} options={{ title: t('nav.medication') }} />
         <Stack.Screen
           name="MedicationScanReview"
           component={MedicationScanReviewScreen}
-          options={{ title: 'Review scan' }}
+          options={{ title: t('nav.reviewScan') }}
         />
         <Stack.Screen name="MedicationCreate" component={MedicationCreateScreen} options={{ title: 'Add medication' }} />
         <Stack.Screen name="Activity" component={ActivityScreen} options={{ title: 'Activity' }} />
@@ -167,22 +263,59 @@ export default function RootNavigator() {
         <Stack.Screen name="Diet" component={DietScreen} options={{ title: 'Diet' }} />
         <Stack.Screen name="DietScanReview" component={DietScanReviewScreen} options={{ title: 'Review scan' }} />
         <Stack.Screen
+          name="MedicationCreate"
+          component={MedicationCreateScreen}
+          options={{ title: t('nav.addMedication') }}
+        />
+        <Stack.Screen name="Activity" component={ActivityScreen} options={{ title: t('nav.activity') }} />
+        <Stack.Screen name="Diet" component={DietScreen} options={{ title: t('nav.diet') }} />
+        <Stack.Screen name="DietScanReview" component={DietScanReviewScreen} options={{ title: t('nav.reviewScan') }} />
+        <Stack.Screen
           name="DietEntryForm"
           component={DietEntryFormScreen}
-          options={({ route }) => ({ title: route.params?.entryId ? 'Edit item' : 'Add item' })}
+          options={({ route }) => ({ title: route.params?.entryId ? t('nav.editItem') : t('nav.addItem') })}
         />
         <Stack.Screen name="DietStats" component={DietStatsScreen} options={{ title: 'Diet stats' }} />
-        <Stack.Screen name="DietRecipe" component={DietRecipeScreen} options={{ title: 'Recipe ideas' }} />
+        <Stack.Screen name="Recipes" component={RecipesScreen} options={{ title: 'AI recipe ideas' }} />
+        <Stack.Screen name="DietSchedules" component={DietSchedulesScreen} options={{ title: 'Diet schedules' }} />
+        <Stack.Screen name="DietScheduleForm" component={DietScheduleFormScreen} options={{ title: 'New diet schedule' }} />
+        <Stack.Screen
+          name="DietScheduleDetail"
+          component={DietScheduleDetailScreen}
+          options={{ title: 'Diet schedule' }}
+        />
+        <Stack.Screen name="Kitchen" component={KitchenScreen} options={{ title: 'Mini kitchen' }} />
         <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
         <Stack.Screen
           name="RecipePreferences"
           component={RecipePreferencesScreen}
-          options={{ title: 'Recipe recommendations' }}
+          options={{ title: t('nav.recipePreferences') }}
+        />
+        <Stack.Screen
+          name="HealthProfile"
+          component={HealthProfileScreen}
+          options={{ title: t('settings.healthProfileTitle') }}
         />
         <Stack.Screen
           name="GmailIntegration"
           component={GmailIntegrationScreen}
-          options={{ title: 'Connected health sources' }}
+          options={{ title: t('nav.connectedSources') }}
+        />
+        <Stack.Screen
+          name="LanguagePreference"
+          component={LanguagePreferenceScreen}
+          options={{ title: t('nav.language') }}
+        />
+        <Stack.Screen
+          name="VoiceAccessibility"
+          component={VoiceAccessibilityScreen}
+          options={{ title: t('nav.voiceAccessibility') }}
+        />
+        <Stack.Screen name="AiUsage" component={AiUsageScreen} options={{ title: t('nav.aiUsage') }} />
+        <Stack.Screen
+          name="AdminSessions"
+          component={AdminSessionsScreen}
+          options={{ title: 'Sessions & logins' }}
         />
       </Stack.Navigator>
     </NavigationContainer>

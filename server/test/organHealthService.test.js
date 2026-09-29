@@ -5,6 +5,8 @@ const {
   buildOrganSummaries,
   buildCardSummaries,
   determineResultStatus,
+  evaluateResult,
+  organKeyForCustomLabel,
 } = require('../src/services/organHealthService');
 
 test('no registry category is claimed by more than one organ group', () => {
@@ -17,11 +19,6 @@ test('no registry category is claimed by more than one organ group', () => {
 });
 
 test('every currently-carded category maps to its expected organ group', () => {
-  // Some registry categories (infectious_disease, hormones, immunology,
-  // tumor_markers) are deliberately uncarded - present in the data and
-  // still reachable via reports/timeline/chat, just with no dashboard
-  // card of their own. This only checks the categories that ARE meant to
-  // have a card.
   const EXPECTED = {
     diabetes: 'diabetes',
     lipids: 'heart',
@@ -35,6 +32,10 @@ test('every currently-carded category maps to its expected organ group', () => {
     metabolic: 'metabolism',
     thyroid: 'metabolism',
     vitamins: 'vitamins',
+    tumor_markers: 'tumor_markers',
+    hormones: 'hormones',
+    immunology: 'immunity',
+    infectious_disease: 'immunity',
   };
   for (const [category, expectedKey] of Object.entries(EXPECTED)) {
     const group = ORGAN_GROUPS.find((g) => g.categories.includes(category));
@@ -50,16 +51,68 @@ test('activity has no organ group at all (tracked separately, never scored again
   );
 });
 
-test('brain and bones have no registry category yet and always report no_data', () => {
-  for (const key of ['brain', 'bones']) {
-    const group = ORGAN_GROUPS.find((g) => g.key === key);
-    assert.deepEqual(group.categories, []);
-  }
+test('brain and bones report no_data with nothing tracked', () => {
   const summaries = buildOrganSummaries([]);
   for (const key of ['brain', 'bones']) {
     const organ = summaries.find((s) => s.key === key);
     assert.equal(organ.status, 'no_data');
   }
+});
+
+test('every registry category that appears in the seed data has a card, so no mapped result is ever dropped', () => {
+  const PARAMETERS = require('../db/registry-seed-data');
+  const carded = new Set(ORGAN_GROUPS.flatMap((g) => g.categories));
+  for (const parameter of PARAMETERS) {
+    assert.ok(carded.has(parameter.category), `${parameter.code} (${parameter.category}) has no card`);
+  }
+});
+
+test('brain correlates the blood tests doctors check for it, each with a reason, while they stay on their home card too', () => {
+  const rows = [
+    { code: 'vitamin_b12', displayName: 'Vitamin B12', category: 'vitamins', numericValue: 150, referenceRangeRaw: '211-911' },
+    { code: 'tsh', displayName: 'TSH', category: 'thyroid', numericValue: 2.1, referenceRangeRaw: '0.4-4.5' },
+    { code: 'ldl', displayName: 'LDL Cholesterol', category: 'lipids', numericValue: 90, referenceRangeRaw: '0-100' },
+  ];
+  const summaries = buildOrganSummaries(rows);
+  const brain = summaries.find((s) => s.key === 'brain');
+  assert.deepEqual(brain.parameters.map((p) => p.code), ['vitamin_b12', 'tsh']);
+  assert.match(brain.parameters[0].relevance, /memory/);
+  assert.equal(brain.status, 'attention'); // B12 29% below its lower limit
+  // Still counted on its own card as well.
+  assert.equal(summaries.find((s) => s.key === 'vitamins').trackedCount, 1);
+  assert.equal(summaries.find((s) => s.key === 'metabolism').trackedCount, 1);
+  // A category-claimed result has no per-test relevance line.
+  assert.equal(summaries.find((s) => s.key === 'vitamins').parameters[0].relevance, null);
+});
+
+test('bones correlates vitamin D, calcium, phosphorus and ALP', () => {
+  const rows = [
+    { code: 'vitamin_d', displayName: 'Vitamin D', category: 'vitamins', numericValue: 14, referenceRangeRaw: '30-100' },
+    { code: 'calcium', displayName: 'Calcium', category: 'kidney', numericValue: 9.4, referenceRangeRaw: '8.5-10.5' },
+  ];
+  const bones = buildOrganSummaries(rows).find((s) => s.key === 'bones');
+  assert.equal(bones.trackedCount, 2);
+  assert.deepEqual(bones.outOfRange.map((p) => p.code), ['vitamin_d']);
+});
+
+test('tumor markers get their own card only when tracked, with a caution note', () => {
+  assert.equal(buildOrganSummaries([]).find((s) => s.key === 'tumor_markers'), undefined);
+  const rows = [
+    { code: 'psa_total', displayName: 'Total PSA', category: 'tumor_markers', numericValue: 1.2, referenceRangeRaw: '0-4' },
+    { code: 'cea', displayName: 'Carcinoembryonic Antigen (CEA)', category: 'tumor_markers', numericValue: 6.1, referenceRangeRaw: '0-5' },
+  ];
+  const card = buildOrganSummaries(rows).find((s) => s.key === 'tumor_markers');
+  assert.equal(card.trackedCount, 2);
+  assert.deepEqual(card.outOfRange.map((p) => p.code), ['cea']);
+  assert.match(card.note, /can’t show or rule out cancer/);
+  assert.match(card.parameters.find((p) => p.code === 'psa_total').relevance, /prostate/);
+});
+
+test('organKeyForCustomLabel folds matching custom-card labels into the organ card, case-insensitively', () => {
+  assert.equal(organKeyForCustomLabel('Tumor Markers'), 'tumor_markers');
+  assert.equal(organKeyForCustomLabel(' tumor markers '), 'tumor_markers');
+  assert.equal(organKeyForCustomLabel('Allergy & Immune'), 'immunity');
+  assert.equal(organKeyForCustomLabel('Proteins'), null);
 });
 
 test('every organ card - even an empty one like Brain - names what tests would feed it', () => {
@@ -200,9 +253,9 @@ test('kidney card folds in urine complete analysis results, scored via known-nor
   );
 });
 
-test('buildOrganSummaries scores an organ by % of determinable results that are normal, ignoring unknowns', () => {
+test('buildOrganSummaries counts normal vs out-of-range results and names what is out of range, ignoring unknowns', () => {
   const rows = [
-    { code: 'ldl', displayName: 'LDL Cholesterol', category: 'lipids', statusFlag: 'High', numericValue: 160 },
+    { code: 'ldl', displayName: 'LDL Cholesterol', category: 'lipids', statusFlag: 'High', numericValue: 160, referenceRangeRaw: '0-100' },
     { code: 'hdl', displayName: 'HDL Cholesterol', category: 'lipids', statusFlag: 'Normal', numericValue: 55 },
     { code: 'trig', displayName: 'Triglycerides', category: 'lipids', statusFlag: 'Normal', numericValue: 120 },
     { code: 'unk', displayName: 'Some Unscored Lipid Marker', category: 'lipids' }, // no flag, no range -> unknown
@@ -212,10 +265,13 @@ test('buildOrganSummaries scores an organ by % of determinable results that are 
   const heart = summaries.find((s) => s.key === 'heart');
 
   assert.equal(heart.trackedCount, 4);
+  assert.equal(heart.evaluatedCount, 3);
   assert.equal(heart.normalCount, 2);
   assert.equal(heart.attentionCount, 1);
-  assert.equal(heart.scorePercent, 67); // 2 of 3 determinable results normal
-  assert.equal(heart.status, 'attention'); // 67% is below the 70% "watch" threshold
+  assert.deepEqual(heart.outOfRange, [
+    { code: 'ldl', displayName: 'LDL Cholesterol', direction: 'high', deviationPercent: 60, severity: 'marked' },
+  ]);
+  assert.equal(heart.status, 'attention'); // LDL is 60% past its upper limit
   assert.equal(heart.statusLabel, 'Needs attention');
 });
 
@@ -228,21 +284,46 @@ test('an organ group with no tracked parameters reports no_data rather than a fa
   }
 });
 
-test('score thresholds: >=90 good, 70-89 watch, <70 attention', () => {
-  const makeRows = (normal, abnormal) => {
-    const rows = [];
-    for (let i = 0; i < normal; i += 1) {
-      rows.push({ code: `n${i}`, displayName: `Normal ${i}`, category: 'kidney', statusFlag: 'Normal', numericValue: 1 });
-    }
-    for (let i = 0; i < abnormal; i += 1) {
-      rows.push({ code: `a${i}`, displayName: `Abnormal ${i}`, category: 'kidney', statusFlag: 'High', numericValue: 1 });
-    }
-    return rows;
-  };
+test('card status follows the worst single finding, not the share of tests passed', () => {
+  const kidneyStatus = (rows) => buildOrganSummaries(rows).find((s) => s.key === 'kidney').status;
+  const normal = (i) => ({ code: `n${i}`, displayName: `Normal ${i}`, category: 'kidney', statusFlag: 'Normal', numericValue: 1 });
+  const normals = (n) => Array.from({ length: n }, (_, i) => normal(i));
 
-  assert.equal(buildOrganSummaries(makeRows(9, 1)).find((s) => s.key === 'kidney').status, 'good'); // 90%
-  assert.equal(buildOrganSummaries(makeRows(7, 3)).find((s) => s.key === 'kidney').status, 'watch'); // 70%
-  assert.equal(buildOrganSummaries(makeRows(6, 4)).find((s) => s.key === 'kidney').status, 'attention'); // 60%
+  assert.equal(kidneyStatus(normals(5)), 'good');
+  // Slightly over the line (1.3 vs 1.2 -> 8% past) -> keep an eye on it,
+  // even when it's 1 of only 2 tests (a 50% "score" under the old model).
+  const mild = { code: 'creat', displayName: 'Creatinine', category: 'kidney', numericValue: 1.3, referenceRangeRaw: '0.6-1.2' };
+  assert.equal(kidneyStatus([...normals(1), mild]), 'watch');
+  // Well past the limit (1.8 vs 1.2 -> 50% past) -> needs attention, even
+  // with nine other results normal (a 90% "score" under the old model).
+  const marked = { ...mild, numericValue: 1.8 };
+  assert.equal(kidneyStatus([...normals(9), marked]), 'attention');
+  // A lab's critical flag always needs attention.
+  const critical = { code: 'k', displayName: 'Potassium', category: 'electrolytes', statusFlag: 'Critical', numericValue: 6.8 };
+  assert.equal(kidneyStatus([...normals(9), critical]), 'attention');
+});
+
+test('evaluateResult reports direction and how far past the limit a result is', () => {
+  assert.deepEqual(evaluateResult({ numericValue: 8, referenceRangeRaw: '13.0-17.0' }), {
+    status: 'abnormal',
+    direction: 'low',
+    deviationPercent: 38,
+    severity: 'marked',
+  });
+  assert.deepEqual(evaluateResult({ statusFlag: 'H', numericValue: 4.8, referenceRangeRaw: '0.4-4.5' }), {
+    status: 'abnormal',
+    direction: 'high',
+    deviationPercent: 7,
+    severity: 'mild',
+  });
+  // A qualitative abnormal has no direction or measurable distance.
+  assert.deepEqual(evaluateResult({ code: 'urine_protein', qualitativeValue: 'Positive' }), {
+    status: 'abnormal',
+    direction: null,
+    deviationPercent: null,
+    severity: 'mild',
+  });
+  assert.equal(evaluateResult({ numericValue: 14, referenceRangeRaw: '13.0-17.0' }).severity, null);
 });
 
 test('buildCardSummaries backs ad-hoc (non-organ) groups the same way, e.g. for unmapped results with no registry code', () => {
@@ -293,4 +374,36 @@ test('kidney group merges the kidney and electrolytes categories', () => {
     kidney.parameters.map((p) => p.code).sort(),
     ['creatinine', 'sodium']
   );
+});
+
+test('parameters list out-of-range results first, most concerning first, then normal, then unevaluated', () => {
+  const rows = [
+    { code: 'a', displayName: 'A Normal', category: 'diabetes', numericValue: 90, referenceRangeRaw: '70-99' },
+    { code: 'b', displayName: 'B Unknown', category: 'diabetes' },
+    { code: 'c', displayName: 'C Slightly High', category: 'diabetes', numericValue: 6.0, referenceRangeRaw: '4.0-5.6' },
+    { code: 'd', displayName: 'D Well High', category: 'diabetes', numericValue: 144, referenceRangeRaw: '70-99' },
+  ];
+  const diabetes = buildOrganSummaries(rows).find((s) => s.key === 'diabetes');
+  assert.deepEqual(diabetes.parameters.map((p) => p.code), ['d', 'c', 'a', 'b']);
+  assert.deepEqual(diabetes.outOfRange.map((p) => p.code), ['d', 'c']);
+});
+
+test('blood sugar uses diagnostic cut-offs, not the generic % rule, for "slightly" vs "well" above range', () => {
+  const hba1c = (v) => evaluateResult({ code: 'hba1c', numericValue: v, referenceRangeRaw: '4.0-5.6' }).severity;
+  assert.equal(hba1c(6.0), 'mild'); // pre-diabetes band
+  assert.equal(hba1c(6.8), 'marked'); // diabetic range, though only ~21% over 5.6
+  const ppbs = (v) => evaluateResult({ code: 'glucose_post_prandial', numericValue: v, referenceRangeRaw: '70-140' }).severity;
+  assert.equal(ppbs(180), 'mild'); // 29% over, but below the 200 diabetic cut-off
+  assert.equal(ppbs(210), 'marked');
+});
+
+test('a card total counts every tracked test, and an unevaluable one never inflates or hides the out-of-range count', () => {
+  const rows = [
+    { code: 'glucose_fasting', displayName: 'Glucose (Fasting)', category: 'diabetes', numericValue: 144, referenceRangeRaw: '70-100' },
+    { code: 'beta_cell_function', displayName: 'Beta Cell Function', category: 'diabetes', numericValue: 108.7 },
+  ];
+  const d = buildOrganSummaries(rows).find((s) => s.key === 'diabetes');
+  assert.equal(d.trackedCount, 2);
+  assert.equal(d.evaluatedCount, 1);
+  assert.equal(d.outOfRange.length, 1);
 });

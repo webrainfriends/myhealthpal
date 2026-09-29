@@ -911,4 +911,219 @@ module.exports = [
     typicalDailyDose: null,
     parameterLinks: [],
   },
+
+  // --- Alternative medicine systems (Ayurveda, Siddha, Unani, Homeopathy) ---
+  // Same shape as the allopathic entries above, tagged with `system` (see
+  // medications.medicine_system, migration 021). Deliberately no
+  // typicalDailyDose or parameterLinks: unlike a standardized pharmaceutical
+  // dose, potency/composition for these varies by manufacturer and
+  // formulation, and this app has no basis to assert a specific onset window
+  // against a lab parameter for them - `findKnowledgeEntry` still matches
+  // them by name so they get the same detail-page treatment (category,
+  // usage, side effects, warnings, citation) as any allopathic medication.
+  // Every entry stays deliberately general and non-prescriptive, and points
+  // to a real Ministry of AYUSH research council or equivalent - never a
+  // fabricated citation (see citationSources.js's SYSTEM_AUTHORITY, used as
+  // the default source when an entry has no sourceName/sourceUrl override).
+  {
+    id: 'ashwagandha',
+    system: 'ayurvedic',
+    genericNames: ['ashwagandha', 'withania somnifera', 'indian ginseng'],
+    brandNames: ['himalaya ashwagandha', 'organic india ashwagandha', 'baidyanath ashwagandha'],
+    category: 'Ayurvedic rasayana (adaptogen / general tonic)',
+    usage:
+      'A widely used Ayurvedic herb (root of Withania somnifera) traditionally used to help the body manage stress and support general strength, sleep, and vitality. Sold as a standalone supplement or as an ingredient in classical Ayurvedic formulations.',
+    activeIngredient: 'Withania somnifera root/extract (withanolides)',
+    commonSideEffects: ['Mild stomach upset', 'Drowsiness', 'Headache'],
+    warnings: [
+      'Not established as safe in pregnancy - avoid unless a qualified practitioner advises otherwise',
+      'May interact with thyroid medication, sedatives, or immunosuppressants - tell your doctor if you take it alongside other medicines',
+      'Quality and potency vary widely between products - follow the specific product label or a registered Ayurvedic physician\'s guidance',
+    ],
+    typicalDailyDose: null,
+    parameterLinks: [],
+  },
+  {
+    id: 'guggul',
+    system: 'ayurvedic',
+    genericNames: ['guggul', 'guggulu', 'commiphora mukul'],
+    brandNames: ['triphala guggul', 'kanchnar guggul', 'medohar guggul'],
+    category: 'Ayurvedic resin formulation (cholesterol / metabolic support)',
+    usage:
+      'Resin from the Commiphora mukul tree, one of the most-studied classical Ayurvedic substances, traditionally used to support healthy cholesterol levels and joint comfort. Often combined with other herbs in classical formulations (e.g. Triphala Guggul, Kanchnar Guggul).',
+    activeIngredient: 'Commiphora mukul gum resin extract (guggulsterones)',
+    commonSideEffects: ['Skin rash', 'Stomach upset', 'Headache'],
+    warnings: [
+      'Can interact with blood-thinning medication and some heart/thyroid medications - discuss with your doctor before combining',
+      'Not established as safe in pregnancy or breastfeeding',
+      'Follow the specific product\'s labeled dose or a registered Ayurvedic physician\'s guidance - concentration varies by formulation',
+    ],
+    typicalDailyDose: null,
+    parameterLinks: [],
+  },
+  {
+    id: 'chandraprabha_vati',
+    system: 'ayurvedic',
+    genericNames: ['chandraprabha vati', 'chandraprabha'],
+    brandNames: ['baidyanath chandraprabha vati', 'dabur chandraprabha vati'],
+    category: 'Classical Ayurvedic multi-herb formulation (urinary / metabolic support)',
+    usage:
+      'A classical Ayurvedic compound formulation combining multiple herbs and minerals, traditionally used for urinary tract comfort and general metabolic support. Should complement, never replace, prescribed diabetes or urinary treatment.',
+    activeIngredient: 'Multi-herb/mineral compound (composition varies by manufacturer - check the product label)',
+    commonSideEffects: ['Stomach upset if taken on an empty stomach'],
+    warnings: [
+      'Contains multiple ingredients including minerals - never substitute for prescribed diabetes medication or insulin without your doctor\'s guidance',
+      'Not established as safe in pregnancy',
+      'Confirm the exact composition and dose with the product label or a registered Ayurvedic physician',
+    ],
+    typicalDailyDose: null,
+    parameterLinks: [],
+  },
+  {
+    id: 'triphala',
+    system: 'ayurvedic',
+    genericNames: ['triphala', 'triphala churna'],
+    brandNames: ['baidyanath triphala', 'himalaya triphala', 'dabur triphala'],
+    category: 'Classical Ayurvedic herbal blend (digestive support)',
+    usage:
+      'A classical blend of three fruits (Amalaki, Bibhitaki, Haritaki) widely used in Ayurveda to support digestion and regularity.',
+    activeIngredient: 'Emblica officinalis, Terminalia bellirica, and Terminalia chebula fruit',
+    commonSideEffects: ['Loose stools at higher doses', 'Stomach cramping'],
+    warnings: [
+      'Can have a laxative effect - start with a lower amount',
+      'Not established as safe in pregnancy',
+      'Space apart from other medications by a couple of hours, since it can affect absorption',
+    ],
+    typicalDailyDose: null,
+    parameterLinks: [],
+  },
+  {
+    id: 'nilavembu_kudineer',
+    system: 'siddha',
+    genericNames: ['nilavembu kudineer', 'nilavembu'],
+    brandNames: ['siddha nilavembu kudineer'],
+    category: 'Classical Siddha decoction (fever / viral illness support)',
+    usage:
+      'A classical Siddha herbal decoction (kudineer) containing Andrographis paniculata and other herbs, promoted by Tamil Nadu\'s public health department and the Ministry of AYUSH as a general wellness/fever-support measure during seasonal viral illness and dengue outbreaks. Not a substitute for medical evaluation of fever, especially in dengue-endemic areas.',
+    activeIngredient: 'Andrographis paniculata and other herbs in a traditional Siddha decoction (composition varies by manufacturer)',
+    commonSideEffects: ['Bitter taste', 'Mild stomach upset'],
+    warnings: [
+      'Seek medical care for high, persistent, or worsening fever rather than relying on this alone',
+      'Not established as safe in pregnancy',
+      'Confirm composition and dose with the product label or a registered Siddha physician',
+    ],
+    typicalDailyDose: null,
+    parameterLinks: [],
+  },
+  {
+    id: 'adathodai_manapagu',
+    system: 'siddha',
+    genericNames: ['adathodai manapagu', 'vasaka syrup'],
+    brandNames: ['siddha adathodai manapagu'],
+    category: 'Classical Siddha syrup (respiratory / cough support)',
+    usage:
+      'A traditional Siddha herbal syrup based on Adathoda vasica (Vasaka), commonly used for cough and general respiratory comfort.',
+    activeIngredient: 'Adathoda vasica (Vasaka) leaf extract, in a syrup base',
+    commonSideEffects: ['Mild stomach upset'],
+    warnings: [
+      'See a doctor for cough with fever, breathlessness, or that lasts more than a couple of weeks',
+      'Check sugar content if diabetic - many traditional syrups use a sugar/jaggery base',
+      'Confirm composition and dose with the product label or a registered Siddha physician',
+    ],
+    typicalDailyDose: null,
+    parameterLinks: [],
+  },
+  {
+    id: 'khamira_marwareed',
+    system: 'unani',
+    genericNames: ['khamira marwareed', 'khamira gaozaban', 'khamira gaozaban ambari'],
+    brandNames: ['hamdard khamira marwareed', 'hamdard khamira gaozaban ambari'],
+    category: 'Classical Unani electuary (Khamira) - general tonic',
+    usage:
+      'A classical Unani multi-herb electuary (a sweet, paste-like preparation) traditionally used as a general tonic for cardiac and nervous system wellbeing.',
+    activeIngredient: 'Multi-herb compound (composition varies by manufacturer - check the product label)',
+    commonSideEffects: ['High sugar content (typically prepared in a sugar syrup base) - relevant if diabetic'],
+    warnings: [
+      'Check sugar/carbohydrate content if you have diabetes',
+      'Not established as safe in pregnancy',
+      'Confirm composition and dose with the product label or a registered Unani physician (Hakim)',
+    ],
+    typicalDailyDose: null,
+    parameterLinks: [],
+  },
+  {
+    id: 'jawarish_jalinus',
+    system: 'unani',
+    genericNames: ['jawarish jalinus'],
+    brandNames: ['hamdard jawarish jalinus'],
+    category: 'Classical Unani electuary (Jawarish) - digestive support',
+    usage:
+      'A classical Unani compound electuary traditionally used to support digestion and relieve indigestion/flatulence.',
+    activeIngredient: 'Multi-herb/spice compound (composition varies by manufacturer - check the product label)',
+    commonSideEffects: ['Mild stomach upset'],
+    warnings: [
+      'Contains a sugar syrup base - relevant if diabetic',
+      'Confirm composition and dose with the product label or a registered Unani physician (Hakim)',
+    ],
+    typicalDailyDose: null,
+    parameterLinks: [],
+  },
+  {
+    id: 'safoof_e_mohazzil',
+    system: 'unani',
+    genericNames: ['safoof-e-mohazzil', 'safoof e mohazzil'],
+    brandNames: ['hamdard safoof-e-mohazzil'],
+    category: 'Classical Unani powder formulation (weight / metabolic support)',
+    usage:
+      'A classical Unani powder (safoof) compound traditionally used as part of weight-management regimens alongside diet and lifestyle changes.',
+    activeIngredient: 'Multi-herb powder compound (composition varies by manufacturer - check the product label)',
+    commonSideEffects: ['Mild laxative effect', 'Stomach upset'],
+    warnings: [
+      'Not a substitute for a structured diet/exercise plan or medical weight-management care',
+      'Not established as safe in pregnancy',
+      'Confirm composition and dose with the product label or a registered Unani physician (Hakim)',
+    ],
+    typicalDailyDose: null,
+    parameterLinks: [],
+  },
+  {
+    id: 'arnica_montana',
+    system: 'homeopathic',
+    sourceName: 'NCCIH (National Institutes of Health) - Homeopathy',
+    sourceUrl: 'https://www.nccih.nih.gov/health/homeopathy',
+    genericNames: ['arnica montana', 'arnica'],
+    brandNames: ['sbl arnica montana', 'schwabe arnica montana', 'boiron arnica montana'],
+    category: 'Homeopathic remedy (commonly used for bruising / minor trauma)',
+    usage:
+      'A homeopathic preparation made from the Arnica montana plant, commonly sold over the counter and used by some for minor bruising, muscle soreness, or after minor injury. Homeopathic remedies are highly diluted, and major health authorities (e.g. the US NIH\'s National Center for Complementary and Integrative Health) note that homeopathy\'s core concepts are not consistent with established chemistry/physics and that rigorous evidence of effectiveness beyond a placebo effect is lacking.',
+    activeIngredient: 'Arnica montana in a homeopathic dilution (potency varies by product, e.g. 30C, 200C)',
+    commonSideEffects: ['Generally well tolerated at homeopathic dilutions', 'Skin irritation with topical gel forms'],
+    warnings: [
+      'Not a substitute for medical evaluation of a significant injury',
+      'Some products labeled "homeopathic" are not fully diluted and can contain meaningful amounts of active plant material - check the label',
+      'Consult a registered homeopathic physician for individualized remedy selection rather than self-treating a persistent condition',
+    ],
+    typicalDailyDose: null,
+    parameterLinks: [],
+  },
+  {
+    id: 'nux_vomica',
+    system: 'homeopathic',
+    sourceName: 'NCCIH (National Institutes of Health) - Homeopathy',
+    sourceUrl: 'https://www.nccih.nih.gov/health/homeopathy',
+    genericNames: ['nux vomica'],
+    brandNames: ['sbl nux vomica', 'schwabe nux vomica'],
+    category: 'Homeopathic remedy (commonly used for digestive discomfort)',
+    usage:
+      'A homeopathic preparation made from the Strychnos nux-vomica seed, commonly used by some for indigestion, occasional constipation, or general digestive discomfort. As with other homeopathic remedies, major health authorities note the lack of rigorous evidence for effectiveness beyond a placebo effect.',
+    activeIngredient: 'Strychnos nux-vomica in a homeopathic dilution (potency varies by product)',
+    commonSideEffects: ['Generally well tolerated at homeopathic dilutions'],
+    warnings: [
+      'The undiluted source plant contains strychnine, a toxic alkaloid - only use a properly prepared homeopathic dilution from a reputable manufacturer, never raw seed material',
+      'Not a substitute for medical evaluation of persistent digestive symptoms',
+      'Consult a registered homeopathic physician for individualized remedy selection',
+    ],
+    typicalDailyDose: null,
+    parameterLinks: [],
+  },
 ];

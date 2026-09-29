@@ -21,10 +21,11 @@ function ringPercent(value, goal) {
   return Math.max(0, Math.min(1, value / goal));
 }
 
-// pg returns a DATE column as a JS Date; a synthesized "no log for this day"
-// placeholder (see /summary below) passes the date through as a plain
-// "YYYY-MM-DD" string instead - normalize both to the same string shape so
-// every entry in a response is uniform.
+// db/pool.js's DATE type parser returns activity_logs.log_date as a plain
+// 'YYYY-MM-DD' string, not a JS Date (see its comment for why) - but a
+// synthesized "no log for this day" placeholder (see /summary below) also
+// passes a plain string, and either shape could change again later, so this
+// stays defensive rather than assuming today's shape everywhere it's used.
 function normalizeDate(logDate) {
   if (!logDate) return null;
   return typeof logDate === 'string' ? logDate : logDate.toISOString().slice(0, 10);
@@ -79,7 +80,7 @@ router.get('/summary', async (req, res, next) => {
       [userId, days]
     );
 
-    const byDate = new Map(rows.map((row) => [row.log_date.toISOString().slice(0, 10), row]));
+    const byDate = new Map(rows.map((row) => [normalizeDate(row.log_date), row]));
     const todayKey = new Date().toISOString().slice(0, 10);
     const todaySummary = toSummary(byDate.get(todayKey) || null);
 
@@ -153,3 +154,9 @@ router.post('/', async (req, res, next) => {
 });
 
 module.exports = router;
+// Exposed for activity.test.js only - the app still mounts this module
+// directly as Express middleware (module.exports is still the router
+// itself), this just also hangs normalizeDate off it so its behavior
+// against the pg driver's actual DATE type-parser setting can be tested
+// without duplicating that logic in the test file.
+module.exports.normalizeDate = normalizeDate;

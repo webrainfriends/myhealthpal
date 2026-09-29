@@ -28,7 +28,7 @@ test('builds one image block per rendered page for a scanned PDF, in page order'
 
 test('still sends a standalone photo upload (jpg/png) as a single image', () => {
   const document = { contentKind: 'image_scanned' };
-  const content = buildContent(document, { filePath: __filename, mimeType: 'image/jpeg' });
+  const content = buildContent(document, { fileBuffer: require('fs').readFileSync(__filename), mimeType: 'image/jpeg' });
 
   assert.equal(content.length, 2);
   assert.equal(content[0].type, 'image');

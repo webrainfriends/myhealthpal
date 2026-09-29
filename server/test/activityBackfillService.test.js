@@ -4,6 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const ExcelJS = require('exceljs');
 const pool = require('../src/db/pool');
+const config = require('../src/config');
 const {
   findMisclassifiedActivityReportIds,
   backfillMisclassifiedActivityReports,
@@ -23,7 +24,14 @@ let userId;
 let reportId;
 let filePath;
 
+// This backfill targets reports uploaded before the encrypted vault, which
+// are still plaintext files until scripts/encrypt-legacy-uploads.js runs -
+// so this suite reads them the way that pre-migration window allows.
+let savedLegacyReads;
+
 test.before(async () => {
+  savedLegacyReads = config.security.legacyPlaintextReads;
+  config.security.legacyPlaintextReads = 'allow';
   const user = await pool.query(
     `INSERT INTO users (email, display_name) VALUES ('activity-backfill-test@example.com', 'Activity Backfill Test') RETURNING id`
   );
@@ -64,6 +72,7 @@ test.before(async () => {
 });
 
 test.after(async () => {
+  config.security.legacyPlaintextReads = savedLegacyReads;
   await pool.query('DELETE FROM activity_logs WHERE user_id = $1', [userId]);
   await pool.query('DELETE FROM users WHERE id = $1', [userId]);
   await pool.end();

@@ -1,6 +1,7 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import StatusBadge from './StatusBadge';
 import { colors, radii, spacing, typography } from '../theme/theme';
+import { useT } from '../i18n/I18nContext';
 import { formatCalendarDate } from '../utils/date';
 
 function formatDate(value) {
@@ -8,7 +9,8 @@ function formatDate(value) {
 }
 
 export default function TimelineItemCard({ item, onPress, onDelete }) {
-  const dateLabel = item.effective_date ? formatDate(item.effective_date) : 'Date needs review';
+  const t = useT();
+  const dateLabel = item.effective_date ? formatDate(item.effective_date) : t('reportDetail.dateNeedsReview');
 
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.7}>
@@ -38,13 +40,15 @@ export default function TimelineItemCard({ item, onPress, onDelete }) {
         {item.source_provider ? ` · ${item.source_provider}` : ''}
       </Text>
       <View style={styles.countsRow}>
-        <Text style={typography.caption}>{item.measurement_count} parameter{item.measurement_count === 1 ? '' : 's'}</Text>
+        <Text style={typography.caption}>
+          {t('timeline.parameterCount', { count: item.measurement_count, plural: item.measurement_count === 1 ? '' : 's' })}
+        </Text>
         {item.abnormal_count > 0 && (
-          <Text style={[typography.caption, styles.abnormalCount]}>{item.abnormal_count} flagged</Text>
+          <Text style={[typography.caption, styles.abnormalCount]}>{t('timeline.flagged', { count: item.abnormal_count })}</Text>
         )}
       </View>
       {item.likely_duplicate_of_report_id && (
-        <Text style={styles.duplicateNote}>Likely a re-upload of an earlier report</Text>
+        <Text style={styles.duplicateNote}>{t('timeline.likelyDuplicate')}</Text>
       )}
       {item.narrative_summary && (
         <Text style={[typography.bodySecondary, styles.summary]} numberOfLines={3}>

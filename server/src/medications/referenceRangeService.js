@@ -16,7 +16,7 @@ async function getReferenceRange(healthParameterId) {
 // from its own query and would otherwise need N+1 lookups per organ card.
 async function getAllReferenceRangesByCode() {
   const { rows } = await pool.query(
-    `SELECT hp.code, rr.range_low, rr.range_high, rr.unit, rr.source
+    `SELECT hp.code, rr.range_low, rr.range_high, rr.unit, rr.source, rr.source_url
      FROM reference_ranges rr
      JOIN health_parameters hp ON hp.id = rr.health_parameter_id
      WHERE rr.condition_label = 'general'`

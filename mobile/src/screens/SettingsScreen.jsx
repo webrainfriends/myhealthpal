@@ -1,6 +1,13 @@
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { cardShadow, colors, radii, spacing, typography } from '../theme/theme';
+import { useT } from '../i18n/I18nContext';
+import { deleteAccount, fetchRetestPlans, fetchWaterSummary, updateRetestSettings, updateWaterSettings } from '../api/client';
+import { syncLocalRetestReminders } from '../notifications/retestNotifications';
+import { syncWaterReminder } from '../notifications/waterNotifications';
+import { showAlert } from '../utils/alert';
+import { useAuth } from '../auth/AuthContext';
 
 function SettingsRow({ title, subtitle, onPress }) {
   return (
@@ -14,18 +21,165 @@ function SettingsRow({ title, subtitle, onPress }) {
   );
 }
 
+// Server-side opt-out for Retest Radar push reminders; local fallback
+// reminders on this device are re-synced to match.
+function RetestRemindersRow({ t }) {
+  const { activeProfile } = useAuth();
+  const [enabled, setEnabled] = useState(null);
+  const [plans, setPlans] = useState([]);
+
+  useEffect(() => {
+    fetchRetestPlans()
+      .then((data) => {
+        setEnabled(data.remindersEnabled);
+        setPlans(data.plans);
+      })
+      .catch((err) => console.warn('Failed to load retest settings', err.message));
+  }, []);
+
+  async function handleChange(next) {
+    setEnabled(next);
+    try {
+      await updateRetestSettings(next);
+      syncLocalRetestReminders(plans, { enabled: next, t, profile: activeProfile });
+    } catch (err) {
+      setEnabled(!next);
+      showAlert(t('retest.couldNotUpdate'), err.message);
+    }
+  }
+
+  return (
+    <View style={[styles.row, cardShadow]}>
+      <View style={styles.rowText}>
+        <Text style={typography.body}>{t('retest.remindersTitle')}</Text>
+        <Text style={typography.caption}>{t('retest.remindersSubtitle')}</Text>
+      </View>
+      <Switch
+        value={Boolean(enabled)}
+        disabled={enabled === null}
+        onValueChange={handleChange}
+        trackColor={{ true: colors.primary }}
+      />
+    </View>
+  );
+}
+
+// Local daily nudge to log water intake (see notifications/waterNotifications.js).
+// Moved here from the Diet screen's old water card - the water tracker
+// itself now lives on the Dashboard, but this on/off setting doesn't need
+// to live next to it.
+function WaterRemindersRow() {
+  const [enabled, setEnabled] = useState(null);
+
+  useEffect(() => {
+    fetchWaterSummary()
+      .then((data) => setEnabled(data.remindersEnabled))
+      .catch((err) => console.warn('Failed to load water reminder setting', err.message));
+  }, []);
+
+  async function handleChange(next) {
+    setEnabled(next);
+    try {
+      await updateWaterSettings(next);
+      await syncWaterReminder(next);
+    } catch (err) {
+      setEnabled(!next);
+      showAlert('Could not update reminder setting', err.message);
+    }
+  }
+
+  return (
+    <View style={[styles.row, cardShadow]}>
+      <View style={styles.rowText}>
+        <Text style={typography.body}>Water reminder</Text>
+        <Text style={typography.caption}>A daily nudge to log your water intake</Text>
+      </View>
+      <Switch
+        value={Boolean(enabled)}
+        disabled={enabled === null}
+        onValueChange={handleChange}
+        trackColor={{ true: colors.primary }}
+      />
+    </View>
+  );
+}
+
+// Destructive, so it's styled apart from the ordinary nav rows above it and
+// asks twice before doing anything - there's no undo once the account and
+// everything in it (reports, medications, diet/activity history, chat, any
+// managed family profile only this account looked after) is gone.
+function DeleteAccountRow({ t }) {
+  const { signOut } = useAuth();
+  const [busy, setBusy] = useState(false);
+
+  function confirmDelete() {
+    showAlert(t('settings.deleteAccountConfirmTitle'), t('settings.deleteAccountConfirmMessage'), [
+      { text: t('settings.deleteAccountCancel'), style: 'cancel' },
+      { text: t('settings.deleteAccountContinue'), style: 'destructive', onPress: confirmDeleteFinal },
+    ]);
+  }
+
+  function confirmDeleteFinal() {
+    showAlert(t('settings.deleteAccountFinalTitle'), t('settings.deleteAccountFinalMessage'), [
+      { text: t('settings.deleteAccountCancel'), style: 'cancel' },
+      { text: t('settings.deleteAccountConfirm'), style: 'destructive', onPress: performDelete },
+    ]);
+  }
+
+  async function performDelete() {
+    setBusy(true);
+    try {
+      await deleteAccount();
+      // The account is already gone server-side; sign out drops the local
+      // token and user state so the app falls back to the login screen.
+      signOut();
+    } catch (err) {
+      setBusy(false);
+      showAlert(t('settings.deleteAccountFailedTitle'), err.message);
+    }
+  }
+
+  return (
+    <TouchableOpacity
+      style={[styles.row, styles.dangerRow, cardShadow]}
+      onPress={confirmDelete}
+      activeOpacity={0.7}
+      disabled={busy}
+    >
+      <View style={styles.rowText}>
+        <Text style={[typography.body, styles.dangerText]}>{t('settings.deleteAccountTitle')}</Text>
+        <Text style={typography.caption}>{t('settings.deleteAccountSubtitle')}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
 export default function SettingsScreen({ navigation }) {
+  const t = useT();
+  const { user } = useAuth();
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <SettingsRow
+          title={t('privacy.settingsTitle')}
+          subtitle={t('privacy.settingsSubtitle')}
+          onPress={() => navigation.navigate('PrivacyConsent')}
+        />
+        <RetestRemindersRow t={t} />
+        <WaterRemindersRow />
+        <SettingsRow
+          title={t('settings.healthProfileTitle')}
+          subtitle={t('settings.healthProfileSubtitle')}
+          onPress={() => navigation.navigate('HealthProfile')}
+        />
+        <SettingsRow
           title="Recipe recommendations"
-          subtitle="Diet and cuisine preferences used to suggest recipes"
+          subtitle="Diet, cuisine, and weight-goal preferences used to suggest recipes"
           onPress={() => navigation.navigate('RecipePreferences')}
         />
         <SettingsRow
-          title="Connected health sources"
-          subtitle="Connect Gmail to import lab reports and medical documents"
+          title={t('settings.connectedTitle')}
+          subtitle={t('settings.connectedSubtitle')}
           onPress={() => navigation.navigate('GmailIntegration')}
         />
         <SettingsRow
@@ -36,8 +190,28 @@ export default function SettingsScreen({ navigation }) {
         <SettingsRow
           title="AI explanation language"
           subtitle="Language for insight, report, and chat explanations"
+          title={t('settings.languageTitle')}
+          subtitle={t('settings.languageSubtitle')}
           onPress={() => navigation.navigate('LanguagePreference')}
         />
+        <SettingsRow
+          title={t('settings.voiceTitle')}
+          subtitle={t('settings.voiceSubtitle')}
+          onPress={() => navigation.navigate('VoiceAccessibility')}
+        />
+        <SettingsRow
+          title={t('settings.aiUsageTitle')}
+          subtitle={t('settings.aiUsageSubtitle')}
+          onPress={() => navigation.navigate('AiUsage')}
+        />
+        {user?.isAdmin && (
+          <SettingsRow
+            title="Manage sessions & logins"
+            subtitle="Admin: view and clean up registered and guest logins"
+            onPress={() => navigation.navigate('AdminSessions')}
+          />
+        )}
+        <DeleteAccountRow t={t} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -61,7 +235,18 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   rowText: {
+    flex: 1,
+    marginRight: spacing.md,
     gap: 2,
+  },
+  dangerRow: {
+    marginTop: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.dangerMuted,
+  },
+  dangerText: {
+    color: colors.danger,
+    fontWeight: '700',
   },
   chevron: {
     fontSize: 20,
