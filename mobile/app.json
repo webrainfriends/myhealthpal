@@ -46,7 +46,7 @@
       ],
       "react-native-health",
       "react-native-health-connect",
-      "expo-dev-client"
+      "expo-dev-client",
       "expo-notifications",
       [
         "expo-location",
