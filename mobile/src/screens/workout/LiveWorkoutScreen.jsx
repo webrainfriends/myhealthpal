@@ -12,9 +12,11 @@ import { getCameraPermission, getPoseCameraComponent, isPoseTrackingAvailable, r
 import useLiveCoach from '../../workout/hooks/useLiveCoach';
 import useWorkoutSync from '../../workout/hooks/useWorkoutSync';
 import { showAlert } from '../../utils/alert';
+import { setRecording } from '../../workout/recordingStore';
 
 const VISIBILITY = 0.5;
 const READY_FRAMES = 15; // ~1s of continuous good visibility before tracking starts
+const SAMPLE_MS = 200; // landmark samples for the replay overlay: 5 per second
 const PART_LABELS = { HIP: 'hips', KNEE: 'knees', ANKLE: 'ankles', SHOULDER: 'shoulders', ELBOW: 'elbows', WRIST: 'wrists' };
 
 // Camera setup -> live tracking -> rest -> save, in one screen. All counting
@@ -41,6 +43,9 @@ export default function LiveWorkoutScreen({ route, navigation }) {
   const [failed, setFailed] = useState(false);
   const readyFrames = useRef(0);
   const validAnnounced = useRef(0);
+  // Optional recording (opt-in): file path promise + sampled landmarks.
+  const cameraRef = useRef(null);
+  const recording = useRef({ promise: null, startedAt: null, frames: [], lastSampleAt: 0 });
   const stageRef = useRef('setup');
   const sync = useWorkoutSync(workoutId);
   const PoseCamera = useMemo(() => getPoseCameraComponent(), []);
@@ -86,6 +91,11 @@ export default function LiveWorkoutScreen({ route, navigation }) {
       })).id;
       await startWorkout(id);
       setWorkoutId(id);
+      if (cfg.recordVideo && cameraRef.current) {
+        // The local file is a temp recording; nothing leaves the phone until
+        // the user chooses to save it (WorkoutRecordingCard).
+        recording.current = { promise: cameraRef.current.startRecording().catch(() => null), startedAt: Date.now(), frames: [], lastSampleAt: 0 };
+      }
       go('live');
     } catch (err) {
       setFailed(true);
@@ -107,6 +117,14 @@ export default function LiveWorkoutScreen({ route, navigation }) {
         return;
       }
       if (stageRef.current !== 'live') return;
+
+      const rec = recording.current;
+      if (rec.startedAt && now - rec.lastSampleAt >= SAMPLE_MS && Object.keys(lm).length > 0) {
+        rec.lastSampleAt = now;
+        const sample = {};
+        for (const [name, p] of Object.entries(lm)) if (p.c >= 0.3) sample[name] = [Number(p.x.toFixed(3)), Number(p.y.toFixed(3))];
+        rec.frames.push({ t: now - rec.startedAt, lm: sample });
+      }
 
       const { events, paused } = runner.feed(lm, now);
       for (const ev of events) {
@@ -139,6 +157,12 @@ export default function LiveWorkoutScreen({ route, navigation }) {
     go('saving');
     const sets = runner.finish(Date.now());
     coach.stop();
+    if (recording.current.startedAt) {
+      await cameraRef.current?.stopRecording().catch(() => {});
+      const path = await recording.current.promise;
+      if (path && workoutId) setRecording(workoutId, { path, frames: recording.current.frames, fps: 1000 / SAMPLE_MS });
+      recording.current = { promise: null, startedAt: null, frames: [], lastSampleAt: 0 };
+    }
     if (sets.length === 0) {
       navigation.goBack();
       return;
@@ -205,10 +229,10 @@ export default function LiveWorkoutScreen({ route, navigation }) {
 
   return (
     <View style={styles.dark}>
-      <PoseCamera camera="front" onLandmarks={onLandmarks} onError={() => setFailed(true)} style={StyleSheet.absoluteFill} />
+      <PoseCamera ref={cameraRef} camera="front" onLandmarks={onLandmarks} onError={() => setFailed(true)} style={StyleSheet.absoluteFill} />
       <SafeAreaView style={styles.overlay} pointerEvents="box-none">
         <View style={styles.badge} accessibilityLiveRegion="polite">
-          <Text style={styles.badgeText}>● {t('workout.cameraActive')}</Text>
+          <Text style={styles.badgeText}>● {cfg.recordVideo && stage !== 'setup' && stage !== 'starting' ? t('workout.recordingNote') : t('workout.cameraActive')}</Text>
         </View>
 
         {(stage === 'setup' || stage === 'starting') && (

@@ -184,3 +184,17 @@ test('runner cues a rep lowered much faster than the planned tempo', () => {
   [175, ...cycle(85)].forEach((a) => { cues.push(...runner.feed(legs(a), t).events.filter((e) => e.type === 'cue')); t += 100; });
   assert.ok(cues.some((c) => c.ruleCode === 'TEMPO_DOWN_FAST'));
 });
+
+const overlay = require('../src/workout/overlay');
+
+test('overlay picks the sampled frame for a playback time and builds bone segments', () => {
+  const frames = Array.from({ length: 10 }, (_, i) => ({ t: i * 200, lm: { LEFT_HIP: [0.5, 0.5], LEFT_KNEE: [0.5, 0.7], LEFT_ANKLE: [0.7, 0.7 + i * 0.001] } }));
+  assert.equal(overlay.frameAt(frames, 5, 1000), frames[5]);
+  assert.equal(overlay.frameAt(frames, 5, 99999), null);
+  assert.equal(overlay.frameAt([], 5, 0), null);
+  const segs = overlay.segments(frames[0]);
+  assert.equal(segs.length, 2); // hip-knee and knee-ankle only
+  assert.ok(Math.abs(overlay.jointAngle(frames[0], ['LEFT_HIP', 'LEFT_KNEE', 'LEFT_ANKLE']) - 90) < 2);
+  const evs = [{ timestampMs: 1000, ruleCode: 'A' }, { timestampMs: 9000, ruleCode: 'B' }];
+  assert.deepEqual(overlay.activeEvents(evs, 1200).map((e) => e.ruleCode), ['A']);
+});

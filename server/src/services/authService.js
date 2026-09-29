@@ -86,6 +86,31 @@ function verifyMedicationPhotoDownloadToken(token) {
   return { userId: payload.sub, photoId: payload.photoId, jti: payload.jti, expiresAt: payload.exp };
 }
 
+// Short-lived, video-scoped playback token (issue #135 Phase 3). Unlike the
+// report/photo tokens it is NOT single-use: a video player issues several
+// range requests for one playback. It stays bound to one user + one asset
+// and expires quickly, and its own HKDF label keeps it from verifying as any
+// other token family.
+function workoutVideoTokenKey() {
+  return Buffer.from(
+    crypto.hkdfSync('sha256', config.jwtSecret, Buffer.alloc(0), 'myhealthpal:workout-video:v1', 32)
+  );
+}
+
+function signWorkoutVideoToken({ userId, assetId }) {
+  return jwt.sign({ sub: userId, assetId, type: 'workout_video' }, workoutVideoTokenKey(), {
+    expiresIn: config.security.workoutVideoTokenTtlSeconds,
+    jwtid: crypto.randomUUID(),
+    algorithm: 'HS256',
+  });
+}
+
+function verifyWorkoutVideoToken(token) {
+  const payload = jwt.verify(token, workoutVideoTokenKey(), { algorithms: ['HS256'] });
+  if (payload.type !== 'workout_video') throw new Error('Not a workout video token');
+  return { userId: payload.sub, assetId: payload.assetId, expiresAt: payload.exp };
+}
+
 async function findUserById(id) {
   const { rows } = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
   return rows[0] || null;
@@ -207,6 +232,8 @@ module.exports = {
   verifyReportDownloadToken,
   signMedicationPhotoDownloadToken,
   verifyMedicationPhotoDownloadToken,
+  signWorkoutVideoToken,
+  verifyWorkoutVideoToken,
   signGmailOAuthState,
   verifyGmailOAuthState,
   findUserById,

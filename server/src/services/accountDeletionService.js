@@ -6,7 +6,7 @@ const { logError } = require('../lib/safeLog');
 // Tables that hold an encrypted file per row - their storage_object_key /
 // storage_path must be unlinked from disk once the row (and its wrapped
 // data key) is gone, same as reports.js's own DELETE /:id route.
-const FILE_TABLES = ['reports', 'medication_scans', 'diet_scans'];
+const FILE_TABLES = ['reports', 'medication_scans', 'diet_scans', 'workout_video_asset'];
 
 async function collectStoredFiles(client, userIds) {
   if (userIds.length === 0) return [];

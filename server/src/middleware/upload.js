@@ -41,4 +41,25 @@ const upload = {
   },
 };
 
-module.exports = { upload, extensionOf };
+// Workout recordings: video only, larger cap, still memory-only (they go
+// straight into the encrypted vault).
+const VIDEO_EXTENSIONS = new Set(['mp4', 'mov', 'm4v']);
+const videoMulter = multer({
+  storage,
+  fileFilter(req, file, cb) {
+    if (!VIDEO_EXTENSIONS.has(extensionOf(file.originalname))) {
+      req.fileValidationError = 'Only MP4 or MOV workout videos are supported.';
+      return cb(null, false);
+    }
+    cb(null, true);
+  },
+  limits: { fileSize: config.maxWorkoutVideoBytes },
+});
+const videoUpload = {
+  single(fieldName) {
+    const middleware = videoMulter.single(fieldName);
+    return (req, res, next) => middleware(req, res, AsyncResource.bind(next));
+  },
+};
+
+module.exports = { upload, videoUpload, extensionOf };

@@ -41,6 +41,7 @@ import RetestRadarScreen from '../screens/RetestRadarScreen';
 import FamilyScreen from '../screens/FamilyScreen';
 import WorkoutCoachHomeScreen from '../screens/workout/WorkoutCoachHomeScreen';
 import WorkoutSetupScreen from '../screens/workout/WorkoutSetupScreen';
+import WorkoutVideoScreen from '../screens/workout/WorkoutVideoScreen';
 import WorkoutPlansScreen from '../screens/workout/WorkoutPlansScreen';
 import WorkoutPlanEditScreen from '../screens/workout/WorkoutPlanEditScreen';
 import LiveWorkoutScreen from '../screens/workout/LiveWorkoutScreen';
@@ -99,6 +100,7 @@ const linking = {
       WorkoutCoach: 'activity/coach',
       WorkoutSetup: 'activity/coach/setup',
       WorkoutPlans: 'activity/coach/plans',
+      WorkoutVideo: 'activity/coach/video/:workoutId',
       WorkoutPlanEdit: 'activity/coach/plans/new',
       LiveWorkout: 'activity/coach/live',
       WorkoutSummary: 'activity/coach/summary/:workoutId',
@@ -277,6 +279,7 @@ export default function RootNavigator() {
         />
         <Stack.Screen name="Activity" component={ActivityScreen} options={{ title: t('nav.activity') }} />
         <Stack.Screen name="WorkoutCoach" component={WorkoutCoachHomeScreen} options={{ title: t('nav.workoutCoach') }} />
+        <Stack.Screen name="WorkoutVideo" component={WorkoutVideoScreen} options={{ title: t('workout.recording') }} />
         <Stack.Screen name="WorkoutPlans" component={WorkoutPlansScreen} options={{ title: t('workout.plansTitle') }} />
         <Stack.Screen name="WorkoutPlanEdit" component={WorkoutPlanEditScreen} options={{ title: t('workout.newPlan') }} />
         <Stack.Screen name="WorkoutSetup" component={WorkoutSetupScreen} options={{ title: t('workout.setupTitle') }} />

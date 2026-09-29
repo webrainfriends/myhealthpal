@@ -57,6 +57,14 @@
       ],
       "expo-notifications",
       [
+        "expo-media-library",
+        {
+          "savePhotosPermission": "EyeMyHealth saves a workout recording to your photo library only when you tap Save.",
+          "photosPermission": "EyeMyHealth accesses your photo library only to save a workout recording you choose to keep.",
+          "isAccessMediaLocationEnabled": false
+        }
+      ],
+      [
         "react-native-vision-camera",
         {
           "cameraPermissionText": "The AI Workout Coach uses your camera to count reps and check your form. Video is analysed on your phone and is not recorded or uploaded.",

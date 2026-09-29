@@ -295,6 +295,52 @@ export const createWorkoutPlan = (plan) => workoutJson('/plans', 'POST', plan);
 export const deleteWorkoutPlan = (id) => workoutJson(`/plans/${id}`, 'DELETE');
 export const runWorkoutPlan = (id) => workoutJson(`/plans/${id}/run`, 'POST');
 
+// Retained workout video (issue #135 Phase 3). The recording is uploaded
+// straight into the encrypted vault; nothing here ever builds a public URL.
+export const fetchWorkoutVideoStatus = (id) => workoutJson(`/${id}/video`, 'GET');
+export const completeWorkoutVideo = (id, hashes) => workoutJson(`/${id}/video/complete`, 'POST', hashes);
+export const markWorkoutVideoLocalDeleted = (id) => workoutJson(`/${id}/video/local-deleted`, 'POST');
+export const deleteWorkoutVideo = (id) => workoutJson(`/${id}/video`, 'DELETE');
+export const saveWorkoutPoseSegment = (id, segment) => workoutJson(`/${id}/pose-segments`, 'POST', segment);
+export const fetchWorkoutPoseSegment = (id) => workoutJson(`/${id}/pose-segments`, 'GET');
+export async function fetchWorkoutVideoUrl(id) {
+  const data = await workoutJson(`/${id}/video/url`, 'POST');
+  // Short-lived and video-scoped; absolute so a native player can open it.
+  return `${API_BASE_URL}${data.url}`;
+}
+
+// Native only: multipart upload of the recorded file without loading it into
+// JS memory. Resolves with the server's asset status.
+export async function uploadWorkoutVideo(id, fileUri) {
+  // eslint-disable-next-line global-require
+  const FileSystem = require('expo-file-system/legacy');
+  const headers = {};
+  const token = loadToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (activeProfileId) headers['X-Profile-Id'] = activeProfileId;
+  const result = await FileSystem.uploadAsync(`${API_BASE_URL}/api/activity/workouts/${id}/video/upload`, fileUri, {
+    httpMethod: 'POST',
+    uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+    fieldName: 'video',
+    mimeType: 'video/mp4',
+    headers,
+  });
+  let body = null;
+  try {
+    body = JSON.parse(result.body);
+  } catch (err) {
+    body = null;
+  }
+  if (result.status === 401 && onUnauthorized) onUnauthorized();
+  if (result.status < 200 || result.status >= 300) {
+    const error = new Error(body?.error || `Upload failed with status ${result.status}`);
+    error.status = result.status;
+    error.code = body?.code;
+    throw error;
+  }
+  return body;
+}
+
 export async function fetchPairedDevices() {
   const response = await apiFetch('/api/devices');
   return handleResponse(response);
