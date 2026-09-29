@@ -40,10 +40,21 @@ router.get('/sessions', async (req, res, next) => {
   }
 });
 
-// Deletes one registered/guest login and everything that belongs to it -
-// the exact same routine (accountDeletionService.deleteAccount) that
-// DELETE /api/account runs when a user deletes their own account. There is
-// no recovery.
+// Deletes one login (skipping a nonexistent/managed/self id, same rule the
+// single- and multi-delete routes below both need) via the exact routine
+// (accountDeletionService.deleteAccount) DELETE /api/account runs when a
+// user deletes their own account. Returns whether it actually deleted
+// something, so callers can tell a skip from a failure.
+async function deleteOneSession(req, userId) {
+  if (!UUID_RE.test(userId) || userId === req.accountUser.id) return false;
+  const target = await authService.findUserById(userId);
+  if (!target || target.auth_provider === 'managed') return false;
+  await deleteAccount(target.id, { purpose: 'admin_cleanup' });
+  return true;
+}
+
+// Deletes one registered/guest login and everything that belongs to it.
+// There is no recovery.
 router.delete('/sessions/:userId', async (req, res, next) => {
   try {
     if (!UUID_RE.test(req.params.userId)) {
@@ -52,12 +63,29 @@ router.delete('/sessions/:userId', async (req, res, next) => {
     if (req.params.userId === req.accountUser.id) {
       return res.status(400).json({ error: 'Use Settings > Delete account to delete your own account.' });
     }
-    const target = await authService.findUserById(req.params.userId);
-    if (!target || target.auth_provider === 'managed') {
-      return res.status(404).json({ error: 'Session not found.' });
-    }
-    await deleteAccount(target.id, { purpose: 'admin_cleanup' });
+    const deleted = await deleteOneSession(req, req.params.userId);
+    if (!deleted) return res.status(404).json({ error: 'Session not found.' });
     res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Multi-select delete from the admin screen: deletes exactly the logins the
+// admin checked off, in one request. A ridiculous/duplicate/self id in the
+// list is silently skipped rather than failing the whole batch - the
+// response's counts tell the client what actually happened.
+router.post('/sessions/bulk-delete', async (req, res, next) => {
+  try {
+    const userIds = Array.isArray(req.body.userIds) ? [...new Set(req.body.userIds)] : [];
+    if (userIds.length === 0) {
+      return res.status(400).json({ error: 'userIds is required.' });
+    }
+    let deletedCount = 0;
+    for (const userId of userIds) {
+      if (await deleteOneSession(req, userId)) deletedCount += 1;
+    }
+    res.json({ deletedCount, skippedCount: userIds.length - deletedCount });
   } catch (err) {
     next(err);
   }
@@ -65,8 +93,8 @@ router.delete('/sessions/:userId', async (req, res, next) => {
 
 // Bulk "cleanup": every guest login in one sweep. Guest sessions accumulate
 // fastest - each guest sign-in creates a brand-new `users` row that's never
-// reused - so this is the one case worth a bulk action rather than deleting
-// one at a time.
+// reused - so this is the one case worth a dedicated bulk action rather than
+// checking them all off by hand in the multi-select above.
 router.delete('/sessions/cleanup/guests', async (req, res, next) => {
   try {
     const { rows } = await pool.query(`SELECT id FROM users WHERE auth_provider = 'guest'`);

@@ -391,6 +391,16 @@ export async function deleteAdminSession(userId) {
   return null;
 }
 
+// Multi-select delete: deletes exactly the checked-off logins in one request.
+export async function bulkDeleteAdminSessions(userIds) {
+  const response = await apiFetch('/api/admin/sessions/bulk-delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userIds }),
+  });
+  return handleResponse(response);
+}
+
 export async function cleanupGuestSessions() {
   const response = await apiFetch('/api/admin/sessions/cleanup/guests', { method: 'DELETE' });
   return handleResponse(response);

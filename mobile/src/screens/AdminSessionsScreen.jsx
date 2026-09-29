@@ -2,7 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { cardShadow, colors, radii, spacing, typography } from '../theme/theme';
-import { cleanupGuestSessions, deleteAdminSession, fetchAdminSessions } from '../api/client';
+import {
+  bulkDeleteAdminSessions,
+  cleanupGuestSessions,
+  deleteAdminSession,
+  fetchAdminSessions,
+} from '../api/client';
 import { showAlert } from '../utils/alert';
 
 function formatDateTime(value) {
@@ -26,8 +31,11 @@ function providerLabel(authProvider) {
 // One row per registered (Google/Apple) or guest login (server's
 // GET /api/admin/sessions) - deleting one runs the exact same permanent
 // account deletion Settings > Delete account runs for yourself, so this
-// asks twice before doing anything, same as DeleteAccountRow.
-function SessionRow({ session, onDeleted }) {
+// asks twice before doing anything, same as DeleteAccountRow. The checkbox
+// on the left feeds the multi-select bulk-delete bar below; you can't
+// select or delete your own row (self-delete stays Settings > Delete
+// account).
+function SessionRow({ session, selected, onToggleSelect, onDeleted }) {
   const [busy, setBusy] = useState(false);
 
   function confirmDelete() {
@@ -55,6 +63,17 @@ function SessionRow({ session, onDeleted }) {
 
   return (
     <View style={[styles.row, cardShadow]}>
+      {session.isSelf ? (
+        <View style={styles.checkboxSpacer} />
+      ) : (
+        <TouchableOpacity
+          style={[styles.checkbox, selected && styles.checkboxChecked]}
+          onPress={() => onToggleSelect(session.id)}
+          activeOpacity={0.7}
+        >
+          {selected && <Text style={styles.checkboxMark}>✓</Text>}
+        </TouchableOpacity>
+      )}
       <View style={styles.rowText}>
         <Text style={typography.body}>{session.email || session.displayName || 'Guest'}</Text>
         <Text style={typography.caption}>
@@ -80,8 +99,9 @@ function SessionRow({ session, onDeleted }) {
 
 // Admin-only (Settings row only shows for config.adminEmails - see
 // SettingsScreen.jsx): every registered and guest login on the app, with
-// when it was created and last used, and a way to delete one - or sweep
-// every guest login at once - to clean up the closed-beta user cap
+// when it was created and last used, and three ways to remove them - one
+// at a time, a multi-select batch of checked-off rows, or sweeping every
+// guest login at once - to clean up the closed-beta user cap
 // (config.maxRegisteredUsers). Deleting here is identical to a user
 // deleting their own account from Settings: permanent, no recovery.
 export default function AdminSessionsScreen() {
@@ -89,6 +109,8 @@ export default function AdminSessionsScreen() {
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [cleaningUp, setCleaningUp] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -112,6 +134,28 @@ export default function AdminSessionsScreen() {
 
   function handleDeleted(userId) {
     setSessions((current) => (current || []).filter((s) => s.id !== userId));
+    setSelectedIds((current) => {
+      if (!current.has(userId)) return current;
+      const next = new Set(current);
+      next.delete(userId);
+      return next;
+    });
+  }
+
+  function toggleSelect(userId) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  }
+
+  const selectableIds = (sessions || []).filter((s) => !s.isSelf).map((s) => s.id);
+  const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedIds.has(id));
+
+  function toggleSelectAll() {
+    setSelectedIds(allSelected ? new Set() : new Set(selectableIds));
   }
 
   const guestCount = (sessions || []).filter((s) => s.authProvider === 'guest' && !s.isSelf).length;
@@ -132,11 +176,38 @@ export default function AdminSessionsScreen() {
     setCleaningUp(true);
     try {
       await cleanupGuestSessions();
+      setSelectedIds(new Set());
       await load();
     } catch (err) {
       showAlert('Could not clean up guest sessions', err.message);
     } finally {
       setCleaningUp(false);
+    }
+  }
+
+  function confirmBulkDelete() {
+    const count = selectedIds.size;
+    showAlert(
+      `Delete ${count} selected login${count === 1 ? '' : 's'}?`,
+      'This permanently deletes each one and everything in it - reports, medications, diet/activity history, chat. ' +
+        'This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: performBulkDelete },
+      ]
+    );
+  }
+
+  async function performBulkDelete() {
+    setBulkDeleting(true);
+    try {
+      await bulkDeleteAdminSessions([...selectedIds]);
+      setSelectedIds(new Set());
+      await load();
+    } catch (err) {
+      showAlert('Could not delete selected sessions', err.message);
+    } finally {
+      setBulkDeleting(false);
     }
   }
 
@@ -149,6 +220,28 @@ export default function AdminSessionsScreen() {
         <Text style={typography.bodySecondary}>
           Every registered and guest login, with when it was created and last used. Deleting one is permanent.
         </Text>
+
+        {selectableIds.length > 0 && (
+          <View style={styles.selectAllRow}>
+            <TouchableOpacity onPress={toggleSelectAll} activeOpacity={0.7}>
+              <Text style={styles.selectAllText}>{allSelected ? 'Clear selection' : 'Select all'}</Text>
+            </TouchableOpacity>
+            {selectedIds.size > 0 && <Text style={typography.caption}>{selectedIds.size} selected</Text>}
+          </View>
+        )}
+
+        {selectedIds.size > 0 && (
+          <TouchableOpacity
+            style={[styles.cleanupButton, bulkDeleting && styles.deleteButtonDisabled]}
+            onPress={confirmBulkDelete}
+            disabled={bulkDeleting}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.cleanupButtonText}>
+              {bulkDeleting ? 'Deleting…' : `Delete selected (${selectedIds.size})`}
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {guestCount > 0 && (
           <TouchableOpacity
@@ -169,7 +262,13 @@ export default function AdminSessionsScreen() {
         {sessions && sessions.length === 0 && <Text style={typography.bodySecondary}>No sessions found.</Text>}
 
         {sessions?.map((session) => (
-          <SessionRow key={session.id} session={session} onDeleted={handleDeleted} />
+          <SessionRow
+            key={session.id}
+            session={session}
+            selected={selectedIds.has(session.id)}
+            onToggleSelect={toggleSelect}
+            onDeleted={handleDeleted}
+          />
         ))}
       </ScrollView>
     </SafeAreaView>
@@ -191,6 +290,15 @@ const styles = StyleSheet.create({
   error: {
     color: colors.danger,
   },
+  selectAllRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  selectAllText: {
+    color: colors.primary,
+    fontWeight: '600',
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -203,6 +311,28 @@ const styles = StyleSheet.create({
   rowText: {
     flex: 1,
     gap: 2,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxSpacer: {
+    width: 20,
+    height: 20,
+  },
+  checkboxChecked: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  checkboxMark: {
+    color: colors.surface,
+    fontSize: 13,
+    fontWeight: '700',
   },
   deleteButton: {
     borderWidth: 1,
