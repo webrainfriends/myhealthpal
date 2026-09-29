@@ -258,6 +258,11 @@ export async function fetchActivitySummary(days = 14) {
   return handleResponse(response);
 }
 
+export async function fetchGlucoseSummary(days = 30) {
+  const response = await apiFetch(`/api/glucose/summary?days=${days}`);
+  return handleResponse(response);
+}
+
 export async function logActivity(fields) {
   const response = await apiFetch('/api/activity', {
     method: 'POST',
