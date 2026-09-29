@@ -65,6 +65,7 @@ app.use('/api/pinned-parameters', requireAuth, pinnedParametersRouter);
 app.use('/api/insights', requireAuth, insightsRouter);
 app.use('/api/chat', requireAuth, chatRouter);
 app.use('/api/medications', requireAuth, medicationsRouter);
+app.use('/api/activity/workouts', requireAuth, workoutsRouter);
 app.use('/api/activity', requireAuth, activityRouter);
 app.use('/api/glucose', requireAuth, glucoseRouter);
 app.use('/api/devices', requireAuth, devicesRouter);

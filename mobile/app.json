@@ -57,6 +57,13 @@
       ],
       "expo-notifications",
       [
+        "react-native-vision-camera",
+        {
+          "cameraPermissionText": "The AI Workout Coach uses your camera to count reps and check your form. Video is analysed on your phone and is not recorded or uploaded.",
+          "enableMicrophonePermission": false
+        }
+      ],
+      [
         "expo-location",
         {
           "locationWhenInUsePermission": "EyeMyHealth uses your location to show the local weather and air quality on your dashboard."

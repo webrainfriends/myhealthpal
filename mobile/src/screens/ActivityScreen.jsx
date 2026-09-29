@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ActivityRings from '../components/ActivityRings';
 import PrimaryButton from '../components/PrimaryButton';
@@ -89,6 +90,7 @@ function StepsHistoryChart({ history }) {
 
 export default function ActivityScreen() {
   const t = useT();
+  const navigation = useNavigation();
   const [summary, setSummary] = useState(null);
   const [draft, setDraft] = useState({ steps: '', exercise_minutes: '', stand_hours: '' });
   const [busy, setBusy] = useState(false);
@@ -141,6 +143,14 @@ export default function ActivityScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
+        <TouchableOpacity
+          style={styles.coachEntry}
+          onPress={() => navigation.navigate('WorkoutCoach')}
+          accessibilityRole="button"
+        >
+          <Text style={typography.body}>{t('workout.entry')}</Text>
+          <Text style={typography.bodySecondary}>{t('workout.entryHint')}</Text>
+        </TouchableOpacity>
         <View style={[styles.heroCard, cardShadow]}>
           <View style={styles.heroTopRow}>
             {!isCurrentToday && current.date ? (
@@ -236,6 +246,13 @@ export default function ActivityScreen() {
 }
 
 const styles = StyleSheet.create({
+  coachEntry: {
+    backgroundColor: colors.primaryMuted,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    gap: 4,
+    marginBottom: spacing.md,
+  },
   container: {
     flex: 1,
     backgroundColor: colors.background,
