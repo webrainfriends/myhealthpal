@@ -321,6 +321,20 @@ export default function DashboardScreen({ navigation }) {
             </View>
           </View>
           <View style={styles.heroBody}>
+            {water && (
+              <WaterBottleTracker
+                totalMl={water.totalMl}
+                target={water.target}
+                alert={water.alert}
+                onAdd={handleLogWater}
+                onUndo={handleUndoWater}
+                onRefreshTarget={handleRefreshWaterTarget}
+                adding={loggingWater}
+                undoing={undoingWater}
+                refreshingTarget={refreshingWaterTarget}
+                canUndo={(water.entries || []).length > 0}
+              />
+            )}
             <View style={styles.greetingBlock}>
               <View style={styles.greetingRow}>
                 <Text style={styles.heroGreeting}>
@@ -360,7 +374,7 @@ export default function DashboardScreen({ navigation }) {
                 </View>
               )}
             </View>
-            <Mascot size={92} />
+            <Mascot size={76} />
           </View>
         </View>
 
@@ -386,7 +400,7 @@ export default function DashboardScreen({ navigation }) {
           </>
         )}
 
-        {(activity || diet || water) && (
+        {(activity || diet) && (
           <View style={[styles.tileRow, styles.sectionSpacing]}>
             {activity && (
               <ActivityCard
@@ -401,21 +415,6 @@ export default function DashboardScreen({ navigation }) {
                 today={diet.today}
                 pendingReviewCount={diet.pendingReviewCount}
                 onPress={() => navigation.navigate('Diet')}
-              />
-            )}
-
-            {water && (
-              <WaterBottleTracker
-                totalMl={water.totalMl}
-                target={water.target}
-                alert={water.alert}
-                onAdd={handleLogWater}
-                onUndo={handleUndoWater}
-                onRefreshTarget={handleRefreshWaterTarget}
-                adding={loggingWater}
-                undoing={undoingWater}
-                refreshingTarget={refreshingWaterTarget}
-                canUndo={(water.entries || []).length > 0}
               />
             )}
           </View>
@@ -623,7 +622,6 @@ const styles = StyleSheet.create({
   },
   tileRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
     gap: spacing.sm,
   },
   retestList: {

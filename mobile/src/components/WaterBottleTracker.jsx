@@ -39,12 +39,14 @@ function BounceButton({ onPress, disabled, style, children }) {
   );
 }
 
-// The dashboard's water tile - deliberately NOT a rounded-rectangle card
-// like ActivityCard/DietCard next to it. It has no card background or
-// border of its own; the only thing drawn is the glossy bottle silhouette
-// itself (an animated liquid fill clipped to the bottle shape, rising
+// Lives inside the dashboard hero banner, to the left of the greeting - NOT
+// a rounded-rectangle card like ActivityCard/DietCard below it. It has no
+// card background of its own; the only thing drawn is the glossy bottle
+// silhouette (an animated liquid fill clipped to the bottle shape, rising
 // toward a dashed "ideal" target line, with a shaded band across the
-// healthy min-max range), so the tile's outline IS the bottle.
+// healthy min-max range), so the tile's outline IS the bottle. Text and
+// buttons use the hero's white-on-gradient palette rather than the app's
+// usual card colors, since it sits directly on the brand gradient.
 export default function WaterBottleTracker({
   totalMl = 0,
   target,
@@ -89,7 +91,7 @@ export default function WaterBottleTracker({
         </TouchableOpacity>
       )}
 
-      <Svg width={58} height={102} viewBox="0 0 120 210">
+      <Svg width={52} height={91} viewBox="0 0 120 210">
         <Defs>
           <LinearGradient id="waterFill" x1="0" y1="0" x2="0" y2="1">
             <Stop offset="0" stopColor="#8FE3FF" />
@@ -101,15 +103,15 @@ export default function WaterBottleTracker({
             <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0.08" />
           </LinearGradient>
           <LinearGradient id="capGrad" x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0" stopColor={colors.accent} />
-            <Stop offset="1" stopColor={colors.primary} />
+            <Stop offset="0" stopColor="#FFE27A" />
+            <Stop offset="1" stopColor="#FFFFFF" />
           </LinearGradient>
           <ClipPath id="bottleClip">
             <Rect x={BODY_X} y={BODY_TOP} width={BODY_WIDTH} height={BODY_HEIGHT} rx={BODY_RADIUS} />
           </ClipPath>
         </Defs>
 
-        <Ellipse cx="60" cy="204" rx="36" ry="6" fill="#2A1466" opacity="0.12" />
+        <Ellipse cx="60" cy="204" rx="36" ry="6" fill="#2A1466" opacity="0.18" />
 
         {/* cap + neck */}
         <Rect x="44" y="4" width="32" height="16" rx="6" fill="url(#capGrad)" />
@@ -120,7 +122,7 @@ export default function WaterBottleTracker({
 
         {/* healthy min-max band */}
         {bandTop != null && (
-          <Rect x={BODY_X + 4} y={bandTop} width={BODY_WIDTH - 8} height={Math.max(bandBottom - bandTop, 0)} rx="8" fill={colors.successMuted} opacity="0.55" />
+          <Rect x={BODY_X + 4} y={bandTop} width={BODY_WIDTH - 8} height={Math.max(bandBottom - bandTop, 0)} rx="8" fill="#FFFFFF" opacity="0.3" />
         )}
 
         {/* animated liquid, clipped to the bottle silhouette */}
@@ -131,7 +133,7 @@ export default function WaterBottleTracker({
 
         {/* ideal-target dashed line */}
         {idealY != null && (
-          <Line x1={BODY_X - 2} x2={BODY_X + BODY_WIDTH + 2} y1={idealY} y2={idealY} stroke={colors.primary} strokeWidth="1.5" strokeDasharray="4 3" />
+          <Line x1={BODY_X - 2} x2={BODY_X + BODY_WIDTH + 2} y1={idealY} y2={idealY} stroke="#FFFFFF" strokeWidth="1.5" strokeDasharray="4 3" />
         )}
 
         {/* crisp glass outline */}
@@ -152,18 +154,18 @@ export default function WaterBottleTracker({
       )}
 
       {alert && alert.status !== 'ok' && (
-        <Text style={[styles.alertText, isOver ? styles.alertOver : styles.alertUnder]} numberOfLines={1}>
-          {isOver ? 'Over target' : 'Under target'}
+        <Text style={styles.alertText} numberOfLines={1}>
+          {isOver ? '⚠️ Over' : 'ℹ️ Under'}
         </Text>
       )}
 
       <View style={styles.actionsRow}>
         <BounceButton onPress={onAdd} disabled={adding} style={styles.addButton}>
-          {adding ? <ActivityIndicator color={colors.surface} size="small" /> : <Text style={styles.addButtonText}>+250</Text>}
+          {adding ? <ActivityIndicator color={colors.onBrand} size="small" /> : <Text style={styles.addButtonText}>+250</Text>}
         </BounceButton>
         {canUndo && (
           <BounceButton onPress={onUndo} disabled={undoing} style={styles.undoButton}>
-            {undoing ? <ActivityIndicator color={colors.textSecondary} size="small" /> : <Text style={styles.undoButtonText}>−</Text>}
+            {undoing ? <ActivityIndicator color={colors.onBrand} size="small" /> : <Text style={styles.undoButtonText}>−</Text>}
           </BounceButton>
         )}
       </View>
@@ -173,47 +175,41 @@ export default function WaterBottleTracker({
 
 const styles = StyleSheet.create({
   wrapper: {
-    flex: 1,
     alignItems: 'center',
     paddingTop: spacing.xs,
   },
   refreshButton: {
     position: 'absolute',
     top: 0,
-    right: spacing.xs,
+    right: -2,
     zIndex: 1,
   },
   refreshIcon: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.teal,
+    color: colors.onBrand,
   },
   value: {
     marginTop: 2,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '800',
-    color: colors.teal,
+    color: colors.onBrand,
   },
   unit: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
-    color: colors.textSecondary,
+    color: colors.onBrandMuted,
   },
   label: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
-    color: colors.textSecondary,
+    color: colors.onBrandMuted,
   },
   alertText: {
     fontSize: 10,
     fontWeight: '700',
+    color: colors.onBrand,
     marginTop: 2,
-  },
-  alertUnder: {
-    color: colors.primary,
-  },
-  alertOver: {
-    color: colors.warning,
   },
   actionsRow: {
     flexDirection: 'row',
@@ -222,7 +218,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   addButton: {
-    backgroundColor: colors.primary,
+    backgroundColor: 'rgba(255, 255, 255, 0.24)',
     borderRadius: radii.pill,
     paddingVertical: 6,
     paddingHorizontal: 10,
@@ -230,25 +226,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   addButtonText: {
-    color: colors.surface,
+    color: colors.onBrand,
     fontWeight: '700',
-    fontSize: 12,
+    fontSize: 11,
   },
   undoButton: {
-    width: 26,
-    height: 26,
+    width: 24,
+    height: 24,
     borderRadius: radii.pill,
     borderWidth: 1.5,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    borderColor: 'rgba(255, 255, 255, 0.5)',
+    backgroundColor: 'rgba(255, 255, 255, 0.14)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   undoButtonText: {
-    color: colors.textSecondary,
+    color: colors.onBrand,
     fontWeight: '800',
-    fontSize: 16,
-    lineHeight: 18,
+    fontSize: 15,
+    lineHeight: 17,
   },
   disabled: {
     opacity: 0.45,

@@ -1,49 +1,46 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import Svg, { Defs, LinearGradient, Path, Stop } from 'react-native-svg';
-import { cardShadow, colors, radii, spacing } from '../theme/theme';
+import ActivityRings from './ActivityRings';
+import GradientFill from './brand/GradientFill';
+import { gradients } from '../theme/theme';
 import { useT } from '../i18n/I18nContext';
 import { formatCalendarDate } from '../utils/date';
 
-// A small gradient "energy bolt" glyph - a crisp vector illustration rather
-// than a flat emoji, in the same gradient-plus-highlight style as the
-// water bottle graphic so the three dashboard tiles read as one family.
-function BoltIcon() {
-  return (
-    <Svg width={22} height={22} viewBox="0 0 24 24">
-      <Defs>
-        <LinearGradient id="boltGrad" x1="0" y1="0" x2="1" y2="1">
-          <Stop offset="0" stopColor="#7CF0A8" />
-          <Stop offset="1" stopColor={colors.success} />
-        </LinearGradient>
-      </Defs>
-      <Path
-        d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"
-        fill="url(#boltGrad)"
-        stroke="#FFFFFF"
-        strokeWidth="0.75"
-        strokeLinejoin="round"
-      />
-    </Svg>
-  );
-}
+// Candy-bright ring colors for THIS card only (not the shared
+// activityRingColors token, which is tuned for white backgrounds elsewhere
+// like ActivityScreen) - white/yellow/sky-blue pop against the lime gradient
+// instead of blending into it.
+const HERO_RING_COLORS = {
+  steps: { fg: '#FFFFFF', track: 'rgba(255, 255, 255, 0.28)' },
+  exerciseMinutes: { fg: '#FFE27A', track: 'rgba(255, 255, 255, 0.28)' },
+  standHours: { fg: '#8FE3FF', track: 'rgba(255, 255, 255, 0.28)' },
+};
 
 function formatShortDate(dateStr) {
   return formatCalendarDate(dateStr, { month: 'short', day: 'numeric' }) || '';
 }
 
-// Compact dashboard tile - sits beside DietCard and WaterBottleTracker in a
-// single row instead of stacking full-width, so `current` (today's steps, or
-// the latest logged day - see /api/activity/summary) reduces to just the
-// headline number rather than the full ring breakdown.
+// Dashboard tile - a vibrant gradient "hero" card (matching the water
+// bottle and mascot's illustrated style) rather than a flat tinted
+// rectangle, with the original Apple Health-style rings restored as its
+// centerpiece instead of a small icon.
 export default function ActivityCard({ current, isCurrentToday, onPress }) {
   const t = useT();
   const hasData = Boolean(current?.steps || current?.exerciseMinutes || current?.standHours);
+  const rings = current
+    ? [
+        { percent: current.rings.steps, ...HERO_RING_COLORS.steps },
+        { percent: current.rings.exerciseMinutes, ...HERO_RING_COLORS.exerciseMinutes },
+        { percent: current.rings.standHours, ...HERO_RING_COLORS.standHours },
+      ]
+    : [];
 
   return (
-    <TouchableOpacity style={[styles.card, cardShadow]} onPress={onPress} activeOpacity={0.8}>
-      <View style={styles.iconWrap}>
-        <BoltIcon />
-      </View>
+    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
+      <GradientFill colors={gradients.lime} />
+      <View style={[styles.bubble, styles.bubbleOne]} />
+      <View style={[styles.bubble, styles.bubbleTwo]} />
+
+      <ActivityRings rings={rings} size={52} strokeWidth={7} gap={3} />
       <Text style={styles.value} numberOfLines={1}>
         {hasData ? current.steps ?? 0 : '—'}
       </Text>
@@ -62,34 +59,35 @@ export default function ActivityCard({ current, isCurrentToday, onPress }) {
 const styles = StyleSheet.create({
   card: {
     flex: 1,
-    backgroundColor: colors.successMuted,
-    borderRadius: radii.lg,
-    padding: spacing.sm,
-    alignItems: 'center',
-    gap: 2,
-  },
-  iconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: radii.pill,
-    backgroundColor: colors.surface,
+    minHeight: 132,
+    borderRadius: 24,
+    padding: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
+    gap: 4,
+    overflow: 'hidden',
   },
+  bubble: {
+    position: 'absolute',
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+  },
+  bubbleOne: { width: 70, height: 70, top: -26, right: -22 },
+  bubbleTwo: { width: 46, height: 46, bottom: -18, left: -14 },
   value: {
+    marginTop: 4,
     fontSize: 20,
     fontWeight: '800',
-    color: colors.success,
+    color: '#FFFFFF',
   },
   label: {
     fontSize: 12,
-    fontWeight: '600',
-    color: colors.textSecondary,
+    fontWeight: '700',
+    color: 'rgba(255, 255, 255, 0.85)',
   },
   caption: {
     fontSize: 10,
     fontWeight: '500',
-    color: colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.7)',
   },
 });
