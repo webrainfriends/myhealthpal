@@ -1,7 +1,8 @@
 const express = require('express');
 const pool = require('../db/pool');
 const authService = require('../services/authService');
-const { deleteAccount } = require('../services/accountDeletionService');
+const { deleteAccount, FILE_TABLES } = require('../services/accountDeletionService');
+const { getAllUsersUsageReport } = require('../services/aiUsageService');
 
 // Mounted behind requireAccountAuth + requireAdmin (app.js) - every route
 // here is only ever reachable by config.adminEmails.
@@ -9,7 +10,20 @@ const router = express.Router();
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function publicSession(row, req) {
+// Total bytes of every stored file (report/medication scan/diet scan) per
+// user, from the same FILE_TABLES accountDeletionService unlinks from disk
+// on deletion - so "doc storage" here always means exactly what deleting
+// the login would free up.
+async function getStorageBytesByUser() {
+  const unionSql = FILE_TABLES.map((table) => `SELECT user_id, file_size_bytes FROM ${table}`).join(' UNION ALL ');
+  const { rows } = await pool.query(
+    `SELECT user_id, COALESCE(SUM(file_size_bytes), 0)::bigint AS bytes FROM (${unionSql}) f GROUP BY user_id`
+  );
+  return new Map(rows.map((row) => [row.user_id, Number(row.bytes)]));
+}
+
+function publicSession(row, req, { storageBytesByUser, aiUsageByUser }) {
+  const usage = aiUsageByUser.get(row.id);
   return {
     id: row.id,
     email: row.email,
@@ -18,6 +32,12 @@ function publicSession(row, req) {
     createdAt: row.created_at,
     lastLoginAt: row.last_login_at,
     isSelf: row.id === req.accountUser.id,
+    storageBytes: storageBytesByUser.get(row.id) || 0,
+    aiUsage: {
+      totalTokens: usage?.totalTokens || 0,
+      requests: usage?.requests || 0,
+      estimatedCostUsd: usage?.estimatedCostUsd || 0,
+    },
   };
 }
 
@@ -25,16 +45,23 @@ function publicSession(row, req) {
 // guest. 'managed' family profiles (see migrations/021_family_profiles.sql)
 // have no sign-in of their own, so they're not a "session" or "login" and
 // are left off this list; deleting their sole manager below still sweeps
-// them up too, same as a self-service account deletion would.
+// them up too, same as a self-service account deletion would. Each row
+// also carries its all-time AI token usage/cost and its total stored file
+// size, so the admin can see who's actually driving usage before deleting.
 router.get('/sessions', async (req, res, next) => {
   try {
-    const { rows } = await pool.query(
-      `SELECT id, email, display_name, auth_provider, created_at, last_login_at
-       FROM users
-       WHERE auth_provider IN ('guest', 'google', 'apple')
-       ORDER BY COALESCE(last_login_at, created_at) DESC`
-    );
-    res.json({ sessions: rows.map((row) => publicSession(row, req)) });
+    const [{ rows }, storageBytesByUser, aiUsageRows] = await Promise.all([
+      pool.query(
+        `SELECT id, email, display_name, auth_provider, created_at, last_login_at
+         FROM users
+         WHERE auth_provider IN ('guest', 'google', 'apple')
+         ORDER BY COALESCE(last_login_at, created_at) DESC`
+      ),
+      getStorageBytesByUser(),
+      getAllUsersUsageReport({ days: null }),
+    ]);
+    const aiUsageByUser = new Map(aiUsageRows.filter((r) => r.userId).map((r) => [r.userId, r]));
+    res.json({ sessions: rows.map((row) => publicSession(row, req, { storageBytesByUser, aiUsageByUser })) });
   } catch (err) {
     next(err);
   }

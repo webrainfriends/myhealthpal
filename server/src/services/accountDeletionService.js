@@ -85,4 +85,4 @@ async function deleteAccount(accountId, { purpose = 'user_request' } = {}) {
   await audit.record({ eventType: 'ACCOUNT_DELETED', userId: accountId, purpose });
 }
 
-module.exports = { deleteAccount };
+module.exports = { deleteAccount, FILE_TABLES };

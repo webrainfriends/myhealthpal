@@ -28,6 +28,30 @@ function providerLabel(authProvider) {
   return authProvider;
 }
 
+function formatBytes(bytes) {
+  if (!bytes) return '0 MB';
+  const mb = bytes / (1024 * 1024);
+  if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`;
+  if (mb >= 1) return `${mb.toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+function formatTokens(value) {
+  if (!value) return '0';
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(value >= 10_000 ? 0 : 1)}K`;
+  return String(value);
+}
+
+// Sub-cent costs are normal for a single low-usage login, so show enough
+// precision to tell them apart instead of rounding everything to "$0.00" -
+// same reasoning as AiUsageScreen's own formatCost.
+function formatCost(value) {
+  if (!value) return '$0.00';
+  if (value < 0.01) return `$${value.toFixed(4)}`;
+  return `$${value.toFixed(2)}`;
+}
+
 // One row per registered (Google/Apple) or guest login (server's
 // GET /api/admin/sessions) - deleting one runs the exact same permanent
 // account deletion Settings > Delete account runs for yourself, so this
@@ -82,6 +106,10 @@ function SessionRow({ session, selected, onToggleSelect, onDeleted }) {
         </Text>
         <Text style={typography.caption}>Created {formatDateTime(session.createdAt)}</Text>
         <Text style={typography.caption}>Last used {formatDateTime(session.lastLoginAt)}</Text>
+        <Text style={typography.caption}>
+          AI usage: {formatTokens(session.aiUsage.totalTokens)} tokens ({formatCost(session.aiUsage.estimatedCostUsd)})
+        </Text>
+        <Text style={typography.caption}>Doc storage: {formatBytes(session.storageBytes)}</Text>
       </View>
       {!session.isSelf && (
         <TouchableOpacity
@@ -218,7 +246,8 @@ export default function AdminSessionsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
       >
         <Text style={typography.bodySecondary}>
-          Every registered and guest login, with when it was created and last used. Deleting one is permanent.
+          Every registered and guest login, with when it was created and last used, its all-time AI usage, and how
+          much stored file data (reports, scans) it holds. Deleting one is permanent.
         </Text>
 
         {selectableIds.length > 0 && (

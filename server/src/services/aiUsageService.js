@@ -193,19 +193,23 @@ async function getUserUsageSummary(userId, { days = 30, currentSessionId = null,
   };
 }
 
-// Operator-side view across every account - backs scripts/ai-usage-report.js.
-// Not exposed over HTTP: there is no admin role, and one user's usage is
-// never visible to another.
+// Operator-side view across every account - backs scripts/ai-usage-report.js
+// and, now that one exists (routes/admin.js + middleware/auth.js's
+// requireAdmin), the admin session-cleanup screen's per-login AI usage
+// column. `days: null` drops the time filter for an all-time total instead
+// of a trailing window.
 async function getAllUsersUsageReport({ days = 30 } = {}) {
+  const where = days != null ? 'WHERE e.created_at >= now() - make_interval(days => $1)' : '';
+  const params = days != null ? [days] : [];
   const { rows } = await pool.query(
     `SELECT e.user_id, u.email, u.auth_provider, ${TOTALS_SELECT},
             COUNT(DISTINCT e.session_id)::int AS sessions
      FROM ai_usage_events e
      LEFT JOIN users u ON u.id = e.user_id
-     WHERE e.created_at >= now() - make_interval(days => $1)
+     ${where}
      GROUP BY e.user_id, u.email, u.auth_provider
      ORDER BY SUM(e.estimated_cost_usd) DESC`,
-    [days]
+    params
   );
   return rows.map((row) => ({
     userId: row.user_id,
