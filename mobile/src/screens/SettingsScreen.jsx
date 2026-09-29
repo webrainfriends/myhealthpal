@@ -3,8 +3,9 @@ import { ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 're
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { cardShadow, colors, radii, spacing, typography } from '../theme/theme';
 import { useT } from '../i18n/I18nContext';
-import { deleteAccount, fetchRetestPlans, updateRetestSettings } from '../api/client';
+import { deleteAccount, fetchRetestPlans, fetchWaterSummary, updateRetestSettings, updateWaterSettings } from '../api/client';
 import { syncLocalRetestReminders } from '../notifications/retestNotifications';
+import { syncWaterReminder } from '../notifications/waterNotifications';
 import { showAlert } from '../utils/alert';
 import { useAuth } from '../auth/AuthContext';
 
@@ -52,6 +53,46 @@ function RetestRemindersRow({ t }) {
       <View style={styles.rowText}>
         <Text style={typography.body}>{t('retest.remindersTitle')}</Text>
         <Text style={typography.caption}>{t('retest.remindersSubtitle')}</Text>
+      </View>
+      <Switch
+        value={Boolean(enabled)}
+        disabled={enabled === null}
+        onValueChange={handleChange}
+        trackColor={{ true: colors.primary }}
+      />
+    </View>
+  );
+}
+
+// Local daily nudge to log water intake (see notifications/waterNotifications.js).
+// Moved here from the Diet screen's old water card - the water tracker
+// itself now lives on the Dashboard, but this on/off setting doesn't need
+// to live next to it.
+function WaterRemindersRow() {
+  const [enabled, setEnabled] = useState(null);
+
+  useEffect(() => {
+    fetchWaterSummary()
+      .then((data) => setEnabled(data.remindersEnabled))
+      .catch((err) => console.warn('Failed to load water reminder setting', err.message));
+  }, []);
+
+  async function handleChange(next) {
+    setEnabled(next);
+    try {
+      await updateWaterSettings(next);
+      await syncWaterReminder(next);
+    } catch (err) {
+      setEnabled(!next);
+      showAlert('Could not update reminder setting', err.message);
+    }
+  }
+
+  return (
+    <View style={[styles.row, cardShadow]}>
+      <View style={styles.rowText}>
+        <Text style={typography.body}>Water reminder</Text>
+        <Text style={typography.caption}>A daily nudge to log your water intake</Text>
       </View>
       <Switch
         value={Boolean(enabled)}
@@ -124,6 +165,7 @@ export default function SettingsScreen({ navigation }) {
           onPress={() => navigation.navigate('PrivacyConsent')}
         />
         <RetestRemindersRow t={t} />
+        <WaterRemindersRow />
         <SettingsRow
           title={t('settings.healthProfileTitle')}
           subtitle={t('settings.healthProfileSubtitle')}

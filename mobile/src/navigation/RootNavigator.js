@@ -201,9 +201,10 @@ export default function RootNavigator() {
     });
   }, [userId, switchProfileById]);
 
-  // Opens the Diet screen when the daily water-reminder notification is
-  // tapped (see notifications/waterNotifications.js - local-only, no server
-  // push registration needed for this one).
+  // Opens the Dashboard tab (where the water bottle tracker lives) when the
+  // daily water-reminder notification is tapped (see
+  // notifications/waterNotifications.js - local-only, no server push
+  // registration needed for this one).
   useEffect(() => {
     if (!userId) return undefined;
     return onWaterNotificationTap((screen) => {
