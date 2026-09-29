@@ -550,6 +550,41 @@ export async function retryMedicationScan(scanId) {
   return handleResponse(response);
 }
 
+export async function uploadMedicationPhoto(medicationId, file, source) {
+  const formData = new FormData();
+  if (file.file) {
+    formData.append('file', file.file, file.name);
+  } else {
+    formData.append('file', {
+      uri: file.uri,
+      name: file.name,
+      type: file.mimeType || 'application/octet-stream',
+    });
+  }
+  if (source) formData.append('source', source);
+
+  const response = await apiFetch(`/api/medications/${medicationId}/photos`, {
+    method: 'POST',
+    body: formData,
+    // Do not set Content-Type manually - see uploadReport() above.
+  });
+  return handleResponse(response);
+}
+
+export async function fetchMedicationPhotoUrl(medicationId, photoId) {
+  const response = await apiFetch(`/api/medications/${medicationId}/photos/${photoId}/file-url`);
+  const data = await handleResponse(response);
+  // Server-relative - see fetchReportFileUrl() above for why it's made
+  // absolute here rather than through apiFetch.
+  return `${API_BASE_URL}${data.url}`;
+}
+
+export async function deleteMedicationPhoto(medicationId, photoId) {
+  const response = await apiFetch(`/api/medications/${medicationId}/photos/${photoId}`, { method: 'DELETE' });
+  if (!response.ok) return handleResponse(response);
+  return null;
+}
+
 export async function fetchMedicationAlerts(state = 'active') {
   const response = await apiFetch(`/api/medications/alerts?state=${state}`);
   return handleResponse(response);

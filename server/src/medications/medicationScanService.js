@@ -58,10 +58,10 @@ async function processMedicationScan(scanId) {
         `INSERT INTO medications (
            user_id, scan_id, name, generic_name, dosage_amount, dosage_unit, form,
            frequency_per_day, times_of_day, route, instructions, prescribed_for,
-           prescribing_doctor, start_date, duration_days, end_date,
+           prescribing_doctor, prescribing_clinic, prescription_date, start_date, duration_days, end_date,
            quantity_dispensed, quantity_unit, expiry_date, ingredients_raw,
            source_type, status, extraction_confidence, needs_review, is_confirmed
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,'active',$22,$23,false)
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,'active',$23,$24,false)
          RETURNING id`,
         [
           scan.user_id,
@@ -77,6 +77,8 @@ async function processMedicationScan(scanId) {
           med.instructions,
           med.prescribed_for,
           documentInfo?.prescribingDoctor || null,
+          documentInfo?.pharmacyOrClinic || null,
+          documentInfo?.prescriptionDate || null,
           med.start_date,
           med.duration_days,
           computeEndDate(med.start_date, med.duration_days),
@@ -89,7 +91,18 @@ async function processMedicationScan(scanId) {
           med.needs_review,
         ]
       );
-      insertedIds.push(inserted[0].id);
+      const medicationId = inserted[0].id;
+      insertedIds.push(medicationId);
+
+      // Attach the scan's own photo as this medicine's first photo - see
+      // migration 029's comment on why this carries no encryption columns
+      // of its own and is instead served by decrypting the scan.
+      await pool.query(
+        `INSERT INTO medication_photos
+           (medication_id, user_id, scan_id, source, original_filename, mime_type, file_extension, file_size_bytes)
+         VALUES ($1, $2, $3, 'scan', $4, $5, $6, $7)`,
+        [medicationId, scan.user_id, scanId, scan.original_filename, scan.mime_type, scan.file_extension, scan.file_size_bytes]
+      );
     }
 
     await pool.query(

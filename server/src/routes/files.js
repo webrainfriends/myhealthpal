@@ -2,7 +2,7 @@ const express = require('express');
 const path = require('path');
 const pool = require('../db/pool');
 const config = require('../config');
-const { verifyReportDownloadToken } = require('../services/authService');
+const { verifyReportDownloadToken, verifyMedicationPhotoDownloadToken } = require('../services/authService');
 const { loadOwnedReport } = require('../security/reportAccess');
 const { loadFileBuffer } = require('../security/secureUpload');
 const audit = require('../security/auditLog');
@@ -79,6 +79,66 @@ router.get('/report/:id', async (req, res, next) => {
     res.set('X-Content-Type-Options', 'nosniff');
     // Rendered in a sandbox with no scripts, so a crafted file can't run
     // code on the app's origin.
+    res.set('Content-Security-Policy', "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; object-src 'self'");
+    res.set('Referrer-Policy', 'no-referrer');
+    res.end(buffer);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Serves a medication photo the same way /report/:id serves a report's
+// original file - a separately-scoped token (never the report one) minted
+// by GET /api/medications/:id/photos/:photoId/file-url. A 'scan' photo (see
+// migration 029) has no ciphertext of its own; it's served by decrypting
+// the medication_scans row it points at instead.
+router.get('/medication-photo/:id', async (req, res, next) => {
+  try {
+    let claims;
+    try {
+      claims = verifyMedicationPhotoDownloadToken(req.query.token);
+    } catch (err) {
+      return linkInvalid(res);
+    }
+    if (claims.photoId !== req.params.id) return linkInvalid(res);
+
+    const { rows } = await pool.query('SELECT * FROM medication_photos WHERE id = $1 AND user_id = $2', [
+      req.params.id,
+      claims.userId,
+    ]);
+    const photo = rows[0];
+    if (!photo) return linkInvalid(res);
+
+    let buffer;
+    try {
+      if (photo.encryption_version == null && photo.scan_id) {
+        const { rows: scanRows } = await pool.query('SELECT * FROM medication_scans WHERE id = $1 AND user_id = $2', [
+          photo.scan_id,
+          claims.userId,
+        ]);
+        if (!scanRows[0]) return linkInvalid(res);
+        buffer = await loadFileBuffer(scanRows[0], { purpose: 'medication_photo_view', resourceType: 'medication_scan' });
+      } else {
+        buffer = await loadFileBuffer(photo, { purpose: 'medication_photo_view', resourceType: 'medication_photo' });
+      }
+    } catch (err) {
+      logError(`Could not decrypt medication photo ${photo.id} for viewing`, err);
+      return res.status(404).json({ error: 'The original file is not available.' });
+    }
+
+    await audit.record({
+      eventType: 'MEDICATION_PHOTO_VIEWED',
+      userId: photo.user_id,
+      resourceType: 'medication_photo',
+      purpose: 'medication_photo_view',
+    });
+
+    res.set('Content-Type', photo.mime_type || 'application/octet-stream');
+    res.set('Content-Disposition', contentDisposition(photo.original_filename));
+    res.set('Content-Length', String(buffer.length));
+    res.set('Cache-Control', 'private, no-store, max-age=0');
+    res.set('Pragma', 'no-cache');
+    res.set('X-Content-Type-Options', 'nosniff');
     res.set('Content-Security-Policy', "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; object-src 'self'");
     res.set('Referrer-Policy', 'no-referrer');
     res.end(buffer);
