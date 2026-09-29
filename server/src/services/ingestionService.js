@@ -7,6 +7,7 @@ const { reconcileMeasurementDuplicatesForReport } = require('../extraction/dedup
 const { reconcileReportDuplicate } = require('../extraction/reportDedupService');
 const { refreshSummaryForReport } = require('../extraction/reportNarrativeService');
 const { importActivityTablesFrom } = require('./activityImportService');
+const { importGlucoseTablesFrom } = require('./glucoseImportService');
 const { loadFileBuffer } = require('../security/secureUpload');
 const { withTimeout } = require('../lib/withTimeout');
 const config = require('../config');
@@ -78,10 +79,20 @@ async function processReport(reportId) {
     // unmapped clinical result needing review. Pulled out here, before
     // extraction ever sees it, straight into activity_logs.
     let activityImportedDays = 0;
+    let glucoseImportedReadings = 0;
+    let glucoseDetectedTables = 0;
     if (document.contentKind === 'structured_table' && Array.isArray(document.tables)) {
       const { remainingTables, importedDays } = await importActivityTablesFrom(document.tables, report.user_id);
       document.tables = remainingTables;
       activityImportedDays = importedDays;
+
+      // Likewise a home glucometer export: each reading is kept (with its
+      // time and meal context) for the diabetes card's daily averages
+      // instead of being collapsed into one "latest Glucose" result.
+      const glucose = await importGlucoseTablesFrom(document.tables, report.user_id, reportId);
+      document.tables = glucose.remainingTables;
+      glucoseImportedReadings = glucose.importedReadings;
+      glucoseDetectedTables = glucose.detectedTables;
     }
 
     await clearUnconfirmedMeasurements(reportId);
@@ -89,7 +100,9 @@ async function processReport(reportId) {
     // activity export - skip the (provider) call entirely rather than
     // asking heuristic/Claude to extract parameters from zero tables.
     const skipExtraction =
-      document.contentKind === 'structured_table' && document.tables.length === 0 && activityImportedDays > 0;
+      document.contentKind === 'structured_table' &&
+      document.tables.length === 0 &&
+      (activityImportedDays > 0 || glucoseDetectedTables > 0);
     const { measurements, warnings, document: docInfo, ocrAttempted } = skipExtraction
       ? { measurements: [], warnings: [], document: null, ocrAttempted: false }
       : await runExtraction({
@@ -110,9 +123,18 @@ async function processReport(reportId) {
     // its own summary rather than generateSummary's "no parameters could be
     // extracted" message, which would misrepresent a successful extraction.
     const isImagingReport = Boolean(docInfo?.findings || docInfo?.impression || docInfo?.modality);
+    const glucoseNote =
+      glucoseDetectedTables > 0
+        ? `Imported ${glucoseImportedReadings} glucose meter reading${glucoseImportedReadings === 1 ? '' : 's'} - see the Diabetes card for daily averages.`
+        : null;
     const summary = [
       activityNote,
-      isImagingReport ? generateImagingSummary(docInfo) : generateSummary(measurements),
+      glucoseNote,
+      glucoseDetectedTables > 0 && skipExtraction
+        ? null
+        : isImagingReport
+          ? generateImagingSummary(docInfo)
+          : generateSummary(measurements),
     ]
       .filter(Boolean)
       .join(' ');

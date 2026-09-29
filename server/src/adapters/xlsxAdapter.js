@@ -3,7 +3,14 @@ const ExcelJS = require('exceljs');
 function flattenCellValue(cell) {
   const { value } = cell;
   if (value === null || value === undefined) return '';
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (value instanceof Date) {
+    // Keep the time of day when the cell has one (a glucometer or other
+    // per-reading export needs it); a plain date stays 'YYYY-MM-DD' exactly
+    // as before. ExcelJS reads the cell's wall-clock time as UTC, so the
+    // ISO string is the time as the user saw it in the spreadsheet.
+    const iso = value.toISOString();
+    return iso.slice(11, 19) === '00:00:00' ? iso.slice(0, 10) : `${iso.slice(0, 10)} ${iso.slice(11, 19)}`;
+  }
   if (typeof value === 'object') {
     if (value.text) return value.text;
     if (value.result !== undefined) return value.result;

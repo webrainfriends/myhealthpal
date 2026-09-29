@@ -92,6 +92,11 @@ function parseDate(value) {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
     return value.toISOString().slice(0, 10);
   }
+  // A leading ISO date (with or without a time) is already the calendar day
+  // - don't round-trip it through Date, which would read a zoneless time in
+  // the server's local zone and could shift the day.
+  const isoPrefix = /^(\d{4}-\d{2}-\d{2})(?:[T ]\d{2}:\d{2}(?::\d{2})?)?$/.exec(String(value).trim());
+  if (isoPrefix) return isoPrefix[1];
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
 }
