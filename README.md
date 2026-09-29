@@ -85,7 +85,7 @@ dedicated, isolated container sidesteps.
 | AWS region | `ap-southeast-1` |
 | SSH user | `ubuntu` |
 | App URL after deploy (web app + API) | `http://ec2-13-250-133-109.ap-southeast-1.compute.amazonaws.com:5250` |
-| App domain (web app + API) | `https://eyemyhealth.com` (+ `www.`) — once DNS points at the host; see step 7 |
+| App domain (web app + API) | `https://eyemyhealth.com` (+ `www.`) — once DNS points at the host; see step 8 |
 | Internal API port (nginx -> API) | `4010`, `127.0.0.1` only |
 | Web build root | `/var/www/myhealthpal-web` (rewritten every deploy) |
 
@@ -139,10 +139,28 @@ One-time setup before the first deploy:
    **HTTPS** (or `localhost`) and that same origin to be domain-verified -
    the plain `http://` URL this workflow deploys to does not satisfy that,
    so the button stays hidden until the site is served over HTTPS - use
-   the `https://eyemyhealth.com` origin from step 7 for this. Leave unset
+   the `https://eyemyhealth.com` origin from step 8 for this. Leave unset
    (or unmet) to simply not offer this option - guest sign-in always still
    works.
-7. **The app's domain, `eyemyhealth.com`.** Every deploy also serves the
+7. **Optional: offer the Gmail integration** (Settings -> Connected Health
+   Sources - import lab reports/medical documents straight out of Gmail).
+   This is a *separate* OAuth client from `GOOGLE_CLIENT_ID` above: create
+   another OAuth 2.0 **Web application** Client ID at [Google Cloud Console
+   -> APIs & Services -> Credentials](https://console.cloud.google.com/apis/credentials),
+   enable the **Gmail API** on the project, add the `gmail.readonly` scope,
+   and under **Authorized redirect URIs** register this deploy's callback
+   URL exactly - `https://eyemyhealth.com/api/integrations/gmail/callback`
+   once the domain (step 8) is live, or
+   `http://ec2-13-250-133-109.ap-southeast-1.compute.amazonaws.com:5250/api/integrations/gmail/callback`
+   otherwise. Add four repo secrets: `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`
+   (the client's actual secret - keep it private), `GMAIL_REDIRECT_URI` (the
+   same URL just registered above), and `GMAIL_TOKEN_ENCRYPTION_KEY` (any
+   random 32-byte hex value, e.g. `openssl rand -hex 32` - encrypts stored
+   Gmail refresh tokens at rest; once set, avoid changing it, since rotating
+   it makes already-connected users' stored tokens undecryptable and they'd
+   need to reconnect). Leave `GMAIL_CLIENT_ID` unset to simply not offer this
+   option - it's fully optional and unrelated to guest/Google/Apple sign-in.
+8. **The app's domain, `eyemyhealth.com`.** Every deploy also serves the
    app at `eyemyhealth.com` and `www.eyemyhealth.com` on the standard ports
    (80/443), in addition to — not instead of — the `:5250` URL above
    (`scripts/configure-domain.sh`; set `APP_DOMAIN` in

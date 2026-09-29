@@ -62,6 +62,17 @@
 #    Apple as a Return URL - it stays hidden client-side until both are true,
 #    which the plain http:// URL this workflow deploys to does not satisfy
 #    on its own.
+# 6. Optional: add repository secrets GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET,
+#    GMAIL_REDIRECT_URI, and GMAIL_TOKEN_ENCRYPTION_KEY to offer the Gmail
+#    integration (Settings -> Connected Health Sources - import lab reports
+#    from Gmail). This is a *separate* Google Cloud OAuth client from
+#    GOOGLE_CLIENT_ID above: create a Web application client with the
+#    Gmail API's gmail.readonly scope enabled, and register
+#    GMAIL_REDIRECT_URI (e.g. https://eyemyhealth.com/api/integrations/gmail/callback,
+#    or the :NGINX_PORT URL if APP_DOMAIN is off) as an exact-match redirect
+#    URI on it. GMAIL_CLIENT_SECRET and GMAIL_TOKEN_ENCRYPTION_KEY
+#    (`openssl rand -hex 32`) are real secrets. Leave GMAIL_CLIENT_ID unset
+#    to hide the feature entirely.
 #
 # server/.env (DB password, DATABASE_URL) and the myhealthpal-postgres
 # container are created once, directly on the host, the first time this
@@ -115,7 +126,7 @@ jobs:
           username: ${{ env.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: 15m
-          envs: APP_DIR,BRANCH,REPO_URL,APP_PORT,NGINX_PORT,APP_DOMAIN,LETSENCRYPT_EMAIL,PUBLIC_HOST,ANTHROPIC_API_KEY,GOOGLE_CLIENT_ID,APPLE_CLIENT_ID,KMS_KEY_ID,KMS_REGION
+          envs: APP_DIR,BRANCH,REPO_URL,APP_PORT,NGINX_PORT,APP_DOMAIN,LETSENCRYPT_EMAIL,PUBLIC_HOST,ANTHROPIC_API_KEY,GOOGLE_CLIENT_ID,APPLE_CLIENT_ID,GMAIL_CLIENT_ID,GMAIL_CLIENT_SECRET,GMAIL_REDIRECT_URI,GMAIL_TOKEN_ENCRYPTION_KEY,KMS_KEY_ID,KMS_REGION
           script_stop: true
           script: |
             set -euo pipefail
@@ -359,6 +370,35 @@ jobs:
             sed -i "s#^GOOGLE_CLIENT_ID=.*#GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}#" .env
             sed -i "s#^APPLE_CLIENT_ID=.*#APPLE_CLIENT_ID=${APPLE_CLIENT_ID:-}#" .env
 
+            # Gmail integration (Settings -> Connected Health Sources) - a
+            # separate Google Cloud OAuth client from GOOGLE_CLIENT_ID above
+            # (needs a client secret + redirect URI for the server-side
+            # offline-token flow). Rewritten every deploy so
+            # setting/rotating any of these takes effect on the next push;
+            # unset GMAIL_CLIENT_ID -> the feature stays hidden
+            # (GET /api/integrations/gmail/status reports configured:false).
+            grep -q '^GMAIL_CLIENT_ID=' .env || echo 'GMAIL_CLIENT_ID=' >> .env
+            grep -q '^GMAIL_CLIENT_SECRET=' .env || echo 'GMAIL_CLIENT_SECRET=' >> .env
+            grep -q '^GMAIL_REDIRECT_URI=' .env || echo 'GMAIL_REDIRECT_URI=' >> .env
+            sed -i "s#^GMAIL_CLIENT_ID=.*#GMAIL_CLIENT_ID=${GMAIL_CLIENT_ID:-}#" .env
+            sed -i "s#^GMAIL_CLIENT_SECRET=.*#GMAIL_CLIENT_SECRET=${GMAIL_CLIENT_SECRET:-}#" .env
+            sed -i "s#^GMAIL_REDIRECT_URI=.*#GMAIL_REDIRECT_URI=${GMAIL_REDIRECT_URI:-}#" .env
+
+            # Encrypts stored Gmail refresh tokens at rest - same reasoning
+            # as JWT_SECRET above: generate once (first deploy only) and
+            # never regenerate on our own, since rotating it would make
+            # every already-stored refresh token undecryptable (affected
+            # users would need to reconnect Gmail). If the repo secret is
+            # set, it wins every deploy - that means the operator is
+            # explicitly managing/rotating it themselves.
+            grep -q '^GMAIL_TOKEN_ENCRYPTION_KEY=' .env || echo 'GMAIL_TOKEN_ENCRYPTION_KEY=' >> .env
+            if [ -n "${GMAIL_TOKEN_ENCRYPTION_KEY:-}" ]; then
+              sed -i "s#^GMAIL_TOKEN_ENCRYPTION_KEY=.*#GMAIL_TOKEN_ENCRYPTION_KEY=${GMAIL_TOKEN_ENCRYPTION_KEY}#" .env
+            elif [ -z "$(grep '^GMAIL_TOKEN_ENCRYPTION_KEY=' .env | cut -d= -f2-)" ]; then
+              echo "[deploy] generating GMAIL_TOKEN_ENCRYPTION_KEY (first deploy only)"
+              sed -i "s#^GMAIL_TOKEN_ENCRYPTION_KEY=.*#GMAIL_TOKEN_ENCRYPTION_KEY=$(openssl rand -hex 32)#" .env
+            fi
+
             # Encrypted-vault settings (checked by the preflight above and
             # again by the app at startup). Rewritten every deploy.
             set_env() {
@@ -405,6 +445,10 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           APPLE_CLIENT_ID: ${{ secrets.APPLE_CLIENT_ID }}
+          GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
+          GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
+          GMAIL_REDIRECT_URI: ${{ secrets.GMAIL_REDIRECT_URI }}
+          GMAIL_TOKEN_ENCRYPTION_KEY: ${{ secrets.GMAIL_TOKEN_ENCRYPTION_KEY }}
           LETSENCRYPT_EMAIL: ${{ secrets.LETSENCRYPT_EMAIL }}
           # AWS KMS key (ARN, id or alias) that wraps every medical file's
           # data key - see docs/security/key-management.md. Listed above in
