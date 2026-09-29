@@ -12,7 +12,7 @@
       "infoPlist": {
         "NSBluetoothAlwaysUsageDescription": "MyHealthPal uses Bluetooth to sync readings from paired devices like glucose meters, blood pressure monitors, and smart scales.",
         "NSBluetoothPeripheralUsageDescription": "MyHealthPal uses Bluetooth to sync readings from paired devices like glucose meters, blood pressure monitors, and smart scales.",
-        "NSHealthShareUsageDescription": "MyHealthPal reads your step count from Apple Health to show it alongside your other activity.",
+        "NSHealthShareUsageDescription": "MyHealthPal reads your step count from Apple Health to show it alongside your other activity, and - only if you turn it on for a workout - your heart rate and active energy during that workout.",
         "NSMotionUsageDescription": "EyeMyHealth reads your phone's step counter to show your daily steps."
       }
     },
@@ -28,6 +28,8 @@
         "android.permission.BLUETOOTH_CONNECT",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.health.READ_STEPS",
+        "android.permission.health.READ_HEART_RATE",
+        "android.permission.health.READ_ACTIVE_CALORIES_BURNED",
         "android.permission.ACTIVITY_RECOGNITION"
       ]
     },

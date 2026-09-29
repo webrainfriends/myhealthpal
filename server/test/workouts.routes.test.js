@@ -132,3 +132,40 @@ test('phase 2: plans, tempo/symmetry adherence, comparison with the previous ses
     server.close();
   }
 });
+
+test('phase 4: heart rate, zone adherence and device energy on completion', async () => {
+  const { server, base } = await listen();
+  const post = (path, t, body) => fetch(`${base}/api/activity/workouts${path}`, { method: 'POST', headers: H(t), body: body ? JSON.stringify(body) : undefined }).then((r) => r.json().then((j) => [r.status, j]));
+  try {
+    const [badZone] = await post('/', tokenA, { exerciseId: 'squat', targetSets: 1, targetReps: 1, targetHrZoneLow: 150, targetHrZoneHigh: 120 });
+    assert.equal(badZone, 400);
+
+    const [, s] = await post('/', tokenA, { exerciseId: 'squat', targetSets: 1, targetReps: 1, targetHrZoneLow: 120, targetHrZoneHigh: 150 });
+    await post(`/${s.id}/start`, tokenA);
+    const t0 = Date.now();
+    const samples = [0, 30, 60, 90].map((sec, i) => ({ t: new Date(t0 + sec * 1000).toISOString(), bpm: [100, 130, 135, 100][i] }));
+    const [, done] = await post(`/${s.id}/complete`, tokenA, { activeSeconds: 600, heartRate: { source: 'apple_health', samples } });
+    assert.equal(done.calories.methodVersion, 'met-hr-v2');
+    assert.ok(done.calories.inputs.sources.includes('heart rate'));
+    assert.equal(done.heartRate.avgBpm, 116);
+    assert.deepEqual(done.heartRate.zone, { low: 120, high: 150 });
+    assert.ok(done.adherence.heartRateZoneTime > 0.5 && done.adherence.heartRateZoneTime < 0.8);
+    assert.match(done.summaryText, /heart rate/i);
+
+    // Without HR the v1 method is kept and no HR block appears.
+    const [, plain] = await post('/', tokenA, { exerciseId: 'squat', targetSets: 1, targetReps: 1 });
+    await post(`/${plain.id}/start`, tokenA);
+    const [, done2] = await post(`/${plain.id}/complete`, tokenA, { activeSeconds: 600 });
+    assert.equal(done2.calories.methodVersion, 'met-v1');
+    assert.equal(done2.heartRate, null);
+    assert.equal(done2.adherence.heartRateZoneTime, null);
+
+    // Device-reported energy wins over estimates.
+    const [, dev] = await post('/', tokenA, { exerciseId: 'squat', targetSets: 1, targetReps: 1 });
+    await post(`/${dev.id}/start`, tokenA);
+    const [, done3] = await post(`/${dev.id}/complete`, tokenA, { activeSeconds: 600, deviceActiveKcal: 100 });
+    assert.deepEqual([done3.calories.low, done3.calories.high], [90, 110]);
+  } finally {
+    server.close();
+  }
+});

@@ -6,6 +6,15 @@ import { colors, radii, spacing, typography } from '../../theme/theme';
 import { fetchWorkoutExercises } from '../../api/client';
 import { useT } from '../../i18n/I18nContext';
 import { getSetting, setSetting } from '../../utils/localSettings';
+import { isWorkoutHealthAvailable, requestWorkoutHealthAccess } from '../../health/workoutHealth';
+import { showAlert } from '../../utils/alert';
+
+// Optional target heart-rate zones (bpm). Generic ranges - not personalised.
+const ZONES = [
+  { key: 'zoneEasy', low: 100, high: 130 },
+  { key: 'zoneCardio', low: 130, high: 160 },
+  { key: 'zoneHard', low: 160, high: 185 },
+];
 import { LEVELS } from '../../workout/engine/coachThrottle';
 
 function Chip({ label, selected, onPress }) {
@@ -51,6 +60,24 @@ export default function WorkoutSetupScreen({ navigation }) {
   const [level, setLevel] = useState(() => getSetting('workout.coachLevel', 'full'));
   const [tempoOn, setTempoOn] = useState(false);
   const [recordVideo, setRecordVideo] = useState(false);
+  const [useHeartRate, setUseHeartRate] = useState(false);
+  const [zone, setZone] = useState(null);
+  const healthOk = isWorkoutHealthAvailable();
+
+  // The OS permission prompt appears only now, when the user opts in.
+  async function toggleHeartRate() {
+    if (useHeartRate) {
+      setUseHeartRate(false);
+      setZone(null);
+      return;
+    }
+    try {
+      await requestWorkoutHealthAccess();
+      setUseHeartRate(true);
+    } catch (err) {
+      showAlert(t('workout.hrUnavailable'), err.message);
+    }
+  }
   const [down, setDown] = useState(3);
   const [up, setUp] = useState(2);
   const chooseLevel = (l) => {
@@ -98,6 +125,18 @@ export default function WorkoutSetupScreen({ navigation }) {
             <Chip key={l} label={t(`workout.${LEVEL_KEYS[l]}`)} selected={l === level} onPress={() => chooseLevel(l)} />
           ))}
         </View>
+        {healthOk && (
+          <>
+            <Chip label={t('workout.useHeartRate')} selected={useHeartRate} onPress={toggleHeartRate} />
+            {useHeartRate && (
+              <View style={styles.chips}>
+                {ZONES.map((z) => (
+                  <Chip key={z.key} label={`${t(`workout.${z.key}`)} ${z.low}-${z.high}`} selected={zone?.key === z.key} onPress={() => setZone(zone?.key === z.key ? null : z)} />
+                ))}
+              </View>
+            )}
+          </>
+        )}
         <Chip label={t('workout.recordThis')} selected={recordVideo} onPress={() => setRecordVideo((v) => !v)} />
         <Text style={typography.bodySecondary}>{t('workout.disclaimer')}</Text>
         <PrimaryButton
@@ -112,6 +151,8 @@ export default function WorkoutSetupScreen({ navigation }) {
               targetRestSeconds: rest,
               coachLevel: level,
               recordVideo,
+              useHeartRate,
+              hrZone: zone ? { low: zone.low, high: zone.high } : undefined,
               tempo: tempoOn && !isHold ? { down, pause: 0, up } : undefined,
             })
           }

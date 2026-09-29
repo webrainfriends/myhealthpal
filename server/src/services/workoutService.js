@@ -2,6 +2,7 @@ const pool = require('../db/pool');
 const { estimateCalories } = require('../workout/calorieEstimator');
 const { summarize } = require('../workout/summaryProvider');
 const analysis = require('../workout/analysis');
+const hr = require('../workout/heartRate');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MODEL_VERSION = 'pose-v1';
@@ -54,15 +55,20 @@ async function createSession(userId, body = {}, link = {}) {
   const rest = body.targetRestSeconds == null ? null : int(body.targetRestSeconds, 0, 1800);
   const tempo = [body.tempoDownSeconds, body.tempoPauseSeconds, body.tempoUpSeconds].map(tempoVal);
   if (tempo.includes(undefined)) throw new WorkoutError(400, 'Tempo values must be between 0 and 20 seconds.');
+  const zoneLow = body.targetHrZoneLow == null ? null : int(body.targetHrZoneLow, 40, 220);
+  const zoneHigh = body.targetHrZoneHigh == null ? null : int(body.targetHrZoneHigh, 40, 230);
+  if ((body.targetHrZoneLow != null && zoneLow == null) || (body.targetHrZoneHigh != null && zoneHigh == null) || (zoneLow != null && zoneHigh != null && zoneLow >= zoneHigh)) {
+    throw new WorkoutError(400, 'Heart-rate zone must be a valid low/high range in bpm.');
+  }
   const mode = body.exerciseMode === 'auto' ? 'auto' : 'selected';
   const { rows } = await pool.query(
     `INSERT INTO workout_session (user_id, exercise_id, exercise_mode, detection_confidence, target_sets, target_reps,
                                   target_hold_seconds, target_rest_seconds, model_version,
                                   target_tempo_down_seconds, target_tempo_pause_seconds, target_tempo_up_seconds,
-                                  workout_plan_id, plan_run_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+                                  workout_plan_id, plan_run_id, target_hr_zone_low, target_hr_zone_high)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
     [userId, ex[0].id, mode, num01(body.detectionConfidence), targetSets, targetReps, targetHold, rest, MODEL_VERSION,
-      ...tempo, link.planId || null, link.planRunId || null]
+      ...tempo, link.planId || null, link.planRunId || null, zoneLow, zoneHigh]
   );
   return rows[0];
 }
@@ -178,7 +184,7 @@ async function previousComparison(session, current) {
   });
 }
 
-async function loadMetrics(session, exercise) {
+async function loadMetrics(session, exercise, heart = { samples: [], summary: null }) {
   const [{ rows: sets }, { rows: reps }, { rows: events }] = await Promise.all([
     pool.query('SELECT * FROM workout_set WHERE workout_session_id = $1 ORDER BY set_number', [session.id]),
     pool.query(
@@ -227,6 +233,7 @@ async function loadMetrics(session, exercise) {
     restAdherence: rests.length && session.target_rest_seconds
       ? Math.max(0, 1 - Math.abs(avg(rests) - session.target_rest_seconds) / session.target_rest_seconds) : null,
     tempoAdherence: analysis.tempoAdherence(reps, tempoTarget),
+    heartRateZoneTime: hr.zoneTimeRatio(heart.samples, session.target_hr_zone_low, session.target_hr_zone_high),
     symmetry: analysis.symmetry(reps),
     romFirstSet: firstSetRom,
     romLastSet: lastSetRom,
@@ -249,6 +256,8 @@ async function loadMetrics(session, exercise) {
     romLastSetPct: pct(lastSetRom),
     tempo: actualTempo && { planned: tempoTarget, actual: actualTempo },
     symmetryPct: pct(analysis.symmetry(reps)),
+    heartRate: heart.summary,
+    heartRateZoneTimePct: pct(hr.zoneTimeRatio(heart.samples, session.target_hr_zone_low, session.target_hr_zone_high)),
     trend,
     comparison,
     topFormIssues: events.slice(0, 3).map((e) => ({ rule: e.rule_code, severity: e.severity, count: e.count })),
@@ -269,16 +278,27 @@ async function completeSession(userId, id, body = {}) {
   const { rows: w } = await pool.query(
     'SELECT weight_kg FROM user_weight_entries WHERE user_id = $1 ORDER BY recorded_at DESC LIMIT 1', [userId]
   ).catch(() => ({ rows: [] }));
-  const calories = estimateCalories({ metValue: exercise.met_value, weightKg: w[0]?.weight_kg, activeSeconds });
-  const { metrics, adherence } = await loadMetrics(session, exercise);
+  // Heart rate is opt-in and arrives from the phone's health store; samples
+  // are validated, downsampled and stored so the estimate can be recomputed.
+  const samples = hr.cleanSamples(body.heartRate?.samples);
+  const heart = { samples, summary: hr.summarize(samples) };
+  const deviceKcal = Number.isFinite(Number(body.deviceActiveKcal)) && Number(body.deviceActiveKcal) > 0 && Number(body.deviceActiveKcal) < 5000
+    ? Math.round(Number(body.deviceActiveKcal)) : null;
+  const calories = estimateCalories({
+    metValue: exercise.met_value, weightKg: w[0]?.weight_kg, activeSeconds,
+    heartRate: heart.summary, deviceActiveKcal: deviceKcal,
+  });
+  const { metrics, adherence } = await loadMetrics(session, exercise, heart);
   const summary = await summarize(metrics, { userId });
 
   await pool.query(
     `UPDATE workout_session SET status = 'completed', completed_at = NOW(), active_seconds = $2, elapsed_seconds = $3,
        estimated_calories_low = $4, estimated_calories_high = $5, calorie_confidence = $6, calorie_method_version = $7,
-       calorie_inputs_json = $8, adherence_json = $9, summary_json = $10 WHERE id = $1`,
+       calorie_inputs_json = $8, adherence_json = $9, summary_json = $10, hr_json = $11, device_active_kcal = $12 WHERE id = $1`,
     [id, activeSeconds, elapsedSeconds, calories.low, calories.high, calories.confidence, calories.methodVersion,
-      JSON.stringify(calories.inputs), JSON.stringify(adherence), JSON.stringify({ metrics, text: summary.text, source: summary.source })]
+      JSON.stringify(calories.inputs), JSON.stringify(adherence), JSON.stringify({ metrics, text: summary.text, source: summary.source }),
+      samples.length ? JSON.stringify({ source: typeof body.heartRate?.source === 'string' ? body.heartRate.source.slice(0, 32) : null, summary: heart.summary, samples }) : null,
+      deviceKcal]
   );
   return getSummary(userId, id);
 }
@@ -300,6 +320,7 @@ async function getSummary(userId, id) {
         ? { down: num(s.target_tempo_down_seconds), pause: num(s.target_tempo_pause_seconds), up: num(s.target_tempo_up_seconds) } : null,
     },
     planRunId: s.plan_run_id,
+    heartRate: s.hr_json ? { source: s.hr_json.source, ...s.hr_json.summary, zone: s.target_hr_zone_low != null ? { low: s.target_hr_zone_low, high: s.target_hr_zone_high } : null } : null,
     adherence: s.adherence_json,
     calories: s.estimated_calories_low == null ? null : {
       low: s.estimated_calories_low, high: s.estimated_calories_high, confidence: s.calorie_confidence,
@@ -330,7 +351,10 @@ function cleanPlanExercise(e, index) {
   if (!sets) throw new WorkoutError(400, 'Each plan exercise needs targetSets (1-20).');
   const tempo = [e.tempoDownSeconds, e.tempoPauseSeconds, e.tempoUpSeconds].map(tempoVal);
   if (tempo.includes(undefined)) throw new WorkoutError(400, 'Tempo values must be between 0 and 20 seconds.');
+  const zone = [e.targetHrZoneLow == null ? null : int(e.targetHrZoneLow, 40, 220), e.targetHrZoneHigh == null ? null : int(e.targetHrZoneHigh, 40, 230)];
+  if ((zone[0] == null) !== (zone[1] == null) || (zone[0] != null && zone[0] >= zone[1])) throw new WorkoutError(400, 'Heart-rate zone must be a valid low/high range in bpm.');
   return {
+    zone,
     sequence: index + 1,
     exerciseId: e.exerciseId,
     sets,
@@ -361,9 +385,10 @@ async function createPlan(userId, body = {}) {
     for (const c of cleaned) {
       await client.query(
         `INSERT INTO workout_plan_exercise (workout_plan_id, exercise_id, sequence, target_sets, target_reps, target_hold_seconds,
-                                            target_rest_seconds, target_tempo_down_seconds, target_tempo_pause_seconds, target_tempo_up_seconds)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-        [rows[0].id, c.exerciseId, c.sequence, c.sets, c.reps, c.hold, c.rest, ...c.tempo]
+                                            target_rest_seconds, target_tempo_down_seconds, target_tempo_pause_seconds, target_tempo_up_seconds,
+                                            target_hr_zone_low, target_hr_zone_high)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+        [rows[0].id, c.exerciseId, c.sequence, c.sets, c.reps, c.hold, c.rest, ...c.tempo, ...c.zone]
       );
     }
     await client.query('COMMIT');
@@ -411,6 +436,7 @@ async function runPlan(userId, id) {
       exerciseId: e.exercise_id, targetSets: e.target_sets, targetReps: e.target_reps, targetHoldSeconds: e.target_hold_seconds,
       targetRestSeconds: e.target_rest_seconds, tempoDownSeconds: e.target_tempo_down_seconds,
       tempoPauseSeconds: e.target_tempo_pause_seconds, tempoUpSeconds: e.target_tempo_up_seconds,
+      targetHrZoneLow: e.target_hr_zone_low, targetHrZoneHigh: e.target_hr_zone_high,
     }, { planId: plan.id, planRunId: run }));
   }
   return { planRunId: run, sessions };

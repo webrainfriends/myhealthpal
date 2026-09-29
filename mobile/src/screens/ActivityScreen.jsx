@@ -6,7 +6,7 @@ import ActivityRings from '../components/ActivityRings';
 import PrimaryButton from '../components/PrimaryButton';
 import SpeakButton from '../components/SpeakButton';
 import { activityRingColors, cardShadow, colors, radii, spacing, typography } from '../theme/theme';
-import { fetchActivitySummary, logActivity } from '../api/client';
+import { fetchActivitySummary, fetchWorkoutHistory, logActivity } from '../api/client';
 import { useT } from '../i18n/I18nContext';
 import { showAlert } from '../utils/alert';
 import { parseCalendarDate } from '../utils/date';
@@ -94,8 +94,12 @@ export default function ActivityScreen() {
   const [summary, setSummary] = useState(null);
   const [draft, setDraft] = useState({ steps: '', exercise_minutes: '', stand_hours: '' });
   const [busy, setBusy] = useState(false);
+  const [workouts, setWorkouts] = useState([]);
 
   const load = useCallback(async () => {
+    // Coach sessions are listed alongside daily activity but never added to
+    // the ring totals (avoids double counting with wearable data).
+    fetchWorkoutHistory().then((d) => setWorkouts((d.workouts || []).slice(0, 3))).catch(() => {});
     try {
       const data = await fetchActivitySummary(14);
       setSummary(data);
@@ -151,6 +155,19 @@ export default function ActivityScreen() {
           <Text style={typography.body}>{t('workout.entry')}</Text>
           <Text style={typography.bodySecondary}>{t('workout.entryHint')}</Text>
         </TouchableOpacity>
+        {workouts.length > 0 && (
+          <View style={styles.coachEntry}>
+            <Text style={typography.body}>{t('workout.recentWorkouts')}</Text>
+            {workouts.map((w) => (
+              <TouchableOpacity key={w.id} onPress={() => navigation.navigate('WorkoutSummary', { workoutId: w.id })} accessibilityRole="button">
+                <Text style={typography.bodySecondary}>
+                  {new Date(w.completed_at).toLocaleDateString()} · {w.exercise_name} · {w.valid_reps} reps
+                  {w.estimated_calories_low != null ? ` · ${w.estimated_calories_low}-${w.estimated_calories_high} kcal` : ''}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
         <View style={[styles.heroCard, cardShadow]}>
           <View style={styles.heroTopRow}>
             {!isCurrentToday && current.date ? (

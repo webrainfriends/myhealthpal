@@ -33,6 +33,10 @@ function templateSummary(m) {
     const plan = m.tempo.planned && m.tempo.planned.down != null ? ` against a planned ${m.tempo.planned.down}s down / ${m.tempo.planned.up ?? '-'}s up` : '';
     parts.push(`Average tempo was ${a.downSeconds}s down${a.upSeconds != null ? ` / ${a.upSeconds}s up` : ''}${plan}.`);
   }
+  if (m.heartRate) {
+    parts.push(`Average heart rate was ${m.heartRate.avgBpm} bpm (max ${m.heartRate.maxBpm}).`);
+    if (m.heartRateZoneTimePct != null) parts.push(`You spent ${m.heartRateZoneTimePct}% of the workout in your target heart-rate zone.`);
+  }
   if (m.symmetryPct != null) parts.push(`Left/right consistency was ${m.symmetryPct}%.`);
   if (m.trend) {
     parts.push(m.trend.fatigueDetected
