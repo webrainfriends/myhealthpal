@@ -386,6 +386,7 @@ const styles = StyleSheet.create({
   },
   rowMain: {
     flex: 1,
+    minWidth: 0,
     gap: 2,
   },
   rowNameLine: {

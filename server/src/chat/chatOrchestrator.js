@@ -76,6 +76,17 @@ function dedupeEvidence(evidence) {
   });
 }
 
+function providerErrorMessage(err) {
+  const status = Number(err.status);
+  if (status === 401 || status === 403 || status === 503 || /credential/i.test(err.message || '')) {
+    return 'The AI assistant is temporarily unavailable due to a service configuration issue. Please try again later.';
+  }
+  if (status === 429 || status === 529) {
+    return 'The AI assistant is busy right now. Please try again in a moment.';
+  }
+  return `Sorry, I ran into a problem answering that: ${err.message}`;
+}
+
 // One conversational turn: safety check, then a bounded tool-calling loop
 // against the user's own data (scoped server-side, never by model input),
 // ending in a final grounded answer plus the structured evidence IDs that
@@ -117,7 +128,12 @@ async function runTurn({ userId, sessionId, userMessage, priorMessages, language
         };
       }
       await logEvent({ sessionId, eventType: 'error', provider: provider.name, success: false });
-      return { answer: `Sorry, I ran into a problem answering that: ${err.message}`, evidence: [] };
+      // The raw provider message (e.g. "503 credential validation failed")
+      // is an operator problem, not something to show a user - log it and
+      // give the user a plain explanation instead.
+      // eslint-disable-next-line no-console
+      console.error('Chat provider error:', err.status || '', err.message);
+      return { answer: providerErrorMessage(err), evidence: [] };
     }
 
     await logEvent({
