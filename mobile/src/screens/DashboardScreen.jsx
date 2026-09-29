@@ -146,8 +146,14 @@ export default function DashboardScreen({ navigation }) {
   }, []);
 
   const load = useCallback(async () => {
-    try {
-      const [data, organData, customCardData, activityData, dietData, devicesData] = await Promise.all([
+    // Promise.all rejects (and skips every setter below, including ones
+    // whose own call already succeeded) the instant any ONE of these five
+    // calls fails - one flaky/erroring endpoint used to blank out the
+    // entire dashboard (organ grid, insights/attention counts, tracked
+    // metrics, activity, diet - everything), not just its own card.
+    // allSettled lets each section populate independently of the others.
+    const [snapshotResult, organResult, customCardResult, activityResult, dietResult, devicesResult, retestResult, waterResult] =
+      await Promise.allSettled([
         fetchDashboardSnapshot(),
         fetchOrganHealth(),
         // Results a report contained that matched nothing in the Health
@@ -161,39 +167,9 @@ export default function DashboardScreen({ navigation }) {
         fetchActivitySummary(7),
         fetchDietSummary(1),
         fetchPairedDevices(),
+        fetchRetestPlans(),
+        fetchWaterSummary(),
       ]);
-      setSnapshot(data);
-      setOrgans(organData.organs);
-      setCustomCards(customCardData.cards);
-      setActivity({ current: activityData.current, isCurrentToday: activityData.isCurrentToday });
-      setDiet(dietData);
-      setPairedDeviceCount(devicesData.devices.length);
-    } catch (err) {
-      console.warn('Failed to load dashboard', err.message);
-    } finally {
-      setLoading(false);
-    // Promise.all rejects (and skips every setter below, including ones
-    // whose own call already succeeded) the instant any ONE of these five
-    // calls fails - one flaky/erroring endpoint used to blank out the
-    // entire dashboard (organ grid, insights/attention counts, tracked
-    // metrics, activity, diet - everything), not just its own card.
-    // allSettled lets each section populate independently of the others.
-    const [snapshotResult, organResult, customCardResult, activityResult, dietResult, retestResult, waterResult] = await Promise.allSettled([
-      fetchDashboardSnapshot(),
-      fetchOrganHealth(),
-      // Results a report contained that matched nothing in the Health
-      // Parameter Registry - grouped into their own ad-hoc cards (see
-      // customCardService.js) so nothing extracted ever goes unshown.
-      fetchCustomCards(),
-      // A window wide enough that the card can fall back to the most
-      // recently logged day (see /api/activity/summary) when nothing is
-      // logged for today itself - a wearable export upload is common and
-      // rarely includes literally today.
-      fetchActivitySummary(7),
-      fetchDietSummary(1),
-      fetchRetestPlans(),
-      fetchWaterSummary(),
-    ]);
 
     if (snapshotResult.status === 'fulfilled') setSnapshot(snapshotResult.value);
     else console.warn('Failed to load dashboard snapshot', snapshotResult.reason?.message);
@@ -212,6 +188,9 @@ export default function DashboardScreen({ navigation }) {
 
     if (dietResult.status === 'fulfilled') setDiet(dietResult.value);
     else console.warn('Failed to load diet summary', dietResult.reason?.message);
+
+    if (devicesResult.status === 'fulfilled') setPairedDeviceCount(devicesResult.value.devices.length);
+    else console.warn('Failed to load paired devices', devicesResult.reason?.message);
 
     if (retestResult.status === 'fulfilled') setRetestPlans(retestResult.value.plans);
     else console.warn('Failed to load retest plans', retestResult.reason?.message);
