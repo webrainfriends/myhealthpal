@@ -4,12 +4,13 @@ import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import PrimaryButton from '../../components/PrimaryButton';
 import { cardShadow, colors, radii, spacing, typography } from '../../theme/theme';
-import { fetchWorkoutHistory } from '../../api/client';
+import { fetchWorkoutAnalytics, fetchWorkoutHistory } from '../../api/client';
 import { useT } from '../../i18n/I18nContext';
 
 export default function WorkoutCoachHomeScreen({ navigation }) {
   const t = useT();
   const [history, setHistory] = useState(null);
+  const [analytics, setAnalytics] = useState([]);
 
   useFocusEffect(
     useCallback(() => {
@@ -17,6 +18,9 @@ export default function WorkoutCoachHomeScreen({ navigation }) {
       fetchWorkoutHistory()
         .then((data) => active && setHistory(data.workouts))
         .catch(() => active && setHistory([]));
+      fetchWorkoutAnalytics()
+        .then((data) => active && setAnalytics(data.exercises))
+        .catch(() => {});
       return () => {
         active = false;
       };
@@ -29,6 +33,17 @@ export default function WorkoutCoachHomeScreen({ navigation }) {
         <Text style={typography.bodySecondary}>{t('workout.disclaimer')}</Text>
         <PrimaryButton title={t('workout.startWorkout')} onPress={() => navigation.navigate('WorkoutSetup')} />
         <PrimaryButton variant="secondary" title={t('workout.myPlans')} onPress={() => navigation.navigate('WorkoutPlans')} />
+        {analytics.length > 0 && (
+          <View style={styles.card}>
+            <Text style={typography.heading}>{t('workout.progressTitle')}</Text>
+            {analytics.map((a) => (
+              <Text key={a.exerciseId} style={typography.bodySecondary}>
+                {t('workout.progressLine', { name: a.name, sessions: a.sessions, reps: a.totalValidReps, best: a.bestSetReps ?? '-' })}
+                {a.direction ? ` · ${t(`workout.dir${a.direction[0].toUpperCase()}${a.direction.slice(1)}`)}` : ''}
+              </Text>
+            ))}
+          </View>
+        )}
         <Text style={typography.heading}>{t('workout.recent')}</Text>
         {history && history.length === 0 && <Text style={typography.bodySecondary}>{t('workout.noHistory')}</Text>}
         {(history || []).map((w) => (

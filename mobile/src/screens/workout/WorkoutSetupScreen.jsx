@@ -3,7 +3,8 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 import PrimaryButton from '../../components/PrimaryButton';
 import { colors, radii, spacing, typography } from '../../theme/theme';
-import { fetchWorkoutExercises } from '../../api/client';
+import { fetchWorkoutExercises, fetchWorkoutProgression } from '../../api/client';
+import { hasExercise } from '../../workout/engine/exerciseConfigs';
 import { useT } from '../../i18n/I18nContext';
 import { getSetting, setSetting } from '../../utils/localSettings';
 import { isWorkoutHealthAvailable, requestWorkoutHealthAccess } from '../../health/workoutHealth';
@@ -60,6 +61,8 @@ export default function WorkoutSetupScreen({ navigation }) {
   const [level, setLevel] = useState(() => getSetting('workout.coachLevel', 'full'));
   const [tempoOn, setTempoOn] = useState(false);
   const [recordVideo, setRecordVideo] = useState(false);
+  const [auto, setAuto] = useState(false);
+  const [suggestion, setSuggestion] = useState(null);
   const [useHeartRate, setUseHeartRate] = useState(false);
   const [zone, setZone] = useState(null);
   const healthOk = isWorkoutHealthAvailable();
@@ -86,27 +89,61 @@ export default function WorkoutSetupScreen({ navigation }) {
   };
 
   useEffect(() => {
-    fetchWorkoutExercises().then((d) => setExercises(d.exercises)).catch(() => {});
+    // Only exercises this app version knows how to track are offered.
+    fetchWorkoutExercises().then((d) => setExercises(d.exercises.filter((e) => hasExercise(e.id)))).catch(() => {});
   }, []);
 
+  // Progression suggestion from past sessions of the chosen exercise.
+  useEffect(() => {
+    setSuggestion(null);
+    if (auto) return;
+    let alive = true;
+    fetchWorkoutProgression(exerciseId).then((d) => alive && setSuggestion(d.suggestion)).catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [exerciseId, auto]);
+
   const selected = exercises.find((e) => e.id === exerciseId);
-  const isHold = !!selected?.is_hold;
+  const isHold = !auto && !!selected?.is_hold;
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={typography.heading}>{t('workout.exercise')}</Text>
         <View style={styles.chips}>
+          <Chip label={t('workout.autoDetect')} selected={auto} onPress={() => setAuto((v) => !v)} />
           {exercises.map((e) => (
-            <Chip key={e.id} label={e.name} selected={e.id === exerciseId} onPress={() => setExerciseId(e.id)} />
+            <Chip key={e.id} label={e.name} selected={!auto && e.id === exerciseId} onPress={() => { setAuto(false); setExerciseId(e.id); }} />
           ))}
         </View>
-        <Stepper label={t('workout.sets')} value={sets} onChange={setSets} min={1} max={10} />
-        {isHold ? (
-          <Stepper label={t('workout.holdSeconds')} value={hold} onChange={setHold} min={10} max={300} step={5} />
-        ) : (
-          <Stepper label={t('workout.reps')} value={reps} onChange={setReps} min={1} max={50} />
+        {auto && <Text style={typography.bodySecondary}>{t('workout.autoDetectHint')}</Text>}
+        {suggestion && (
+          <View style={styles.suggestion}>
+            <Text style={typography.body}>
+              {t('workout.suggested', {
+                sets: suggestion.targets.sets,
+                amount: suggestion.targets.holdSeconds != null
+                  ? t('workout.suggestedAmountHold', { seconds: suggestion.targets.holdSeconds })
+                  : t('workout.suggestedAmountReps', { reps: suggestion.targets.reps }),
+              })}
+            </Text>
+            <Text style={typography.bodySecondary}>{suggestion.reason}</Text>
+            <Chip
+              label={t('workout.useSuggestion')}
+              selected={false}
+              onPress={() => {
+                setSets(suggestion.targets.sets);
+                if (suggestion.targets.holdSeconds != null) setHold(suggestion.targets.holdSeconds);
+                else setReps(suggestion.targets.reps);
+                setRest(suggestion.targets.restSeconds);
+              }}
+            />
+          </View>
         )}
+        <Stepper label={t('workout.sets')} value={sets} onChange={setSets} min={1} max={10} />
+        {(isHold || auto) && <Stepper label={t('workout.holdSeconds')} value={hold} onChange={setHold} min={10} max={300} step={5} />}
+        {!isHold && <Stepper label={t('workout.reps')} value={reps} onChange={setReps} min={1} max={50} />}
         <Stepper label={t('workout.restSeconds')} value={rest} onChange={setRest} min={0} max={300} step={15} />
         {!isHold && (
           <>
@@ -141,13 +178,13 @@ export default function WorkoutSetupScreen({ navigation }) {
         <Text style={typography.bodySecondary}>{t('workout.disclaimer')}</Text>
         <PrimaryButton
           title={t('workout.continueToCamera')}
-          disabled={!selected}
+          disabled={!selected && !auto}
           onPress={() =>
             navigation.navigate('LiveWorkout', {
-              exerciseId,
+              exerciseId: auto ? 'auto' : exerciseId,
               targetSets: sets,
               targetReps: isHold ? undefined : reps,
-              targetHoldSeconds: isHold ? hold : undefined,
+              targetHoldSeconds: isHold || auto ? hold : undefined,
               targetRestSeconds: rest,
               coachLevel: level,
               recordVideo,
@@ -169,6 +206,7 @@ const styles = StyleSheet.create({
   chip: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radii.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipTextSelected: { color: colors.onBrand },
+  suggestion: { backgroundColor: colors.primaryMuted, borderRadius: radii.lg, padding: spacing.md, gap: spacing.sm },
   stepperRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   stepBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primaryMuted, alignItems: 'center', justifyContent: 'center' },

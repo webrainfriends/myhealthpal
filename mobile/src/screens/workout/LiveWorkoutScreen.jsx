@@ -5,7 +5,9 @@ import PrimaryButton from '../../components/PrimaryButton';
 import { colors, radii, spacing, typography } from '../../theme/theme';
 import { createWorkout, startWorkout } from '../../api/client';
 import { useT } from '../../i18n/I18nContext';
-import { getExercise } from '../../workout/engine/exerciseConfigs';
+import { EXERCISES, getExercise } from '../../workout/engine/exerciseConfigs';
+import { detectExercise, MIN_FRAMES, readyForDetection } from '../../workout/engine/exerciseDetector';
+import { fatigueCheck } from '../../workout/engine/fatigue';
 import { createWorkoutRunner } from '../../workout/engine/workoutRunner';
 import { missingLandmarks } from '../../workout/engine/measure';
 import { getCameraPermission, getPoseCameraComponent, isPoseTrackingAvailable, requestCameraPermission } from '../../workout/poseNative';
@@ -25,16 +27,26 @@ const PART_LABELS = { HIP: 'hips', KNEE: 'knees', ANKLE: 'ankles', SHOULDER: 'sh
 export default function LiveWorkoutScreen({ route, navigation }) {
   const t = useT();
   const cfg = route.params;
-  const exercise = useMemo(() => getExercise(cfg.exerciseId), [cfg.exerciseId]);
+  const isAuto = cfg.exerciseId === 'auto';
+  // In auto-detect mode the exercise is unknown until the first few seconds
+  // of movement have been analysed on-device.
+  const [exId, setExId] = useState(isAuto ? null : cfg.exerciseId);
+  const exercise = useMemo(() => (exId ? getExercise(exId) : null), [exId]);
+  const detected = useRef(null); // { id, confidence } once auto-detect settled
+  const detectFrames = useRef([]);
+  const restBonus = useRef(0);
+  const [fatigueNote, setFatigueNote] = useState(false);
   const runner = useMemo(
-    () => createWorkoutRunner({ exercise, targetSets: cfg.targetSets, targetReps: cfg.targetReps, targetHoldSeconds: cfg.targetHoldSeconds, targetRestSeconds: cfg.targetRestSeconds, tempo: cfg.tempo }),
+    () => (exercise
+      ? createWorkoutRunner({ exercise, targetSets: cfg.targetSets, targetReps: cfg.targetReps ?? 10, targetHoldSeconds: cfg.targetHoldSeconds ?? 30, targetRestSeconds: cfg.targetRestSeconds, tempo: cfg.tempo })
+      : null),
     [exercise, cfg]
   );
   const coach = useLiveCoach(cfg.coachLevel);
 
   const [permission, setPermission] = useState('checking');
   const [stage, setStage] = useState('setup'); // setup | live | paused | rest | saving
-  const [missing, setMissing] = useState(exercise.required.map((n) => n.replace(/^(LEFT|RIGHT)_/, '')));
+  const [missing, setMissing] = useState((exercise ? exercise.required : ['SHOULDER', 'HIP']).map((n) => n.replace(/^(LEFT|RIGHT)_/, '')));
   const [view, setView] = useState({ valid: 0, partial: 0, invalid: 0, heldSeconds: 0, setNumber: 1, paused: true });
   const [cue, setCue] = useState(null);
   const [lastTempo, setLastTempo] = useState(null);
@@ -64,7 +76,7 @@ export default function LiveWorkoutScreen({ route, navigation }) {
   useEffect(() => {
     if (stage !== 'rest') return undefined;
     const id = setInterval(() => {
-      const left = Math.max(0, runner.targetRestSeconds - Math.round((Date.now() - runner.restStartedAt) / 1000));
+      const left = Math.max(0, runner.targetRestSeconds + restBonus.current - Math.round((Date.now() - runner.restStartedAt) / 1000));
       setRestLeft(left);
       if (left === 0) resumeAfterRest();
     }, 500);
@@ -73,6 +85,8 @@ export default function LiveWorkoutScreen({ route, navigation }) {
 
   function resumeAfterRest() {
     runner.startNextSet(Date.now());
+    restBonus.current = 0;
+    setFatigueNote(false);
     coach.announce(`Set ${runner.setNumber}`);
     go('live');
   }
@@ -80,11 +94,15 @@ export default function LiveWorkoutScreen({ route, navigation }) {
   const beginTracking = useCallback(async () => {
     try {
       // A plan run has already created its sessions; a quick start creates one now.
+      const auto = detected.current;
+      const isHoldEx = auto ? EXERCISES[auto.id].kind === 'hold' : false;
       const id = cfg.workoutId || (await createWorkout({
-        exerciseId: cfg.exerciseId,
+        exerciseId: auto ? auto.id : cfg.exerciseId,
+        exerciseMode: auto ? 'auto' : 'selected',
+        detectionConfidence: auto ? auto.confidence : undefined,
         targetSets: cfg.targetSets,
-        targetReps: cfg.targetReps,
-        targetHoldSeconds: cfg.targetHoldSeconds,
+        targetReps: auto ? (isHoldEx ? undefined : cfg.targetReps ?? 10) : cfg.targetReps,
+        targetHoldSeconds: auto ? (isHoldEx ? cfg.targetHoldSeconds ?? 30 : undefined) : cfg.targetHoldSeconds,
         targetRestSeconds: cfg.targetRestSeconds,
         tempoDownSeconds: cfg.tempo?.down,
         tempoPauseSeconds: cfg.tempo?.pause,
@@ -109,6 +127,23 @@ export default function LiveWorkoutScreen({ route, navigation }) {
   const onLandmarks = useCallback(
     (lm) => {
       const now = Date.now();
+      if (stageRef.current === 'detecting') {
+        // Collect ~3 seconds of frames, then classify on-device.
+        detectFrames.current.push(lm);
+        if (detectFrames.current.length >= MIN_FRAMES * 2) settleDetection();
+        return;
+      }
+      if (stageRef.current === 'setup' && isAuto && !exercise) {
+        const ready = readyForDetection(lm);
+        setMissing(ready ? [] : ['SHOULDER', 'HIP']);
+        readyFrames.current = ready ? readyFrames.current + 1 : 0;
+        if (readyFrames.current >= READY_FRAMES) {
+          readyFrames.current = 0;
+          detectFrames.current = [];
+          go('detecting');
+        }
+        return;
+      }
       if (stageRef.current === 'setup') {
         const miss = missingLandmarks(lm, exercise.required, VISIBILITY);
         setMissing(miss);
@@ -145,7 +180,10 @@ export default function LiveWorkoutScreen({ route, navigation }) {
           sync.enqueue(runner.sets);
           sync.flush();
           if (runner.phase === 'rest') {
-            coach.announce(t('workout.setComplete', { seconds: cfg.targetRestSeconds }));
+            const fatigue = fatigueCheck(runner.sets);
+            restBonus.current = fatigue.fatigued ? 15 : 0;
+            setFatigueNote(fatigue.fatigued);
+            coach.announce(fatigue.fatigued ? t('workout.fatigueCue') : t('workout.setComplete', { seconds: cfg.targetRestSeconds }));
             go('rest');
           } else {
             finishWorkout();
@@ -156,6 +194,41 @@ export default function LiveWorkoutScreen({ route, navigation }) {
     },
     [exercise, runner, coach, sync, beginTracking, cfg, t] // eslint-disable-line react-hooks/exhaustive-deps
   );
+
+  // Auto-detect: classify the collected frames; low confidence or a close
+  // runner-up asks the user instead of silently assigning the exercise.
+  function settleDetection() {
+    const frames = detectFrames.current;
+    detectFrames.current = [];
+    go('detect-wait'); // ignore frames while the confirmation is open
+    const result = detectExercise(frames);
+    const accept = (id, confidence) => {
+      detected.current = { id, confidence };
+      setExId(id);
+      go('starting');
+    };
+    if (result.exerciseId && !result.needsConfirmation) {
+      accept(result.exerciseId, result.confidence);
+      return;
+    }
+    const options = result.candidates.slice(0, 2);
+    if (options.length === 0) {
+      showAlert(t('workout.detectFailedTitle'), t('workout.detectFailedBody'), [
+        { text: t('workout.retry'), onPress: () => go('setup') },
+        { text: t('workout.back'), style: 'cancel', onPress: () => navigation.goBack() },
+      ]);
+      return;
+    }
+    showAlert(t('workout.detectConfirmTitle'), t('workout.detectConfirmBody'), [
+      ...options.map((o) => ({ text: EXERCISES[o.id].name, onPress: () => accept(o.id, o.score) })),
+      { text: t('workout.retry'), style: 'cancel', onPress: () => go('setup') },
+    ]);
+  }
+
+  // Once auto-detect has settled on an exercise, start the session.
+  useEffect(() => {
+    if (stage === 'starting' && isAuto && exercise && !workoutId) beginTracking();
+  }, [stage, exercise]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function finishWorkout() {
     go('saving');
@@ -228,7 +301,7 @@ export default function LiveWorkoutScreen({ route, navigation }) {
     );
   }
 
-  const isHold = exercise.kind === 'hold';
+  const isHold = exercise?.kind === 'hold';
   const showRest = stage === 'rest';
 
   return (
@@ -238,6 +311,12 @@ export default function LiveWorkoutScreen({ route, navigation }) {
         <View style={styles.badge} accessibilityLiveRegion="polite">
           <Text style={styles.badgeText}>● {cfg.recordVideo && stage !== 'setup' && stage !== 'starting' ? t('workout.recordingNote') : t('workout.cameraActive')}</Text>
         </View>
+
+        {(stage === 'detecting' || stage === 'detect-wait') && (
+          <View style={styles.panel}>
+            <Text style={styles.lightText}>{t('workout.detecting')}</Text>
+          </View>
+        )}
 
         {(stage === 'setup' || stage === 'starting') && (
           <View style={styles.panel}>
@@ -252,7 +331,7 @@ export default function LiveWorkoutScreen({ route, navigation }) {
 
         {(stage === 'live' || showRest) && (
           <View style={styles.panel}>
-            <Text style={styles.title}>{exercise.name.toUpperCase()}</Text>
+            <Text style={styles.title}>{exercise?.name.toUpperCase()}</Text>
             <Text style={styles.lightText}>{t('workout.setOf', { set: view.setNumber, total: cfg.targetSets })}</Text>
             {isHold ? (
               <Text style={styles.big}>{t('workout.held', { seconds: view.heldSeconds, target: cfg.targetHoldSeconds })}</Text>
@@ -270,6 +349,7 @@ export default function LiveWorkoutScreen({ route, navigation }) {
             {showRest && (
               <>
                 <Text style={styles.big}>{t('workout.restLeft', { seconds: restLeft })}</Text>
+                {fatigueNote && <Text style={styles.warn}>{t('workout.fatigueNote')}</Text>}
                 <PrimaryButton title={t('workout.skipRest')} onPress={resumeAfterRest} />
               </>
             )}

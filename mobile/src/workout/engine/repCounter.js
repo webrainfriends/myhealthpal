@@ -13,6 +13,12 @@ const DEFAULTS = { minConfidence: 0.5, smoothing: 0.5, minRepMs: 400, interruptM
 function createRepCounter(exercise, options = {}) {
   const opt = { ...DEFAULTS, ...options };
   const { extended, flexed, partial } = exercise.reps;
+  // Some movements start at a LOW angle and open up (lateral raise, press).
+  // For those (`direction: 'increase'`) the tracked value is mirrored
+  // (180 - angle) so the same top/bottom state machine applies; thresholds in
+  // the config are given in that mirrored space.
+  const mirror = exercise.reps.direction === 'increase';
+  const tv = (x) => (mirror ? 180 - x : x);
   let state = 'top';
   let smoothed = null;
   let minValue = null;
@@ -82,7 +88,7 @@ function createRepCounter(exercise, options = {}) {
     }
     paused = false;
     lastGoodAt = now;
-    smoothed = ema(smoothed, m.value, opt.smoothing);
+    smoothed = ema(smoothed, tv(m.value), opt.smoothing);
     const v = smoothed;
     let rep = null;
 
@@ -99,7 +105,7 @@ function createRepCounter(exercise, options = {}) {
       }
     } else {
       minValue = Math.min(minValue, v);
-      for (const r of m.results) minBySide[r.side] = Math.min(minBySide[r.side] ?? Infinity, r.value);
+      for (const r of m.results) minBySide[r.side] = Math.min(minBySide[r.side] ?? Infinity, tv(r.value));
       confSum += m.confidence;
       confN += 1;
       if (state === 'descending') {

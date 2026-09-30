@@ -198,3 +198,94 @@ test('overlay picks the sampled frame for a playback time and builds bone segmen
   const evs = [{ timestampMs: 1000, ruleCode: 'A' }, { timestampMs: 9000, ruleCode: 'B' }];
   assert.deepEqual(overlay.activeEvents(evs, 1200).map((e) => e.ruleCode), ['A']);
 });
+
+const { detectExercise, fatigueCheck, hasExercise } = require('../src/workout/engine');
+
+// Frame builders: angle theta at joint b between a (straight up from b) and c.
+const chain = (theta) => ({ a: { x: 0, y: -1 }, b: { x: 0, y: 0 }, c: { x: Math.sin(rad(theta)), y: -Math.cos(rad(theta)) } });
+const pt = (p, c = 0.9) => ({ x: p.x, y: p.y, c });
+const wave = (top, bottom, n = 40) => Array.from({ length: n }, (_, i) => bottom + ((top - bottom) * (1 + Math.cos((i / (n / 2)) * Math.PI))) / 2);
+
+function squatFrames() {
+  return wave(175, 85).map((th) => {
+    const { a, b, c } = chain(th);
+    const lm = {};
+    for (const s of ['LEFT', 'RIGHT']) Object.assign(lm, { [`${s}_HIP`]: pt(a), [`${s}_KNEE`]: pt(b), [`${s}_ANKLE`]: pt(c), [`${s}_SHOULDER`]: pt({ x: 0, y: -2 }) });
+    return lm;
+  });
+}
+function lungeFrames() {
+  return wave(175, 85).map((th) => {
+    const front = chain(th);
+    const back = chain(175 - (175 - th) * 0.15); // rear leg barely bends
+    const lm = { LEFT_SHOULDER: pt({ x: 0, y: -2 }), RIGHT_SHOULDER: pt({ x: 0, y: -2 }) };
+    Object.assign(lm, { LEFT_HIP: pt(front.a), LEFT_KNEE: pt(front.b), LEFT_ANKLE: pt(front.c), RIGHT_HIP: pt(back.a), RIGHT_KNEE: pt(back.b), RIGHT_ANKLE: pt(back.c) });
+    return lm;
+  });
+}
+function curlFrames() {
+  return wave(165, 45).map((th) => {
+    const { a, b, c } = chain(th);
+    const lm = {};
+    for (const s of ['LEFT', 'RIGHT']) Object.assign(lm, { [`${s}_SHOULDER`]: pt(a), [`${s}_ELBOW`]: pt(b), [`${s}_WRIST`]: pt(c), [`${s}_HIP`]: pt({ x: 0, y: 0.5 }) });
+    return lm;
+  });
+}
+function pushupFrames() {
+  return wave(170, 80).map((th) => {
+    const { a, b, c } = chain(th);
+    const lm = {};
+    for (const s of ['LEFT', 'RIGHT']) Object.assign(lm, { [`${s}_SHOULDER`]: pt(a), [`${s}_ELBOW`]: pt(b), [`${s}_WRIST`]: pt(c), [`${s}_HIP`]: pt({ x: 1, y: -1 }), [`${s}_ANKLE`]: pt({ x: 2, y: -1 }) });
+    return lm;
+  });
+}
+function plankFrames() {
+  return Array.from({ length: 40 }, () => {
+    const lm = {};
+    for (const s of ['LEFT', 'RIGHT']) Object.assign(lm, { [`${s}_SHOULDER`]: pt({ x: 0, y: 0 }), [`${s}_HIP`]: pt({ x: 1, y: 0 }), [`${s}_ANKLE`]: pt({ x: 2, y: 0.02 }) });
+    return lm;
+  });
+}
+function lateralRaiseFrames() {
+  return wave(20, 90).reverse().map((th) => {
+    const lm = {};
+    for (const s of ['LEFT', 'RIGHT']) Object.assign(lm, { [`${s}_HIP`]: pt({ x: 0, y: 1 }), [`${s}_SHOULDER`]: pt({ x: 0, y: 0 }), [`${s}_WRIST`]: pt({ x: Math.sin(rad(th)), y: Math.cos(rad(th)) }) });
+    return lm;
+  });
+}
+
+test('auto-detect names the right exercise from a few seconds of movement', () => {
+  for (const [expected, frames] of [['squat', squatFrames()], ['lunge', lungeFrames()], ['bicep_curl', curlFrames()], ['pushup', pushupFrames()], ['plank', plankFrames()], ['lateral_raise', lateralRaiseFrames()]]) {
+    const r = detectExercise(frames);
+    assert.equal(r.exerciseId, expected, `${expected}: got ${r.exerciseId} ${JSON.stringify(r.candidates)}`);
+    assert.ok(r.confidence > 0.5, `${expected} confidence ${r.confidence}`);
+  }
+});
+
+test('auto-detect asks for confirmation instead of guessing on too little or unclear data', () => {
+  assert.equal(detectExercise(squatFrames().slice(0, 5)).needsConfirmation, true);
+  const blank = detectExercise(Array.from({ length: 40 }, () => ({})));
+  assert.equal(blank.exerciseId, null);
+  assert.equal(blank.needsConfirmation, true);
+});
+
+test('library additions exist as config and reuse the counter (mirrored direction)', () => {
+  for (const id of ['lateral_raise', 'shoulder_press', 'triceps_extension', 'calf_raise', 'situp', 'jumping_jack', 'high_knees', 'mountain_climber']) {
+    assert.equal(hasExercise(id), true, id);
+    getExercise(id);
+  }
+  // A lateral raise (arm angle 20 -> 95 -> 20) counts as one valid rep.
+  const c = createRepCounter(getExercise('lateral_raise'), { smoothing: 1 });
+  let rep = null;
+  lateralRaiseFrames().forEach((lm, i) => { const r = c.update(lm, i * 100).rep; if (r) rep = r; });
+  assert.equal(rep && rep.classification, 'valid');
+});
+
+test('fatigue check flags a clear drop in range of motion or valid rate', () => {
+  const set = (rom, valid) => ({ reps: Array.from({ length: 5 }, (_, i) => ({ rangeOfMotionScore: rom, classification: i < valid ? 'valid' : 'partial', concentricMs: 1500 })) });
+  assert.equal(fatigueCheck([set(0.95, 5)]).fatigued, false); // one set
+  assert.equal(fatigueCheck([set(0.95, 5), set(0.93, 5)]).fatigued, false);
+  const f = fatigueCheck([set(0.95, 5), set(0.8, 2)]);
+  assert.equal(f.fatigued, true);
+  assert.ok(f.reasons.includes('range_of_motion') && f.reasons.includes('valid_rate'));
+});

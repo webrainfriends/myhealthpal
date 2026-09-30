@@ -5,6 +5,8 @@ module.exports = {
   ...require('./formAnalyzer'),
   ...require('./coachThrottle'),
   ...require('./workoutRunner'),
+  ...require('./exerciseDetector'),
+  ...require('./fatigue'),
   ...require('./measure'),
   ...require('./geometry'),
 };

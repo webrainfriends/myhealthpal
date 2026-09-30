@@ -19,6 +19,8 @@ const wrap = (fn) => async (req, res, next) => {
 
 router.get('/exercises', wrap(() => svc.listExercises().then((exercises) => ({ exercises }))));
 router.get('/history', wrap((req) => svc.history(req.user.id, req.query.limit).then((workouts) => ({ workouts }))));
+router.get('/analytics', wrap((req) => svc.getAnalytics(req.user.id)));
+router.get('/progression/:exerciseId', wrap((req) => svc.getProgression(req.user.id, req.params.exerciseId)));
 router.get('/plans', wrap((req) => svc.listPlans(req.user.id).then((plans) => ({ plans }))));
 router.post('/plans', wrap((req) => svc.createPlan(req.user.id, req.body)));
 router.get('/plans/:id', wrap((req) => svc.getPlan(req.user.id, req.params.id)));
