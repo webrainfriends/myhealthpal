@@ -3,7 +3,8 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-nati
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import PrimaryButton from '../../components/PrimaryButton';
-import { cardShadow, colors, radii, spacing, typography } from '../../theme/theme';
+import WorkoutHistoryRow from '../../components/WorkoutHistoryRow';
+import { card3D, colors, radii, spacing, typography } from '../../theme/theme';
 import { deleteWorkouts, fetchWorkoutAnalytics, fetchWorkoutHistory } from '../../api/client';
 import { useT } from '../../i18n/I18nContext';
 import { showAlert } from '../../utils/alert';
@@ -101,12 +102,14 @@ export default function WorkoutCoachHomeScreen({ navigation }) {
           )}
         </View>
         {history && history.length === 0 && <Text style={typography.bodySecondary}>{t('workout.noHistory')}</Text>}
-        {(history || []).map((w) => {
+        {(history || []).map((w, i) => {
           const isSelected = selected.has(w.id);
           return (
-            <TouchableOpacity
+            <WorkoutHistoryRow
               key={w.id}
-              style={[styles.card, styles.historyCard, isSelected && styles.cardSelected]}
+              workout={w}
+              index={i}
+              selected={isSelected}
               onPress={() => (selecting ? toggle(w.id) : navigation.navigate('WorkoutSummary', { workoutId: w.id }))}
               // Touch shortcut: press and hold a card to start selecting.
               onLongPress={() => {
@@ -115,20 +118,14 @@ export default function WorkoutCoachHomeScreen({ navigation }) {
               }}
               accessibilityRole={selecting ? 'checkbox' : 'button'}
               accessibilityState={selecting ? { checked: isSelected } : undefined}
-            >
-              {selecting && (
-                <View style={[styles.checkbox, isSelected && styles.checkboxOn]}>
-                  {isSelected && <Text style={styles.checkMark}>✓</Text>}
-                </View>
-              )}
-              <View style={styles.cardBody}>
-                <Text style={typography.body}>{w.exercise_name}</Text>
-                <Text style={typography.bodySecondary}>
-                  {new Date(w.completed_at).toLocaleDateString()} · {w.valid_reps} reps
-                  {w.estimated_calories_low != null ? ` · ${w.estimated_calories_low}-${w.estimated_calories_high} kcal` : ''}
-                </Text>
-              </View>
-            </TouchableOpacity>
+              leading={
+                selecting ? (
+                  <View style={[styles.checkbox, isSelected && styles.checkboxOn]}>
+                    {isSelected && <Text style={styles.checkMark}>✓</Text>}
+                  </View>
+                ) : null
+              }
+            />
           );
         })}
       </ScrollView>
@@ -149,7 +146,7 @@ export default function WorkoutCoachHomeScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.md, gap: spacing.md },
-  card: { backgroundColor: colors.surface, borderRadius: radii.lg, padding: spacing.md, gap: 4, ...cardShadow },
+  card: { backgroundColor: colors.primaryMuted, borderRadius: radii.lg, padding: spacing.md, gap: 4, ...card3D(colors.primary) },
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   headerActions: { flexDirection: 'row', gap: spacing.md },
   link: { ...typography.body, color: colors.primary, fontWeight: '700' },
