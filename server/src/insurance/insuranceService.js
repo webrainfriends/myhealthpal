@@ -267,8 +267,10 @@ async function buildOverview(userId, today = new Date()) {
   };
 }
 
-async function buildSummary(userId, today = new Date()) {
-  const overview = await buildOverview(userId, today);
+// Boils an already-built overview down to the headline numbers (also used by
+// the sponsor/caretaker beneficiary dashboard, which needs the overview for
+// other fields and so must not build it twice).
+function summarizeOverview(overview) {
   const policies = overview.policies;
   const active = policies.filter((p) => overview.activePolicyIds.includes(p.id));
   const nextPremium = overview.upcoming.find((d) => d.kind === 'premium') || null;
@@ -286,6 +288,10 @@ async function buildSummary(userId, today = new Date()) {
   };
 }
 
+async function buildSummary(userId, today = new Date()) {
+  return summarizeOverview(await buildOverview(userId, today));
+}
+
 module.exports = {
   loadPolicies,
   loadOwnedPolicy,
@@ -293,6 +299,7 @@ module.exports = {
   coveringPolicies,
   buildOverview,
   buildSummary,
+  summarizeOverview,
   serializePolicy,
   serializeItem,
   upcomingDates,

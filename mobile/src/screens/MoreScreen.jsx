@@ -29,6 +29,12 @@ export default function MoreScreen({ navigation }) {
           onPress={() => navigation.navigate('Family')}
         />
         <MoreRow
+          icon="🧭"
+          title={t('family.dashboardTitle')}
+          subtitle={t('family.dashboardSubtitle')}
+          onPress={() => navigation.navigate('BeneficiaryDashboard')}
+        />
+        <MoreRow
           icon="📅"
           title={t('retest.radarTitle')}
           subtitle={t('retest.moreSubtitle')}

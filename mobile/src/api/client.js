@@ -616,12 +616,20 @@ export async function removeFamilyMember(memberId) {
   return handleResponse(response);
 }
 
-export async function createFamilyInvite({ profileId, access }) {
+// role: 'caretaker' (default) or 'sponsor' - a sponsor only ever gets the
+// summary dashboard and is always view-only.
+export async function createFamilyInvite({ profileId, access, role }) {
   const response = await apiFetch('/api/family/invites', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ profileId, access }),
+    body: JSON.stringify({ profileId, access, role }),
   });
+  return handleResponse(response);
+}
+
+// Summary of everyone the signed-in account sponsors or takes care of.
+export async function fetchBeneficiaryDashboard() {
+  const response = await apiFetch('/api/family/dashboard');
   return handleResponse(response);
 }
 
