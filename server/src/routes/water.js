@@ -46,6 +46,21 @@ router.get('/summary', async (req, res, next) => {
   }
 });
 
+// Daily totals for the last N days plus the current target - the data behind
+// the Diet stats "Water intake" chart and its stats tiles.
+router.get('/history', async (req, res, next) => {
+  try {
+    const userId = currentUserId(req);
+    const [history, target] = await Promise.all([
+      waterService.getHistory(userId, req.query.days),
+      waterTargetService.getOrGenerateWaterTarget(userId),
+    ]);
+    res.json({ days: history, target });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post('/entries', async (req, res, next) => {
   try {
     const body = req.body || {};

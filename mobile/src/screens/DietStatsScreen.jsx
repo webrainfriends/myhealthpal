@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MiniTrendChart from '../components/MiniTrendChart';
+import WaterIntakeSection from '../components/WaterIntakeSection';
 import { cardShadow, colors, mealTypeColors, radii, spacing, typography } from '../theme/theme';
-import { fetchDietSummary } from '../api/client';
+import { fetchDietSummary, fetchWaterHistory } from '../api/client';
 
 const RANGES = [
   { key: 7, label: '7D' },
@@ -70,12 +71,18 @@ export default function DietStatsScreen() {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showMicronutrients, setShowMicronutrients] = useState(false);
+  const [water, setWater] = useState(null);
 
   const load = useCallback(async (selectedDays) => {
     setLoading(true);
     try {
-      const data = await fetchDietSummary(selectedDays);
+      // Independent of each other: a water failure must not hide diet stats.
+      const [data, waterData] = await Promise.all([
+        fetchDietSummary(selectedDays),
+        fetchWaterHistory(selectedDays).catch(() => null),
+      ]);
       setSummary(data);
+      setWater(waterData);
     } catch (err) {
       console.warn('Failed to load diet stats', err.message);
     } finally {
@@ -106,6 +113,8 @@ export default function DietStatsScreen() {
             </TouchableOpacity>
           ))}
         </View>
+
+        {water && <WaterIntakeSection days={water.days} target={water.target} />}
 
         {loading && !summary ? (
           <Text style={[typography.bodySecondary, styles.empty]}>Loading…</Text>

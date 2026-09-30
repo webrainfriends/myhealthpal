@@ -1121,6 +1121,11 @@ export async function fetchWaterSummary(date) {
   return handleResponse(response);
 }
 
+export async function fetchWaterHistory(days = 14) {
+  const response = await apiFetch(`/api/water/history?days=${days}`);
+  return handleResponse(response);
+}
+
 export async function logWaterEntry(amountMl, loggedAt) {
   const response = await apiFetch('/api/water/entries', {
     method: 'POST',
