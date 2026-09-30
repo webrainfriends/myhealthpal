@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-nati
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import PrimaryButton from '../../components/PrimaryButton';
-import { cardShadow, colors, radii, spacing, typography } from '../../theme/theme';
+import { card3D, colors, radii, spacing, typography } from '../../theme/theme';
 import { fetchWorkoutAnalytics, fetchWorkoutHistory } from '../../api/client';
 import { useT } from '../../i18n/I18nContext';
 
@@ -49,7 +49,7 @@ export default function WorkoutCoachHomeScreen({ navigation }) {
         {(history || []).map((w) => (
           <TouchableOpacity
             key={w.id}
-            style={styles.card}
+            style={styles.historyCard}
             onPress={() => navigation.navigate('WorkoutSummary', { workoutId: w.id })}
             accessibilityRole="button"
           >
@@ -68,5 +68,6 @@ export default function WorkoutCoachHomeScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.md, gap: spacing.md },
-  card: { backgroundColor: colors.surface, borderRadius: radii.lg, padding: spacing.md, gap: 4, ...cardShadow },
+  card: { backgroundColor: colors.primaryMuted, borderRadius: radii.lg, padding: spacing.md, gap: 4, ...card3D(colors.primary) },
+  historyCard: { backgroundColor: colors.accentMuted, borderRadius: radii.lg, padding: spacing.md, gap: 4, ...card3D(colors.accent) },
 });
