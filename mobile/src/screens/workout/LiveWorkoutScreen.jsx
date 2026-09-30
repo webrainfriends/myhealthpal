@@ -18,6 +18,7 @@ import { setRecording } from '../../workout/recordingStore';
 
 const VISIBILITY = 0.5;
 const READY_FRAMES = 15; // ~1s of continuous good visibility before tracking starts
+const RECORDING_FINALIZE_MS = 8000;
 const SAMPLE_MS = 200; // landmark samples for the replay overlay: 5 per second
 const PART_LABELS = { HIP: 'hips', KNEE: 'knees', ANKLE: 'ankles', SHOULDER: 'shoulders', ELBOW: 'elbows', WRIST: 'wrists' };
 
@@ -231,26 +232,46 @@ export default function LiveWorkoutScreen({ route, navigation }) {
     if (stage === 'starting' && isAuto && exercise && !workoutId) beginTracking();
   }, [stage, exercise]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function finishWorkout() {
-    go('saving');
-    const sets = runner.finish(Date.now());
-    coach.stop();
-    if (recording.current.startedAt) {
-      await cameraRef.current?.stopRecording().catch(() => {});
-      const path = await recording.current.promise;
-      if (path && workoutId) setRecording(workoutId, { path, frames: recording.current.frames, fps: 1000 / SAMPLE_MS });
-      recording.current = { promise: null, startedAt: null, frames: [], lastSampleAt: 0 };
+  // Stops the camera recording without ever blocking the end-of-workout flow:
+  // the native "recording finished" callback can be slow or never fire (e.g.
+  // the camera was interrupted), and the set sync + summary below must not
+  // wait on it forever.
+  async function finalizeRecording(id) {
+    const rec = recording.current;
+    recording.current = { promise: null, startedAt: null, frames: [], lastSampleAt: 0 };
+    if (!rec.startedAt) return;
+    let path = null;
+    try {
+      await cameraRef.current?.stopRecording();
+      path = await Promise.race([rec.promise, new Promise((resolve) => setTimeout(() => resolve(null), RECORDING_FINALIZE_MS))]);
+    } catch (err) {
+      path = null;
     }
-    if (sets.length === 0) {
+    // Keep the sampled landmarks even when there is no video file (web, or a
+    // failed recording) - they still drive the overlay/pose analysis.
+    if (id && (path || rec.frames.length > 0)) setRecording(id, { path, frames: rec.frames, fps: 1000 / SAMPLE_MS });
+  }
+
+  async function finishWorkout() {
+    if (!workoutId) {
+      // Ended before the session was created - nothing to save.
+      coach.stop();
       navigation.goBack();
       return;
     }
+    go('saving');
+    const sets = runner.finish(Date.now());
+    coach.stop();
     sync.enqueue(sets);
-    const ok = await sync.flush();
+    // Sync the sets and finalize the recording together; either can be slow.
+    const [ok] = await Promise.all([sets.length > 0 ? sync.flush() : true, finalizeRecording(workoutId)]);
     if (!ok) {
       setFailed(true);
       return;
     }
+    // Always finish through the summary screen, even with no completed set:
+    // it is what completes the session server-side (metrics, calories,
+    // summary). Silently going back left the workout "started" forever.
     navigation.replace('WorkoutSummary', { workoutId, activeSeconds: runner.activeSeconds, complete: true, queue: cfg.queue, queueIndex: cfg.queueIndex, useHeartRate: cfg.useHeartRate, startedAtMs: beganAt.current });
   }
 
