@@ -47,6 +47,11 @@ function authenticate({ allowProfile }) {
       if (allowProfile && profileId && profileId !== user.id) {
         const link = UUID_RE.test(profileId) ? await familyService.findLink(user.id, profileId) : null;
         if (!link) return res.status(403).json({ error: 'You do not have access to this profile.' });
+        // A sponsor only ever gets the summary dashboard (/api/family/dashboard,
+        // an account route) - never the person's own records.
+        if (link.role === 'sponsor') {
+          return res.status(403).json({ error: 'Sponsors can view the beneficiary dashboard only, not the full profile.' });
+        }
         if (link.access === 'view' && !READ_ONLY_METHODS.has(req.method)) {
           return res.status(403).json({ error: 'You have view-only access to this profile.' });
         }

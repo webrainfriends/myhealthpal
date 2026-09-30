@@ -35,13 +35,21 @@ async function findLink(ownerUserId, memberUserId) {
   return rows[0] || null;
 }
 
-// Every profile this account can switch to: itself first, then linked
-// members by name.
+const ROLES = new Set(['caretaker', 'sponsor']);
+
+function normalizeRole(role) {
+  return ROLES.has(role) ? role : 'caretaker';
+}
+
+// Every profile this account can switch to: itself first, then the members
+// it looks after, by name. Sponsored members are deliberately absent - a
+// sponsor only gets the summary dashboard (listBeneficiaries), never the
+// member's own profile.
 async function listProfiles(account) {
   const { rows } = await pool.query(
     `SELECT u.id, u.display_name, u.auth_provider, u.preferred_language, fl.relation, fl.access
      FROM family_links fl JOIN users u ON u.id = fl.member_user_id
-     WHERE fl.owner_user_id = $1
+     WHERE fl.owner_user_id = $1 AND fl.role = 'caretaker'
      ORDER BY u.display_name ASC NULLS LAST, fl.created_at ASC`,
     [account.id]
   );
@@ -71,7 +79,7 @@ async function listProfiles(account) {
 // knows (and can revoke) who has access to their health data.
 async function listSharedWith(accountId) {
   const { rows } = await pool.query(
-    `SELECT u.id, u.display_name, u.email, fl.access, fl.created_at
+    `SELECT u.id, u.display_name, u.email, fl.access, fl.role, fl.created_at
      FROM family_links fl JOIN users u ON u.id = fl.owner_user_id
      WHERE fl.member_user_id = $1
      ORDER BY fl.created_at ASC`,
@@ -82,7 +90,30 @@ async function listSharedWith(accountId) {
     displayName: row.display_name,
     email: row.email,
     access: row.access,
+    role: row.role,
     since: row.created_at,
+  }));
+}
+
+// Everyone this account sponsors or takes care of (either role), for the
+// beneficiary dashboard. Only rows where this account is the link's owner -
+// the reverse direction (who can see *me*) never appears here.
+async function listBeneficiaries(accountId) {
+  const { rows } = await pool.query(
+    `SELECT u.id, u.display_name, u.auth_provider, u.preferred_language, fl.relation, fl.access, fl.role
+     FROM family_links fl JOIN users u ON u.id = fl.member_user_id
+     WHERE fl.owner_user_id = $1
+     ORDER BY u.display_name ASC NULLS LAST, fl.created_at ASC`,
+    [accountId]
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    displayName: row.display_name,
+    relation: row.relation,
+    access: row.access,
+    role: row.role,
+    isManaged: row.auth_provider === 'managed',
+    preferredLanguage: row.preferred_language,
   }));
 }
 
@@ -195,23 +226,25 @@ async function revokeSharedWith(accountId, ownerId) {
 
 // An invite for a profile can come from the profile itself or from anyone
 // who manages it - never from a view-only link.
-async function createInvite(account, { profileId, access, relation }) {
+async function createInvite(account, { profileId, access, relation, role }) {
   const memberId = profileId || account.id;
   if (memberId !== account.id) {
     const link = await findLink(account.id, memberId);
     if (!link || link.access !== 'manage') return null;
   }
-  const inviteAccess = access === 'view' ? 'view' : 'manage';
+  const inviteRole = normalizeRole(role);
+  // A sponsor link is always read-only.
+  const inviteAccess = inviteRole === 'sponsor' || access === 'view' ? 'view' : 'manage';
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const code = generateInviteCode();
     const { rows } = await pool.query(
-      `INSERT INTO family_invites (code, member_user_id, created_by_user_id, relation, access, expires_at)
-       VALUES ($1, $2, $3, $4, $5, now() + ($6 || ' days')::interval)
+      `INSERT INTO family_invites (code, member_user_id, created_by_user_id, relation, access, role, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, now() + ($7 || ' days')::interval)
        ON CONFLICT (code) DO NOTHING
-       RETURNING code, access, expires_at`,
-      [code, memberId, account.id, cleanText(relation, MAX_RELATION_LENGTH), inviteAccess, String(INVITE_TTL_DAYS)]
+       RETURNING code, access, role, expires_at`,
+      [code, memberId, account.id, cleanText(relation, MAX_RELATION_LENGTH), inviteAccess, inviteRole, String(INVITE_TTL_DAYS)]
     );
-    if (rows[0]) return { code: rows[0].code, access: rows[0].access, expiresAt: rows[0].expires_at };
+    if (rows[0]) return { code: rows[0].code, access: rows[0].access, role: rows[0].role, expiresAt: rows[0].expires_at };
   }
   throw new Error('Could not generate a unique invite code.');
 }
@@ -226,7 +259,7 @@ async function redeemInvite(account, rawCode) {
     const { rows } = await client.query(
       `UPDATE family_invites SET redeemed_by_user_id = $2, redeemed_at = now()
        WHERE code = $1 AND redeemed_at IS NULL AND expires_at > now() AND member_user_id <> $2
-       RETURNING member_user_id, relation, access`,
+       RETURNING member_user_id, relation, access, role`,
       [code, account.id]
     );
     const invite = rows[0];
@@ -235,14 +268,22 @@ async function redeemInvite(account, rawCode) {
       return { error: 'This code is invalid, expired, already used, or is for your own profile.' };
     }
     // Re-redeeming for a profile already linked upgrades view -> manage but
-    // never downgrades.
+    // never downgrades. A caretaker link outranks a sponsor one (a caretaker
+    // already sees everything a sponsor would), so a sponsor code never
+    // strips caretaker access and a caretaker code upgrades a sponsor.
     await client.query(
-      `INSERT INTO family_links (owner_user_id, member_user_id, relation, access)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO family_links (owner_user_id, member_user_id, relation, access, role)
+       VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (owner_user_id, member_user_id) DO UPDATE
-         SET access = CASE WHEN family_links.access = 'manage' THEN 'manage' ELSE EXCLUDED.access END,
+         SET role = CASE WHEN family_links.role = 'caretaker' OR EXCLUDED.role = 'caretaker' THEN 'caretaker' ELSE 'sponsor' END,
+             access = CASE
+               WHEN family_links.role = 'caretaker' AND family_links.access = 'manage' THEN 'manage'
+               WHEN EXCLUDED.role = 'caretaker' THEN EXCLUDED.access
+               WHEN family_links.role = 'caretaker' THEN family_links.access
+               ELSE 'view'
+             END,
              relation = COALESCE(family_links.relation, EXCLUDED.relation)`,
-      [account.id, invite.member_user_id, invite.relation, invite.access]
+      [account.id, invite.member_user_id, invite.relation, invite.access, invite.role]
     );
     await client.query('COMMIT');
     return { memberId: invite.member_user_id };
@@ -258,6 +299,7 @@ module.exports = {
   findLink,
   listProfiles,
   listSharedWith,
+  listBeneficiaries,
   createManagedProfile,
   updateMember,
   removeMember,

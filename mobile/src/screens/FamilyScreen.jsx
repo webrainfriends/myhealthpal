@@ -92,6 +92,12 @@ function ProfileRow({ profile, active, languages, t, onSwitch, onShare, onRemove
               <Text style={styles.actionLabel}>{t('family.shareManage')}</Text>
             </TouchableOpacity>
           </View>
+          <View style={styles.rowActions}>
+            <TouchableOpacity onPress={() => onShare(profile, 'view', 'sponsor')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={styles.actionLabel}>{t('family.shareSponsor')}</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={typography.caption}>{t('family.shareSponsorHint')}</Text>
         </View>
       )}
     </View>
@@ -146,11 +152,11 @@ export default function FamilyScreen({ navigation }) {
     }
   }
 
-  async function shareCode(profile, access) {
+  async function shareCode(profile, access, role) {
     try {
-      const { invite } = await createFamilyInvite({ profileId: profile.isSelf ? undefined : profile.id, access });
+      const { invite } = await createFamilyInvite({ profileId: profile.isSelf ? undefined : profile.id, access, role });
       const whose = profile.isSelf ? t('family.myHealthShort') : profile.displayName;
-      const message = t('family.inviteMessage', { name: whose, code: invite.code });
+      const message = t(role === 'sponsor' ? 'family.sponsorInviteMessage' : 'family.inviteMessage', { name: whose, code: invite.code });
       try {
         await Share.share({ message });
       } catch {
@@ -198,7 +204,14 @@ export default function FamilyScreen({ navigation }) {
       const { profile } = await redeemFamilyInvite(code.trim());
       setCode('');
       await load();
-      if (profile) showAlert(t('family.joinedTitle', { name: profile.displayName }), t('family.joinedMessage'));
+      if (profile?.role === 'sponsor') {
+        showAlert(t('family.sponsorJoinedTitle', { name: profile.displayName }), t('family.sponsorJoinedMessage'), [
+          { text: t('family.later'), style: 'cancel' },
+          { text: t('family.openDashboard'), onPress: () => navigation.navigate('BeneficiaryDashboard') },
+        ]);
+      } else if (profile) {
+        showAlert(t('family.joinedTitle', { name: profile.displayName }), t('family.joinedMessage'));
+      }
     } catch (err) {
       showAlert(t('family.couldNotJoin'), err.message);
     } finally {
@@ -239,6 +252,11 @@ export default function FamilyScreen({ navigation }) {
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={typography.bodySecondary}>{t('family.intro')}</Text>
+        <PrimaryButton
+          title={t('family.dashboardTitle')}
+          onPress={() => navigation.navigate('BeneficiaryDashboard')}
+          variant="secondary"
+        />
 
         {profiles.map((profile) => (
           <ProfileRow
@@ -298,7 +316,13 @@ export default function FamilyScreen({ navigation }) {
             <View key={person.id} style={[styles.card, cardShadow, styles.sharedRow]}>
               <View style={styles.profileText}>
                 <Text style={typography.body}>{person.displayName || person.email || t('family.someone')}</Text>
-                <Text style={typography.caption}>{person.access === 'view' ? t('family.viewOnly') : t('family.canManage')}</Text>
+                <Text style={typography.caption}>
+                  {person.role === 'sponsor'
+                    ? t('family.roleSponsor')
+                    : person.access === 'view'
+                      ? t('family.viewOnly')
+                      : t('family.canManage')}
+                </Text>
               </View>
               <TouchableOpacity onPress={() => handleRevoke(person)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Text style={[styles.actionLabel, styles.dangerLabel]}>{t('family.revoke')}</Text>

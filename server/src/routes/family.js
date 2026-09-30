@@ -1,5 +1,6 @@
 const express = require('express');
 const familyService = require('../services/familyService');
+const beneficiaryDashboard = require('../family/beneficiaryDashboardService');
 
 const router = express.Router();
 
@@ -18,6 +19,18 @@ router.get('/', async (req, res, next) => {
       familyService.listSharedWith(account(req).id),
     ]);
     res.json({ profiles, sharedWith });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Summary of everyone this account sponsors or takes care of: tests due,
+// insurance cover, medication reminders (refill / expiry), out-of-range
+// lab results. Scoped to the signed-in account's own family_links, and never
+// to an X-Profile-Id it might be acting as.
+router.get('/dashboard', async (req, res, next) => {
+  try {
+    res.json(await beneficiaryDashboard.buildDashboard(account(req).id));
   } catch (err) {
     next(err);
   }
@@ -64,8 +77,9 @@ router.delete('/shared-with/:userId', async (req, res, next) => {
   }
 });
 
-// { profileId?, access: 'manage' | 'view', relation? } - profileId defaults
-// to the account's own profile.
+// { profileId?, access: 'manage' | 'view', relation?, role?: 'caretaker' |
+// 'sponsor' } - profileId defaults to the account's own profile. A sponsor
+// invite is always view-only.
 router.post('/invites', async (req, res, next) => {
   try {
     const invite = await familyService.createInvite(account(req), req.body);
@@ -80,8 +94,15 @@ router.post('/invites/redeem', async (req, res, next) => {
   try {
     const result = await familyService.redeemInvite(account(req), req.body.code);
     if (result.error) return res.status(400).json({ error: result.error });
-    const profiles = await familyService.listProfiles(account(req));
-    res.json({ profile: profiles.find((p) => p.id === result.memberId) || null });
+    // A sponsored person isn't a switchable profile (see listProfiles) - it
+    // comes back from the beneficiary list, with its role, instead.
+    const [profiles, beneficiaries] = await Promise.all([
+      familyService.listProfiles(account(req)),
+      familyService.listBeneficiaries(account(req).id),
+    ]);
+    const profile =
+      profiles.find((p) => p.id === result.memberId) || beneficiaries.find((b) => b.id === result.memberId) || null;
+    res.json({ profile });
   } catch (err) {
     next(err);
   }
