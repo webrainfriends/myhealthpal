@@ -14,7 +14,8 @@ function currentUserId(req) {
 // separate from the Health Parameter Registry's reference_ranges table
 // (reference_ranges scores a lab result against a clinical range; a daily
 // activity goal is a personal target, not a clinical threshold).
-const GOALS = { steps: 10000, exerciseMinutes: 30, standHours: 12 };
+// caloriesBurned is the active-energy ("Move") goal in kcal.
+const GOALS = { steps: 10000, exerciseMinutes: 30, standHours: 12, caloriesBurned: 400 };
 
 function ringPercent(value, goal) {
   if (value === null || value === undefined || !goal) return 0;
@@ -31,11 +32,33 @@ function normalizeDate(logDate) {
   return typeof logDate === 'string' ? logDate : logDate.toISOString().slice(0, 10);
 }
 
-function toSummary(row) {
+// Completed AI Workout Coach sessions, summed per UTC day (the same day
+// convention this summary already uses). Read live rather than written into
+// activity_logs: device syncs/imports overwrite that row, and computing at
+// read time means deleting a workout removes its share immediately.
+async function loadWorkoutTotals(userId, days) {
+  const { rows } = await pool.query(
+    `SELECT (completed_at AT TIME ZONE 'UTC')::date AS day,
+            COUNT(*)::int AS count,
+            ROUND(COALESCE(SUM(active_seconds), 0) / 60.0)::int AS minutes,
+            ROUND(COALESCE(SUM((estimated_calories_low + estimated_calories_high) / 2.0), 0))::int AS calories
+     FROM workout_session
+     WHERE user_id = $1 AND status = 'completed'
+       AND (completed_at AT TIME ZONE 'UTC')::date >= CURRENT_DATE - ($2::int - 1)
+     GROUP BY 1`,
+    [userId, days]
+  );
+  return new Map(rows.map((r) => [normalizeDate(r.day), { count: r.count, minutes: r.minutes, calories: r.calories }]));
+}
+
+function toSummary(row, workouts) {
+  const w = workouts && workouts.count > 0 ? workouts : { count: 0, minutes: 0, calories: 0 };
   const steps = row?.steps ?? null;
-  const exerciseMinutes = row?.exercise_minutes ?? null;
+  // A day with only workouts still has exercise minutes / calories; a day
+  // with neither stays null (nothing logged).
+  const exerciseMinutes = row?.exercise_minutes != null || w.count > 0 ? (row?.exercise_minutes ?? 0) + w.minutes : null;
   const standHours = row?.stand_hours ?? null;
-  const caloriesBurned = row?.calories_burned ?? null;
+  const caloriesBurned = row?.calories_burned != null || w.count > 0 ? (row?.calories_burned ?? 0) + w.calories : null;
   const distanceMeters = row?.distance_meters !== null && row?.distance_meters !== undefined
     ? Number(row.distance_meters)
     : null;
@@ -46,7 +69,9 @@ function toSummary(row) {
     standHours,
     caloriesBurned,
     distanceMeters,
+    workouts: w,
     rings: {
+      caloriesBurned: ringPercent(caloriesBurned, GOALS.caloriesBurned),
       steps: ringPercent(steps, GOALS.steps),
       exerciseMinutes: ringPercent(exerciseMinutes, GOALS.exerciseMinutes),
       standHours: ringPercent(standHours, GOALS.standHours),
@@ -61,7 +86,7 @@ function toSummary(row) {
 // "today" would show an empty ring for every one of those uploads even
 // though real recent data exists just one or two days back.
 function hasLoggedActivity(entry) {
-  return Boolean(entry) && (entry.steps !== null || entry.exerciseMinutes !== null || entry.standHours !== null);
+  return Boolean(entry) && (entry.steps !== null || entry.exerciseMinutes !== null || entry.standHours !== null || entry.caloriesBurned !== null);
 }
 
 // Today's log (for the rings) plus a recent-day history (for a bar graph) -
@@ -81,8 +106,9 @@ router.get('/summary', async (req, res, next) => {
     );
 
     const byDate = new Map(rows.map((row) => [normalizeDate(row.log_date), row]));
+    const workoutsByDate = await loadWorkoutTotals(userId, days);
     const todayKey = new Date().toISOString().slice(0, 10);
-    const todaySummary = toSummary(byDate.get(todayKey) || null);
+    const todaySummary = toSummary(byDate.get(todayKey) || null, workoutsByDate.get(todayKey));
 
     // Always return one entry per day in the window, even with no log, so
     // the client can draw a fixed-width bar graph without gap-filling itself.
@@ -91,7 +117,7 @@ router.get('/summary', async (req, res, next) => {
       const d = new Date();
       d.setUTCDate(d.getUTCDate() - i);
       const key = d.toISOString().slice(0, 10);
-      history.push(toSummary(byDate.get(key) || { log_date: key }));
+      history.push(toSummary(byDate.get(key) || { log_date: key }, workoutsByDate.get(key)));
     }
 
     // The rings' actual "current" day: today's own log when there is one,
@@ -147,7 +173,9 @@ router.post('/', async (req, res, next) => {
       ]
     );
 
-    res.json({ goals: GOALS, log: toSummary(rows[0]) });
+    const dayKey = normalizeDate(rows[0].log_date);
+    const workoutsByDate = await loadWorkoutTotals(userId, 90);
+    res.json({ goals: GOALS, log: toSummary(rows[0], workoutsByDate.get(dayKey)) });
   } catch (err) {
     next(err);
   }

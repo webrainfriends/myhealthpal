@@ -313,6 +313,8 @@ export const completeWorkout = (id, fields) => workoutJson(`/${id}/complete`, 'P
 export const fetchWorkoutSummary = (id) => workoutJson(`/${id}/summary`, 'GET');
 export const fetchWorkoutProgression = (exerciseId) => workoutJson(`/progression/${exerciseId}`, 'GET');
 export const fetchWorkoutAnalytics = () => workoutJson('/analytics', 'GET');
+// Permanently deletes captured workouts (and any saved recording). Ring totals are computed live, so they update immediately.
+export const deleteWorkouts = (ids) => workoutJson('/delete', 'POST', { ids });
 export const fetchWorkoutPlans = () => workoutJson('/plans', 'GET');
 export const fetchWorkoutPlan = (id) => workoutJson(`/plans/${id}`, 'GET');
 export const createWorkoutPlan = (plan) => workoutJson('/plans', 'POST', plan);

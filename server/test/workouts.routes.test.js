@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const pool = require('../src/db/pool');
@@ -208,5 +209,70 @@ test('phase 5: progression, analytics, next-session in the summary, expanded lib
     assert.equal((await get('/analytics', tokenB))[1].exercises.find((e) => e.exerciseId === 'lateral_raise'), undefined);
   } finally {
     server.close();
+  }
+});
+
+test('rings include workout minutes/calories, and deleting workouts removes their share', async () => {
+  const c = (await pool.query(`INSERT INTO users (display_name) VALUES ('workout rings test C') RETURNING id`)).rows[0].id;
+  const tokenC = signSession({ id: c });
+  const { server, base } = await listen();
+  const api = (path, t, method = 'GET', body) => fetch(`${base}${path}`, { method, headers: H(t), body: body ? JSON.stringify(body) : undefined }).then((r) => r.json().then((j) => [r.status, j]));
+  const summary = async (t) => (await api('/api/activity/summary?days=7', t))[1];
+  const complete = async (t, activeSeconds) => {
+    const [, s] = await api('/api/activity/workouts', t, 'POST', { exerciseId: 'squat', targetSets: 1, targetReps: 1 });
+    await api(`/api/activity/workouts/${s.id}/start`, t, 'POST');
+    const [, done] = await api(`/api/activity/workouts/${s.id}/complete`, t, 'POST', { activeSeconds });
+    return { id: s.id, mid: Math.round((done.calories.low + done.calories.high) / 2) };
+  };
+  try {
+    let sum = await summary(tokenC);
+    assert.equal(sum.today.workouts.count, 0);
+    assert.equal(sum.today.exerciseMinutes, null);
+    assert.equal(sum.goals.caloriesBurned, 400);
+
+    // A workout-only day fills the rings.
+    const w1 = await complete(tokenC, 600);
+    sum = await summary(tokenC);
+    assert.equal(sum.today.workouts.count, 1);
+    assert.equal(sum.today.exerciseMinutes, 10);
+    assert.equal(sum.today.caloriesBurned, w1.mid);
+    assert.ok(sum.today.rings.caloriesBurned > 0);
+    assert.equal(sum.current.date, sum.today.date);
+
+    // ...and it adds to (never overwrites) an imported/logged day.
+    await pool.query(`INSERT INTO activity_logs (user_id, log_date, steps, exercise_minutes, calories_burned) VALUES ($1, CURRENT_DATE, 1000, 5, 100)`, [c]);
+    sum = await summary(tokenC);
+    assert.equal(sum.today.exerciseMinutes, 15);
+    assert.equal(sum.today.caloriesBurned, 100 + w1.mid);
+    assert.equal(sum.today.steps, 1000);
+    assert.equal(sum.today.rings.caloriesBurned, Math.min(1, (100 + w1.mid) / 400));
+
+    // Another user can't delete it; ids are checked against the session owner.
+    const [, foreign] = await api(`/api/activity/workouts/${w1.id}`, tokenA, 'DELETE');
+    assert.equal(foreign.deleted, 0);
+    assert.equal((await summary(tokenC)).today.workouts.count, 1);
+
+    // Bulk delete with a mix of own, foreign and junk ids.
+    const w2 = await complete(tokenC, 300);
+    assert.equal((await summary(tokenC)).today.workouts.count, 2);
+    assert.equal((await api('/api/activity/workouts/delete', tokenC, 'POST', { ids: [] }))[0], 400);
+    const [, bulk] = await api('/api/activity/workouts/delete', tokenC, 'POST', { ids: [w2.id, 'not-a-uuid', crypto.randomUUID()] });
+    assert.equal(bulk.deleted, 1);
+    sum = await summary(tokenC);
+    assert.equal(sum.today.workouts.count, 1);
+    assert.equal(sum.today.exerciseMinutes, 15);
+
+    // Single delete: totals return to the log-only values and history is empty.
+    const [, one] = await api(`/api/activity/workouts/${w1.id}`, tokenC, 'DELETE');
+    assert.equal(one.deleted, 1);
+    sum = await summary(tokenC);
+    assert.deepEqual([sum.today.workouts.count, sum.today.exerciseMinutes, sum.today.caloriesBurned], [0, 5, 100]);
+    assert.equal((await api('/api/activity/workouts/history', tokenC))[1].workouts.length, 0);
+    assert.equal((await api(`/api/activity/workouts/${w1.id}/summary`, tokenC))[0], 404);
+    const left = await pool.query(`SELECT (SELECT COUNT(*) FROM workout_set WHERE workout_session_id = ANY($1::uuid[]))::int AS sets`, [[w1.id, w2.id]]);
+    assert.equal(left.rows[0].sets, 0);
+  } finally {
+    server.close();
+    await pool.query('DELETE FROM users WHERE id = $1', [c]);
   }
 });

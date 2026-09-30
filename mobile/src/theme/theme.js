@@ -112,6 +112,7 @@ export const mealTypeColors = {
 // palette rather than Apple's neon red/green/cyan so it still reads as part
 // of the same clinical-but-friendly system.
 export const activityRingColors = {
+  caloriesBurned: { fg: colors.teal, track: colors.tealMuted },
   steps: { fg: colors.accent, track: colors.accentMuted },
   exerciseMinutes: { fg: colors.success, track: colors.successMuted },
   standHours: { fg: colors.primary, track: colors.primaryMuted },

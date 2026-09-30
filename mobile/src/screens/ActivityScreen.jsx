@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { useNavigation } from '@react-navigation/native';
+import { useCallback, useState } from 'react';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ActivityRings from '../components/ActivityRings';
@@ -97,8 +97,8 @@ export default function ActivityScreen() {
   const [workouts, setWorkouts] = useState([]);
 
   const load = useCallback(async () => {
-    // Coach sessions are listed alongside daily activity but never added to
-    // the ring totals (avoids double counting with wearable data).
+    // Coach sessions are listed here too; their minutes/calories are already
+    // folded into the ring totals by the server.
     fetchWorkoutHistory().then((d) => setWorkouts((d.workouts || []).slice(0, 3))).catch(() => {});
     try {
       const data = await fetchActivitySummary(14);
@@ -108,9 +108,13 @@ export default function ActivityScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // Refresh whenever the screen regains focus so a just-finished (or just-
+  // deleted) workout shows up in the rings straight away.
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
   async function handleSave() {
     setBusy(true);
@@ -139,6 +143,7 @@ export default function ActivityScreen() {
 
   const { goals, today, current, isCurrentToday, history } = summary;
   const rings = [
+    { percent: current.rings.caloriesBurned ?? 0, ...activityRingColors.caloriesBurned },
     { percent: current.rings.steps, ...activityRingColors.steps },
     { percent: current.rings.exerciseMinutes, ...activityRingColors.exerciseMinutes },
     { percent: current.rings.standHours, ...activityRingColors.standHours },
@@ -183,9 +188,16 @@ export default function ActivityScreen() {
             />
           </View>
           <View style={styles.ringsWrap}>
-            <ActivityRings rings={rings} size={180} strokeWidth={18} gap={6} />
+            <ActivityRings rings={rings} size={180} strokeWidth={15} gap={5} />
           </View>
           <View style={styles.legend}>
+            <RingLegendRow
+              label={t('activity.calories')}
+              value={current.caloriesBurned === null ? null : Math.round(current.caloriesBurned)}
+              unit={t('activity.kcal')}
+              goal={goals.caloriesBurned}
+              color={activityRingColors.caloriesBurned.fg}
+            />
             <RingLegendRow
               label={t('activity.move')}
               value={current.steps}
@@ -208,7 +220,12 @@ export default function ActivityScreen() {
               color={activityRingColors.standHours.fg}
             />
           </View>
-          <ImportedStatsRow caloriesBurned={current.caloriesBurned} distanceMeters={current.distanceMeters} t={t} />
+          <ImportedStatsRow caloriesBurned={null} distanceMeters={current.distanceMeters} t={t} />
+          {current.workouts?.count > 0 && (
+            <Text style={typography.bodySecondary}>
+              {t('activity.fromWorkouts', { count: current.workouts.count, kcal: current.workouts.calories, min: current.workouts.minutes })}
+            </Text>
+          )}
         </View>
 
         <View style={styles.section}>
@@ -231,7 +248,7 @@ export default function ActivityScreen() {
                 style={styles.input}
                 value={draft.exercise_minutes}
                 onChangeText={(text) => setDraft((d) => ({ ...d, exercise_minutes: text }))}
-                placeholder={String(today.exerciseMinutes ?? 0)}
+                placeholder={String(Math.max(0, (today.exerciseMinutes ?? 0) - (today.workouts?.minutes ?? 0)))}
                 placeholderTextColor={colors.textTertiary}
                 keyboardType="number-pad"
               />

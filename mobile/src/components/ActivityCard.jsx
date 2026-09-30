@@ -14,6 +14,7 @@ const OVERLAY = ['rgba(15, 185, 129, 0)', 'rgba(6, 110, 76, 0.3)'];
 // like ActivityScreen) - white/yellow/sky-blue pop against the photo
 // instead of blending into it.
 const RING_COLORS = {
+  caloriesBurned: { fg: '#FFB38A', track: 'rgba(255, 255, 255, 0.3)' },
   steps: { fg: '#FFFFFF', track: 'rgba(255, 255, 255, 0.3)' },
   exerciseMinutes: { fg: '#FFE27A', track: 'rgba(255, 255, 255, 0.3)' },
   standHours: { fg: '#8FE3FF', track: 'rgba(255, 255, 255, 0.3)' },
@@ -32,9 +33,10 @@ function formatShortDate(dateStr) {
 // treatment DietCard gives its calorie count.
 export default function ActivityCard({ current, isCurrentToday, onPress }) {
   const t = useT();
-  const hasData = Boolean(current?.steps || current?.exerciseMinutes || current?.standHours);
+  const hasData = Boolean(current?.steps || current?.exerciseMinutes || current?.standHours || current?.caloriesBurned);
   const rings = current
     ? [
+        { percent: current.rings.caloriesBurned ?? 0, ...RING_COLORS.caloriesBurned },
         { percent: current.rings.steps, ...RING_COLORS.steps },
         { percent: current.rings.exerciseMinutes, ...RING_COLORS.exerciseMinutes },
         { percent: current.rings.standHours, ...RING_COLORS.standHours },
@@ -47,7 +49,7 @@ export default function ActivityCard({ current, isCurrentToday, onPress }) {
       <GradientFill colors={OVERLAY} angle="vertical" />
 
       <View style={styles.badgeGloss}>
-        <ActivityRings rings={rings} size={RING_SIZE} strokeWidth={6} gap={2} />
+        <ActivityRings rings={rings} size={RING_SIZE} strokeWidth={4.5} gap={1.5} />
       </View>
 
       <View style={styles.textBlock}>
