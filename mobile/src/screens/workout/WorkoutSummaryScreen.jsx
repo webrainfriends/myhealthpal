@@ -3,8 +3,9 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-nat
 import { SafeAreaView } from 'react-native-safe-area-context';
 import PrimaryButton from '../../components/PrimaryButton';
 import { cardShadow, colors, radii, spacing, typography } from '../../theme/theme';
-import { completeWorkout, fetchWorkoutSummary } from '../../api/client';
+import { completeWorkout, deleteWorkouts, fetchWorkoutSummary } from '../../api/client';
 import { useT } from '../../i18n/I18nContext';
+import { showAlert } from '../../utils/alert';
 import WorkoutRecordingCard from './WorkoutRecordingCard';
 import { fetchWorkoutHealth } from '../../health/workoutHealth';
 
@@ -163,6 +164,27 @@ export default function WorkoutSummaryScreen({ route, navigation }) {
           />
         )}
         <PrimaryButton variant={next ? 'secondary' : 'primary'} title={t('workout.done')} onPress={() => navigation.popToTop()} />
+        <PrimaryButton
+          variant="secondary"
+          title={t('workout.deleteWorkout')}
+          onPress={() =>
+            showAlert(t('workout.deleteWorkoutsTitle', { count: 1 }), t('workout.deleteWorkoutsBody'), [
+              {
+                text: t('workout.deleteWorkout'),
+                style: 'destructive',
+                onPress: async () => {
+                  try {
+                    await deleteWorkouts([workoutId]);
+                    navigation.popToTop();
+                  } catch (err) {
+                    showAlert(t('workout.deleteFailed'), err.message);
+                  }
+                },
+              },
+              { text: t('workout.cancel'), style: 'cancel' },
+            ])
+          }
+        />
       </ScrollView>
     </SafeAreaView>
   );

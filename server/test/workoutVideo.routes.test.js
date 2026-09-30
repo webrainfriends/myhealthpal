@@ -146,3 +146,26 @@ test('retained video: upload, verify, playback with ranges, cross-user isolation
     server.close();
   }
 });
+
+test('deleting a workout also hard-deletes its retained recording from the vault', async () => {
+  const { server, base } = await listen();
+  const W = `${base}/api/activity/workouts`;
+  try {
+    const session = await (await fetch(W, { method: 'POST', headers: J(tokenA), body: JSON.stringify({ exerciseId: 'squat', targetSets: 1, targetReps: 1 }) })).json();
+    await fetch(`${W}/${session.id}/start`, { method: 'POST', headers: J(tokenA) });
+    await fetch(`${W}/${session.id}/complete`, { method: 'POST', headers: J(tokenA), body: JSON.stringify({ activeSeconds: 10 }) });
+    const before = fs.readdirSync(tempDir).filter((f) => !f.includes('.tmp-')).length;
+    assert.equal((await fetch(`${W}/${session.id}/video/upload`, { method: 'POST', headers: A(tokenA), body: form(fakeMp4()) })).status, 201);
+    assert.equal(fs.readdirSync(tempDir).filter((f) => !f.includes('.tmp-')).length, before + 1);
+
+    const del = await (await fetch(`${W}/${session.id}`, { method: 'DELETE', headers: J(tokenA) })).json();
+    assert.equal(del.deleted, 1);
+    assert.equal(fs.readdirSync(tempDir).filter((f) => !f.includes('.tmp-')).length, before);
+    const rows = await pool.query('SELECT COUNT(*)::int AS n FROM workout_video_asset WHERE workout_session_id = $1', [session.id]);
+    assert.equal(rows.rows[0].n, 0);
+    const audits = await pool.query(`SELECT event_type FROM security_audit_events WHERE user_id = $1 AND event_type = 'WORKOUT_DELETED'`, [a]);
+    assert.ok(audits.rows.length >= 1);
+  } finally {
+    server.close();
+  }
+});

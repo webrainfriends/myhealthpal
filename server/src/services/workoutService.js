@@ -1,4 +1,5 @@
 const pool = require('../db/pool');
+const audit = require('../security/auditLog');
 const { estimateCalories } = require('../workout/calorieEstimator');
 const { summarize } = require('../workout/summaryProvider');
 const analysis = require('../workout/analysis');
@@ -400,6 +401,31 @@ async function history(userId, limit = 30) {
   return rows;
 }
 
+// ---- Deleting captured workouts (issue #135) --------------------------------
+
+// Permanently deletes the user's own sessions: a retained recording is
+// hard-deleted from the encrypted vault first (and, if that fails, the
+// session is kept so nothing is orphaned), then the session row goes and
+// cascades sets, reps, form events, landmarks and the video row. Ids that
+// aren't the caller's are skipped, never touched.
+async function deleteSessions(userId, ids) {
+  const list = [...new Set(Array.isArray(ids) ? ids : [])].filter((v) => UUID_RE.test(String(v)));
+  if (list.length === 0 || list.length > 50) throw new WorkoutError(400, 'Choose between 1 and 50 workouts to delete.');
+  // required lazily: workoutVideoService requires this module for WorkoutError
+  const video = require('./workoutVideoService');
+  const { rows: owned } = await pool.query('SELECT id FROM workout_session WHERE user_id = $1 AND id = ANY($2::uuid[])', [userId, list]);
+  let deleted = 0;
+  for (const { id } of owned) {
+    await video.hardDelete(userId, id, { reason: 'workout_deleted' });
+    const { rowCount } = await pool.query('DELETE FROM workout_session WHERE id = $1 AND user_id = $2', [id, userId]);
+    if (rowCount) {
+      deleted += 1;
+      await audit.record({ eventType: 'WORKOUT_DELETED', userId, resourceType: 'workout', purpose: 'user_request' });
+    }
+  }
+  return { deleted };
+}
+
 // ---- Workout plans (issue #135 Phase 2) ----------------------------------
 
 function cleanPlanExercise(e, index) {
@@ -499,5 +525,6 @@ async function runPlan(userId, id) {
 }
 
 module.exports = {
+  deleteSessions,
   getProgression, getAnalytics,
   createPlan, getPlan, listPlans, deletePlan, runPlan, WorkoutError, listExercises, createSession, startSession, recordSets, completeSession, getSummary, history };

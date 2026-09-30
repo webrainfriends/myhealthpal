@@ -19,6 +19,7 @@ const wrap = (fn) => async (req, res, next) => {
 
 router.get('/exercises', wrap(() => svc.listExercises().then((exercises) => ({ exercises }))));
 router.get('/history', wrap((req) => svc.history(req.user.id, req.query.limit).then((workouts) => ({ workouts }))));
+router.post('/delete', wrap((req) => svc.deleteSessions(req.user.id, req.body?.ids)));
 router.get('/analytics', wrap((req) => svc.getAnalytics(req.user.id)));
 router.get('/progression/:exerciseId', wrap((req) => svc.getProgression(req.user.id, req.params.exerciseId)));
 router.get('/plans', wrap((req) => svc.listPlans(req.user.id).then((plans) => ({ plans }))));
@@ -30,6 +31,7 @@ router.post('/', wrap((req) => svc.createSession(req.user.id, req.body)));
 router.post('/:id/start', wrap((req) => svc.startSession(req.user.id, req.params.id)));
 router.post('/:id/sets', wrap((req) => svc.recordSets(req.user.id, req.params.id, req.body)));
 router.post('/:id/complete', wrap((req) => svc.completeSession(req.user.id, req.params.id, req.body)));
+router.delete('/:id', wrap((req) => svc.deleteSessions(req.user.id, [req.params.id])));
 router.get('/:id/summary', wrap((req) => svc.getSummary(req.user.id, req.params.id)));
 
 // ---- Retained workout video (issue #135 Phase 3) ---------------------------
