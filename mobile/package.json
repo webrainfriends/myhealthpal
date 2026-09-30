@@ -4,6 +4,7 @@
   "main": "index.js",
   "dependencies": {
     "@expo/metro-runtime": "^57.0.16",
+    "@mediapipe/tasks-vision": "0.10.21",
     "@react-navigation/bottom-tabs": "^7.19.2",
     "@react-navigation/native": "^7.4.1",
     "@react-navigation/native-stack": "^7.19.2",

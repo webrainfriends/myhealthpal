@@ -596,6 +596,8 @@ export const TRANSLATIONS = {
       recordingNote: 'Recording is on - video stays on this phone until you choose to save it.',
       continueToCamera: 'Continue to camera',
       cameraNeeded: 'Camera access is needed to track your workout. The video is analysed on your phone and is not recorded or uploaded.',
+      cameraInsecure: 'The camera only works on the secure address. Open https://eyemyhealth.com and try again.',
+      cameraBlocked: 'The camera could not be used. Allow camera access for this site in your browser settings, close other apps using the camera, then try again.',
       cameraUnavailable: 'Live pose tracking is not available in this build of the app. It needs the development build with the camera and pose modules.',
       allowCamera: 'Allow camera',
       frameYourself: 'Step back until your whole body is in view.',
