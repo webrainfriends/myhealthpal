@@ -118,15 +118,27 @@ export const activityRingColors = {
   standHours: { fg: colors.primary, track: colors.primaryMuted },
 };
 
-// A soft, violet-tinted card elevation used across the dashboard's cards -
-// subtle on both platforms rather than a hard drop-shadow.
-export const cardShadow = {
-  shadowColor: '#4B2BD6',
-  shadowOffset: { width: 0, height: 6 },
-  shadowOpacity: 0.09,
-  shadowRadius: 16,
-  elevation: 3,
-};
+// The app-wide raised, "3D" card look: a vivid violet glow beneath, a
+// hairline lit border, and a chunky coloured bottom edge that reads as the
+// card's thickness (like a physical tile/button). Every card spreads this
+// token, so restyling it here lifts them all at once. Use card3D(color) for a
+// card that should carry its own accent (status, category, exercise).
+export function card3D(edge = '#6C4DFF', { glow = edge, lit = '#FFFFFF' } = {}) {
+  return {
+    borderWidth: 1.5,
+    borderColor: `${edge}33`,
+    borderTopColor: lit,
+    borderBottomWidth: 5,
+    borderBottomColor: edge,
+    shadowColor: glow,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.32,
+    shadowRadius: 14,
+    elevation: 8,
+  };
+}
+
+export const cardShadow = card3D('#6C4DFF');
 
 // A stronger glow for brand-colored surfaces (hero banners, primary buttons).
 export const brandShadow = {
@@ -172,6 +184,7 @@ const theme = {
   alertSeverityColors,
   activityRingColors,
   cardShadow,
+  card3D,
   brandShadow,
   spacing,
   radii,

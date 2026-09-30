@@ -95,7 +95,7 @@ export default function WorkoutSummaryScreen({ route, navigation }) {
           <Text style={typography.body}>{data.summaryText}</Text>
         </View>
 
-        <View style={styles.card}>
+        <View style={styles.cardAccent}>
           <Text style={typography.heading}>{t('workout.adherence')}</Text>
           {rows.map(([key, value]) => (
             <View key={key} style={styles.row}>
@@ -136,7 +136,7 @@ export default function WorkoutSummaryScreen({ route, navigation }) {
         )}
 
         {data.heartRate && (
-          <View style={styles.card}>
+          <View style={styles.cardWarm}>
             <Text style={typography.heading}>{t('workout.heartRate')}</Text>
             <Text style={typography.body}>{t('workout.hrAvgMax', { avg: data.heartRate.avgBpm, max: data.heartRate.maxBpm })}</Text>
             {data.heartRate.zone && (
@@ -146,7 +146,7 @@ export default function WorkoutSummaryScreen({ route, navigation }) {
         )}
 
         {data.calories && (
-          <View style={styles.card}>
+          <View style={styles.cardGood}>
             <Text style={typography.heading}>{t('workout.calories')}</Text>
             <Text style={typography.title}>{data.calories.low}–{data.calories.high} kcal</Text>
             <Text style={typography.bodySecondary}>{t('workout.caloriesConfidence', { level: data.calories.confidence })}</Text>
@@ -193,6 +193,9 @@ export default function WorkoutSummaryScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.md, gap: spacing.md },
-  card: { backgroundColor: colors.surface, borderRadius: radii.lg, padding: spacing.md, gap: spacing.sm, ...cardShadow },
+  card: { backgroundColor: colors.primaryMuted, borderRadius: radii.lg, padding: spacing.md, gap: spacing.sm, ...card3D(colors.primary) },
+  cardAccent: { backgroundColor: colors.accentMuted, borderRadius: radii.lg, padding: spacing.md, gap: spacing.sm, ...card3D(colors.accent) },
+  cardGood: { backgroundColor: colors.successMuted, borderRadius: radii.lg, padding: spacing.md, gap: spacing.sm, ...card3D(colors.success) },
+  cardWarm: { backgroundColor: colors.warningMuted, borderRadius: radii.lg, padding: spacing.md, gap: spacing.sm, ...card3D(colors.warning) },
   row: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.md },
 });

@@ -1,5 +1,5 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { cardShadow, colors, radii, spacing, typography } from '../theme/theme';
+import { card3D, colors, radii, spacing, typography } from '../theme/theme';
 
 // A compact, tappable count card for the dashboard - the same shape as
 // OrganHealthCard (icon badge, big number, label) but for a count of items
@@ -7,9 +7,9 @@ import { cardShadow, colors, radii, spacing, typography } from '../theme/theme';
 // score, so tapping always opens the full list behind the number.
 export default function SummaryCard({ icon, count, label, subtitle, palette, onPress }) {
   return (
-    <TouchableOpacity style={[styles.card, cardShadow]} onPress={onPress} activeOpacity={0.8}>
+    <TouchableOpacity style={[styles.card, { backgroundColor: palette.bg }, card3D(palette.fg)]} onPress={onPress} activeOpacity={0.8}>
       <View style={styles.topRow}>
-        <View style={[styles.iconBadge, { backgroundColor: palette.bg }]}>
+        <View style={[styles.iconBadge, { backgroundColor: colors.surface }, card3D(palette.fg)]}>
           <Text style={styles.icon}>{icon}</Text>
         </View>
         <Text style={[styles.count, { color: palette.fg }]}>{count}</Text>
