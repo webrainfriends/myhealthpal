@@ -67,12 +67,20 @@ async function processScheduleImport(importId) {
     // describing a longer plan than requested (e.g. a 30-day plan uploaded
     // against a 7-day schedule) is trimmed to what the person actually
     // picked rather than silently creating a longer schedule than asked for.
-    const withinDuration = entries.filter((e) => e.dayNumber <= record.requested_duration_days);
+    // A smart upload (duration_auto) never asked for a duration, so the
+    // schedule is sized to the document itself instead: 7 days when every
+    // entry fits in a week, else the 15-day maximum.
+    const durationDays = record.duration_auto
+      ? Math.max(...entries.map((e) => e.dayNumber)) <= 7
+        ? 7
+        : 15
+      : record.requested_duration_days;
+    const withinDuration = entries.filter((e) => e.dayNumber <= durationDays);
 
     const { rows: scheduleRows } = await pool.query(
       `INSERT INTO diet_schedules (user_id, title, duration_days, start_date, source_type, import_id)
        VALUES ($1, $2, $3, $4, 'imported', $5) RETURNING *`,
-      [record.user_id, record.original_filename, record.requested_duration_days, record.requested_start_date, importId]
+      [record.user_id, record.original_filename, durationDays, record.requested_start_date, importId]
     );
     const schedule = scheduleRows[0];
     await scheduleService.insertEntries(schedule.id, record.requested_start_date, withinDuration);

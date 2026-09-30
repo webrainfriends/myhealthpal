@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import PrimaryButton from '../../components/PrimaryButton';
 import { colors, radii, spacing, typography } from '../../theme/theme';
@@ -289,6 +289,7 @@ export default function LiveWorkoutScreen({ route, navigation }) {
       <SafeAreaView style={styles.dark}>
         <View style={styles.center}>
           <Text style={styles.lightText}>{poseUnavailableReason() === 'insecure_context' ? t('workout.cameraInsecure') : t('workout.cameraUnavailable')}</Text>
+          <PrimaryButton title={t('workout.back')} onPress={() => navigation.goBack()} />
         </View>
       </SafeAreaView>
     );
@@ -300,6 +301,7 @@ export default function LiveWorkoutScreen({ route, navigation }) {
         <View style={styles.center}>
           <Text style={styles.lightText}>{t('workout.cameraNeeded')}</Text>
           <PrimaryButton title={t('workout.allowCamera')} onPress={async () => setPermission(await requestCameraPermission())} />
+          <PrimaryButton variant="secondary" title={t('workout.cancel')} onPress={() => navigation.goBack()} />
         </View>
       </SafeAreaView>
     );
@@ -336,74 +338,126 @@ export default function LiveWorkoutScreen({ route, navigation }) {
 
   const isHold = exercise?.kind === 'hold';
   const showRest = stage === 'rest';
+  const active = stage === 'live' || stage === 'paused' || showRest;
+  const preparing = stage === 'setup' || stage === 'detecting' || stage === 'detect-wait' || stage === 'starting';
+
+  // Skips the framing check: tracking starts now (auto-detect starts its
+  // detection window now). Pose-confidence gating still pauses counting
+  // whenever the body isn't visible.
+  function startNow() {
+    readyFrames.current = 0;
+    if (isAuto && !exercise) {
+      detectFrames.current = [];
+      go('detecting');
+      return;
+    }
+    go('starting');
+    beginTracking();
+  }
+
+  // Before the workout has started, leaving just goes back; once it is
+  // running, the close button behaves like End workout (asks first).
+  function close() {
+    if (active) confirmEnd();
+    else navigation.goBack();
+  }
 
   return (
     <View style={styles.dark}>
       <PoseCamera ref={cameraRef} camera="front" onLandmarks={onLandmarks} onError={(err) => (err && (err.name === 'NotAllowedError' || err.name === 'NotFoundError' || err.name === 'NotReadableError') ? setCameraBlocked(true) : setFailed(true))} style={StyleSheet.absoluteFill} />
       <SafeAreaView style={styles.overlay} pointerEvents="box-none">
-        <View style={styles.badge} accessibilityLiveRegion="polite">
-          <Text style={styles.badgeText}>● {cfg.recordVideo && stage !== 'setup' && stage !== 'starting' ? t('workout.recordingNote') : t('workout.cameraActive')}</Text>
+        <View style={styles.topBar} pointerEvents="box-none">
+          <TouchableOpacity style={styles.closeButton} onPress={close} accessibilityRole="button" accessibilityLabel={t('workout.close')} disabled={stage === 'saving'}>
+            <Text style={styles.closeText}>✕</Text>
+          </TouchableOpacity>
+          <View style={styles.badge} accessibilityLiveRegion="polite">
+            <Text style={styles.badgeText}>● {cfg.recordVideo && !preparing ? t('workout.recordingNote') : t('workout.cameraActive')}</Text>
+          </View>
         </View>
 
-        {(stage === 'detecting' || stage === 'detect-wait') && (
-          <View style={styles.panel}>
-            <Text style={styles.lightText}>{t('workout.detecting')}</Text>
-          </View>
-        )}
-
-        {(stage === 'setup' || stage === 'starting') && (
-          <View style={styles.panel}>
-            <Text style={styles.lightText}>{t('workout.frameYourself')}</Text>
-            {missing.length > 0 ? (
-              <Text style={styles.lightText}>{t('workout.moveBack', { parts: missing.map((m) => PART_LABELS[m] || m.toLowerCase()).join(', ') })}</Text>
-            ) : (
-              <Text style={styles.lightText}>{t('workout.ready')}</Text>
-            )}
-          </View>
-        )}
-
-        {(stage === 'live' || showRest) && (
-          <View style={styles.panel}>
-            <Text style={styles.title}>{exercise?.name.toUpperCase()}</Text>
-            <Text style={styles.lightText}>{t('workout.setOf', { set: view.setNumber, total: cfg.targetSets })}</Text>
-            {isHold ? (
-              <Text style={styles.big}>{t('workout.held', { seconds: view.heldSeconds, target: cfg.targetHoldSeconds })}</Text>
-            ) : (
-              <>
-                <Text style={styles.big}>{t('workout.repsOf', { done: view.valid, target: cfg.targetReps })}</Text>
-                <Text style={styles.lightText}>{t('workout.validPartial', { valid: view.valid, partial: view.partial })}</Text>
-              </>
-            )}
-            {lastTempo && !showRest && (
-              <Text style={styles.lightText}>{t('workout.tempoActual', { down: lastTempo.down.toFixed(1), up: lastTempo.up.toFixed(1) })}</Text>
-            )}
-            {view.paused && !showRest && <Text style={styles.warn}>{t('workout.frameYourself')}</Text>}
-            {cue && !showRest && <Text style={styles.warn}>⚠ {cue}</Text>}
-            {showRest && (
-              <>
-                <Text style={styles.big}>{t('workout.restLeft', { seconds: restLeft })}</Text>
-                {fatigueNote && <Text style={styles.warn}>{t('workout.fatigueNote')}</Text>}
-                <PrimaryButton title={t('workout.skipRest')} onPress={resumeAfterRest} />
-              </>
-            )}
-            <View style={styles.buttons}>
-              {!showRest && (
-                <PrimaryButton
-                  variant="secondary"
-                  title={stage === 'paused' ? t('workout.resume') : t('workout.pause')}
-                  onPress={() => go(stage === 'paused' ? 'live' : 'paused')}
-                />
-              )}
-              <PrimaryButton title={t('workout.endWorkout')} onPress={confirmEnd} />
+        <View style={styles.bottom} pointerEvents="box-none">
+          {(stage === 'detecting' || stage === 'detect-wait') && (
+            <View style={styles.panel}>
+              <Text style={styles.lightText}>{t('workout.detecting')}</Text>
             </View>
-          </View>
-        )}
+          )}
 
-        {stage === 'saving' && (
-          <View style={styles.panel}>
-            <Text style={styles.lightText}>{t('workout.saving')}</Text>
-          </View>
-        )}
+          {(stage === 'setup' || stage === 'starting') && (
+            <View style={styles.panel}>
+              <Text style={styles.lightText}>{t('workout.frameYourself')}</Text>
+              {missing.length > 0 ? (
+                <Text style={styles.lightText}>{t('workout.moveBack', { parts: missing.map((m) => PART_LABELS[m] || m.toLowerCase()).join(', ') })}</Text>
+              ) : (
+                <Text style={styles.lightText}>{t('workout.ready')}</Text>
+              )}
+            </View>
+          )}
+
+          {(stage === 'live' || stage === 'paused' || showRest) && (
+            <View style={styles.panel}>
+              <Text style={styles.title}>{exercise?.name.toUpperCase()}</Text>
+              <Text style={styles.lightText}>{t('workout.setOf', { set: view.setNumber, total: cfg.targetSets })}</Text>
+              {isHold ? (
+                <Text style={styles.big}>{t('workout.held', { seconds: view.heldSeconds, target: cfg.targetHoldSeconds })}</Text>
+              ) : (
+                <>
+                  <Text style={styles.big}>{t('workout.repsOf', { done: view.valid, target: cfg.targetReps })}</Text>
+                  <Text style={styles.lightText}>{t('workout.validPartial', { valid: view.valid, partial: view.partial })}</Text>
+                </>
+              )}
+              {lastTempo && !showRest && (
+                <Text style={styles.lightText}>{t('workout.tempoActual', { down: lastTempo.down.toFixed(1), up: lastTempo.up.toFixed(1) })}</Text>
+              )}
+              {stage === 'paused' && <Text style={styles.warn}>{t('workout.paused')}</Text>}
+              {stage === 'live' && view.paused && <Text style={styles.warn}>{t('workout.frameYourself')}</Text>}
+              {cue && stage === 'live' && <Text style={styles.warn}>⚠ {cue}</Text>}
+              {showRest && (
+                <>
+                  <Text style={styles.big}>{t('workout.restLeft', { seconds: restLeft })}</Text>
+                  {fatigueNote && <Text style={styles.warn}>{t('workout.fatigueNote')}</Text>}
+                </>
+              )}
+            </View>
+          )}
+
+          {stage === 'saving' && (
+            <View style={styles.panel}>
+              <Text style={styles.lightText}>{t('workout.saving')}</Text>
+            </View>
+          )}
+
+          {/* Controls live in their own bar so they are always on screen and
+              never depend on the tracking state or the stats card's height. */}
+          {stage !== 'saving' && (
+            <View style={styles.controls}>
+              {stage === 'setup' && (
+                <View style={styles.controlCell}>
+                  <PrimaryButton title={t('workout.startNow')} onPress={startNow} />
+                </View>
+              )}
+              {preparing && (
+                <View style={styles.controlCell}>
+                  <PrimaryButton variant="secondary" title={t('workout.cancel')} onPress={() => navigation.goBack()} />
+                </View>
+              )}
+              {showRest && (
+                <View style={styles.controlCell}>
+                  <PrimaryButton title={t('workout.skipRest')} onPress={resumeAfterRest} />
+                </View>
+              )}
+              {(stage === 'live' || stage === 'paused') && (
+                <View style={styles.controlCell}>
+                  <PrimaryButton variant="secondary" title={stage === 'paused' ? t('workout.resume') : t('workout.pause')} onPress={() => go(stage === 'paused' ? 'live' : 'paused')} />
+                </View>
+              )}
+              {active && (
+                <View style={styles.controlCell}>
+                  <PrimaryButton title={t('workout.endWorkout')} onPress={confirmEnd} />
+                </View>
+              )}
+            </View>
+          )}
+        </View>
       </SafeAreaView>
     </View>
   );
@@ -413,6 +467,12 @@ const styles = StyleSheet.create({
   dark: { flex: 1, backgroundColor: '#000' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.md, gap: spacing.md },
   overlay: { flex: 1, justifyContent: 'space-between', padding: spacing.md },
+  topBar: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  closeButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },
+  closeText: { color: colors.onBrand, fontSize: 20, fontWeight: '700' },
+  bottom: { gap: spacing.sm },
+  controls: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  controlCell: { flexGrow: 1, flexBasis: 160 },
   badge: { alignSelf: 'flex-start', backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: radii.md, paddingHorizontal: spacing.sm, paddingVertical: 4 },
   badgeText: { color: colors.danger, fontWeight: '700' },
   panel: { backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: radii.lg, padding: spacing.md, gap: spacing.sm },

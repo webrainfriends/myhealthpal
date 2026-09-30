@@ -85,6 +85,17 @@ export const healthStatusColors = {
   no_data: { fg: colors.textTertiary, bg: colors.surfaceMuted, track: colors.border },
 };
 
+// My Insurance coverage verdicts - how a lab result / organ sits against the
+// person's policies. Same hues as the health statuses so "covered" reads as
+// good news and "not covered" as the one to look at; "not mentioned" is
+// neutral because silence in a policy isn't a verdict either way.
+export const coverageColors = {
+  covered: { fg: colors.success, bg: colors.successMuted },
+  partial: { fg: colors.warning, bg: colors.warningMuted },
+  not_covered: { fg: colors.danger, bg: colors.dangerMuted },
+  not_mentioned: { fg: colors.textTertiary, bg: colors.surfaceMuted },
+};
+
 // One fixed color per meal type - a label, not a good/bad status, so
 // (unlike statusColors/healthStatusColors) every entry uses a neutral tone
 // from the existing palette rather than success/warning/danger.
@@ -101,6 +112,7 @@ export const mealTypeColors = {
 // palette rather than Apple's neon red/green/cyan so it still reads as part
 // of the same clinical-but-friendly system.
 export const activityRingColors = {
+  caloriesBurned: { fg: colors.teal, track: colors.tealMuted },
   steps: { fg: colors.accent, track: colors.accentMuted },
   exerciseMinutes: { fg: colors.success, track: colors.successMuted },
   standHours: { fg: colors.primary, track: colors.primaryMuted },

@@ -35,6 +35,12 @@ export default function MoreScreen({ navigation }) {
           onPress={() => navigation.navigate('RetestRadar')}
         />
         <MoreRow
+          icon="🛡️"
+          title={t('nav.insurance')}
+          subtitle={t('insurance.moreSubtitle')}
+          onPress={() => navigation.navigate('Insurance')}
+        />
+        <MoreRow
           icon="🗂️"
           title={t('nav.timeline')}
           subtitle="Every report you've uploaded, newest first"

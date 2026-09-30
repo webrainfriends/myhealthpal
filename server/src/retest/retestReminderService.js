@@ -134,4 +134,4 @@ async function runReminders({ today = new Date(), send = sendExpoPush, ignoreSen
   return { sent };
 }
 
-module.exports = { runReminders, pendingReminders, buildMessage, SEND_WINDOW_UTC };
+module.exports = { runReminders, pendingReminders, buildMessage, sendExpoPush, SEND_WINDOW_UTC };
