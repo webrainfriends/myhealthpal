@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import PrimaryButton from '../../components/PrimaryButton';
-import { cardShadow, colors, radii, spacing, typography } from '../../theme/theme';
+import { card3D, colors, radii, spacing, typography } from '../../theme/theme';
 import { completeWorkout, deleteWorkouts, fetchWorkoutSummary } from '../../api/client';
 import { useT } from '../../i18n/I18nContext';
 import { showAlert } from '../../utils/alert';
