@@ -298,8 +298,19 @@ jobs:
               '    }' \
               '' \
               "    root ${WEB_ROOT};" \
+              '    # Hashed build assets never change, and a missing one must 404 -' \
+              '    # falling back to index.html would hand the browser HTML in place' \
+              '    # of a script (a blank page after a redeploy).' \
+              '    location /_expo/ {' \
+              '        try_files $uri =404;' \
+              '        add_header Cache-Control "public, max-age=31536000, immutable";' \
+              '    }' \
+              '' \
+              '    # The HTML shell must always be revalidated so it never points at' \
+              '    # a previous deploy'"'"'s (now deleted) bundle.' \
               '    location / {' \
               '        try_files $uri $uri/ /index.html;' \
+              '        add_header Cache-Control "no-cache";' \
               '    }' \
               '}' \
               | sudo tee /etc/nginx/sites-available/myhealthpal >/dev/null
