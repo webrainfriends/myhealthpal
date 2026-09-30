@@ -15,7 +15,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // on deletion - so "doc storage" here always means exactly what deleting
 // the login would free up.
 async function getStorageBytesByUser() {
-  const unionSql = FILE_TABLES.map((table) => `SELECT user_id, file_size_bytes FROM ${table}`).join(' UNION ALL ');
+  // workout_video_asset names its size column size_bytes; the rest use file_size_bytes.
+  const sizeColumn = (table) => (table === 'workout_video_asset' ? 'size_bytes' : 'file_size_bytes');
+  const unionSql = FILE_TABLES.map((table) => `SELECT user_id, ${sizeColumn(table)} AS file_size_bytes FROM ${table}`).join(' UNION ALL ');
   const { rows } = await pool.query(
     `SELECT user_id, COALESCE(SUM(file_size_bytes), 0)::bigint AS bytes FROM (${unionSql}) f GROUP BY user_id`
   );
