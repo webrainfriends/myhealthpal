@@ -276,6 +276,18 @@ jobs:
               '        proxy_set_header X-Forwarded-Proto $scheme;' \
               '    }' \
               '' \
+              '    # Report uploads (incl. Apple Health export.zip): up to 500 MB.' \
+              '    location = /api/reports {' \
+              '        client_max_body_size 500m;' \
+              "        proxy_pass http://127.0.0.1:${APP_PORT};" \
+              '        proxy_http_version 1.1;' \
+              '        proxy_read_timeout 300s;' \
+              '        proxy_set_header Host $host;' \
+              '        proxy_set_header X-Real-IP $remote_addr;' \
+              '        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' \
+              '        proxy_set_header X-Forwarded-Proto $scheme;' \
+              '    }' \
+              '' \
               '    location /api/ {' \
               "        proxy_pass http://127.0.0.1:${APP_PORT};" \
               '        proxy_http_version 1.1;' \

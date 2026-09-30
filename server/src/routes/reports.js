@@ -1,7 +1,7 @@
 const express = require('express');
 const pool = require('../db/pool');
 const config = require('../config');
-const { upload, extensionOf } = require('../middleware/upload');
+const { upload, extensionOf, maxBytesFor } = require('../middleware/upload');
 const { enqueueProcessing } = require('../services/ingestionService');
 const registry = require('../extraction/registry');
 const { classifyValue } = require('../extraction/normalizationService');
@@ -97,7 +97,7 @@ router.post('/', (req, res, next) => {
     try {
       if (err && err.code === 'LIMIT_FILE_SIZE') {
         return res.status(400).json({
-          error: `File exceeds the ${Math.round(config.maxUploadBytes / (1024 * 1024))}MB upload limit.`,
+          error: `File exceeds the ${Math.round(Math.max(config.maxUploadBytes, config.maxHealthExportBytes) / (1024 * 1024))}MB upload limit.`,
         });
       }
       if (err) return next(err);
@@ -107,6 +107,12 @@ router.post('/', (req, res, next) => {
       }
       if (!req.file) {
         return res.status(400).json({ error: 'No file was provided. Attach a file under the "file" field.' });
+      }
+      const limitBytes = maxBytesFor(extensionOf(req.file.originalname));
+      if (req.file.size > limitBytes) {
+        return res.status(400).json({
+          error: `File exceeds the ${Math.round(limitBytes / (1024 * 1024))}MB upload limit.`,
+        });
       }
       if (req.file.size === 0) {
         return res.status(400).json({ error: 'The uploaded file is empty or corrupt.' });

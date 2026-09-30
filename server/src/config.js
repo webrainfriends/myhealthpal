@@ -63,6 +63,15 @@ const SUPPORTED_EXTENSIONS = {
   xlsx: { mimeTypes: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'] },
 };
 
+// Apple Health "Export All Health Data" and its parts. Kept apart from
+// SUPPORTED_EXTENSIONS so Gmail attachment search (which keys off that list)
+// doesn't start pulling in every .zip/.xml an inbox holds.
+const HEALTH_EXPORT_EXTENSIONS = {
+  zip: { mimeTypes: ['application/zip', 'application/x-zip-compressed'] },
+  xml: { mimeTypes: ['text/xml', 'application/xml'] },
+  gpx: { mimeTypes: ['application/gpx+xml', 'application/xml', 'text/xml'] },
+};
+
 module.exports = {
   port: Number(process.env.PORT) || 4000,
   databaseUrl: process.env.DATABASE_URL,
@@ -93,6 +102,10 @@ module.exports = {
   labBookingUrlTemplate:
     process.env.LAB_BOOKING_URL_TEMPLATE || 'https://www.google.com/maps/search/{test}+test+lab+near+me',
   supportedExtensions: SUPPORTED_EXTENSIONS,
+  healthExportExtensions: HEALTH_EXPORT_EXTENSIONS,
+  uploadExtensions: { ...SUPPORTED_EXTENSIONS, ...HEALTH_EXPORT_EXTENSIONS },
+  // A full Apple Health export.zip is routinely far larger than a lab PDF.
+  maxHealthExportBytes: Number(process.env.MAX_HEALTH_EXPORT_BYTES) || 500 * 1024 * 1024,
   jwtSecret,
   nodeEnv: process.env.NODE_ENV || 'development',
   // Encrypted medical-file vault (issue #104, docs/security/). Every
