@@ -208,14 +208,28 @@ jobs:
               sudo systemctl enable --now nginx
             fi
 
+            # npm ci / expo export for the mobile app can exceed the RAM of
+            # a small instance and get OOM-killed (exit 137). Make sure
+            # there is swap to absorb it; a no-op once swap exists.
+            if [ "$(swapon --show --noheadings | wc -l)" -eq 0 ]; then
+              echo "[deploy] no swap found - creating 2G /swapfile"
+              if [ ! -f /swapfile ]; then
+                sudo fallocate -l 2G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=2048
+                sudo chmod 600 /swapfile
+                sudo mkswap /swapfile
+              fi
+              sudo swapon /swapfile || true
+              grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null
+            fi
+
             echo "[deploy] building mobile app for web"
             cd mobile
-            npm ci
+            NODE_OPTIONS=--max-old-space-size=1536 npm ci
             # Same-origin "" (not a full URL) - nginx below proxies /api/ on
             # this same host/port to the API, so the web build never needs
             # to know the actual host/IP. EXPO_PUBLIC_* vars are inlined at
             # build time; client.js treats this differently from "unset".
-            CI=1 EXPO_PUBLIC_API_BASE_URL= npx expo export --platform web --output-dir dist
+            NODE_OPTIONS=--max-old-space-size=1536 CI=1 EXPO_PUBLIC_API_BASE_URL= npx expo export --platform web --output-dir dist
             cd ..
             WEB_ROOT=/var/www/myhealthpal-web
             sudo rm -rf "$WEB_ROOT"
