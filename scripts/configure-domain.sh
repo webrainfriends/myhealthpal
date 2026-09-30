@@ -96,6 +96,20 @@ proxy_block() {
         proxy_send_timeout 300s;
     }
 
+    # Report uploads (incl. Apple Health export.zip) may be up to 500 MB; the
+    # upstream :${UPSTREAM_PORT} site has the same route-scoped limit.
+    location = /api/reports {
+        client_max_body_size 500m;
+        proxy_pass http://127.0.0.1:${UPSTREAM_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+
     location / {
         proxy_pass http://127.0.0.1:${UPSTREAM_PORT};
         proxy_http_version 1.1;
