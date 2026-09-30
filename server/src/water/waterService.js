@@ -49,6 +49,32 @@ async function getDaySummary(userId, dateStr) {
   return { date, entries: rows, totalMl };
 }
 
+// One row per calendar day (UTC, the same day boundary getDaySummary uses) for
+// the last `days` days ending today - including days with nothing logged, so
+// the client can draw a fixed-width chart and count "goal days" without
+// gap-filling itself.
+async function getHistory(userId, days = 14) {
+  const span = Math.min(Math.max(Number.parseInt(days, 10) || 14, 1), 90);
+  const { rows } = await pool.query(
+    `SELECT to_char((logged_at AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD') AS day,
+            SUM(amount_ml)::int AS total_ml, COUNT(*)::int AS entries
+     FROM water_entries
+     WHERE user_id = $1 AND logged_at >= (date_trunc('day', now() AT TIME ZONE 'UTC') - ($2::int - 1) * interval '1 day') AT TIME ZONE 'UTC'
+     GROUP BY 1`,
+    [userId, span]
+  );
+  const byDay = new Map(rows.map((r) => [r.day, r]));
+  const result = [];
+  for (let i = span - 1; i >= 0; i -= 1) {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - i);
+    const key = d.toISOString().slice(0, 10);
+    const row = byDay.get(key);
+    result.push({ date: key, totalMl: row ? row.total_ml : 0, entries: row ? row.entries : 0 });
+  }
+  return result;
+}
+
 async function deleteWaterEntry(userId, entryId) {
   const { rows } = await pool.query('DELETE FROM water_entries WHERE id = $1 AND user_id = $2 RETURNING id', [
     entryId,
@@ -57,4 +83,4 @@ async function deleteWaterEntry(userId, entryId) {
   return rows.length > 0;
 }
 
-module.exports = { MAX_SINGLE_ENTRY_ML, logWaterEntry, getDaySummary, deleteWaterEntry };
+module.exports = { MAX_SINGLE_ENTRY_ML, logWaterEntry, getDaySummary, getHistory, deleteWaterEntry };

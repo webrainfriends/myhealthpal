@@ -113,3 +113,21 @@ test('POST /api/water/target/refresh recomputes even when the cached target is n
     server.close();
   }
 });
+
+test('GET /api/water/history returns one row per day (gap-filled) with the logged total and the target', async () => {
+  const { server, base } = await listen();
+  try {
+    const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+    await fetch(`${base}/api/water/entries`, { method: 'POST', headers, body: JSON.stringify({ amount_ml: 750 }) });
+    const res = await fetch(`${base}/api/water/history?days=7`, { headers });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.days.length, 7);
+    assert.equal(body.days[6].date, new Date().toISOString().slice(0, 10));
+    assert.ok(body.days[6].totalMl >= 750);
+    assert.equal(body.days[0].totalMl, 0);
+    assert.ok(body.target.ideal_ml > 0);
+  } finally {
+    server.close();
+  }
+});
