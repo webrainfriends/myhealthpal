@@ -82,8 +82,18 @@ function DayRow({ day, t, expanded, onToggle }) {
           ) : null}
           {day.readings.map((reading, index) => {
             const readingPalette = BAND_COLORS[reading.band] || healthStatusColors.no_data;
+            const detail = [
+              reading.feeling ? t('organDetail.glucose.feeling', { value: reading.feeling }) : null,
+              reading.hematocrit !== null && reading.hematocrit !== undefined
+                ? t('organDetail.glucose.hematocrit', { value: reading.hematocrit })
+                : null,
+              reading.note,
+            ]
+              .filter(Boolean)
+              .join(' · ');
             return (
-              <View key={`${reading.time}-${index}`} style={styles.readingRow}>
+              <View key={`${reading.time}-${index}`} style={styles.readingBlock}>
+                <View style={styles.readingRow}>
                 <Text style={styles.readingTime}>{reading.time}</Text>
                 <Text style={styles.readingMeal} numberOfLines={1}>
                   {reading.mealContext || t('organDetail.glucose.noMeal')}
@@ -92,6 +102,8 @@ function DayRow({ day, t, expanded, onToggle }) {
                   {reading.value}
                   {reading.band === 'high' ? ' ↑' : reading.band === 'low' ? ' ↓' : ''}
                 </Text>
+              </View>
+                {detail ? <Text style={styles.readingDetail}>{detail}</Text> : null}
               </View>
             );
           })}
@@ -240,6 +252,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   fastingLine: { fontSize: 12, color: colors.textSecondary },
+  readingBlock: { gap: 2 },
+  readingDetail: { marginLeft: 46 + spacing.sm, fontSize: 12, color: colors.textSecondary },
   readingRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   readingTime: { width: 46, fontSize: 13, color: colors.textSecondary },
   readingMeal: { flex: 1, fontSize: 13, color: colors.textSecondary },

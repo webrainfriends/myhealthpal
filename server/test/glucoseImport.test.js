@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const pool = require('../src/db/pool');
-const { detectGlucoseTable, importGlucoseTablesFrom, parseMeasuredAt, toMgDl } = require('../src/services/glucoseImportService');
+const { detectGlucoseTable, importGlucoseTablesFrom, normalizeMealContext, parseMeasuredAt, toMgDl } = require('../src/services/glucoseImportService');
 const { summarizeGlucose, estimatedAverageFromHba1c } = require('../src/services/glucoseSummaryService');
 
 let userId;
@@ -101,4 +101,16 @@ test('summarizeGlucose with no lab report has no comparison, and no readings is 
   const empty = summarizeGlucose([], {});
   assert.equal(empty.overall, null);
   assert.equal(empty.days.length, 0);
+});
+
+test('detectGlucoseTable maps feeling, hematocrit and note columns; meals are normalized', () => {
+  const columns = detectGlucoseTable([[...HEADER, 'Hematocrit', 'Note'], ['A', 'x', '1', '2026-09-29 18:22:11', 92, 'mg/dL', 'Good', 'Before Meal', 'M', 40, 'hi']]);
+  assert.equal(columns.feelingIndex, 6);
+  assert.equal(columns.hematocritIndex, 9);
+  assert.equal(columns.noteIndex, 10);
+  assert.equal(normalizeMealContext('No Meal Info'), null);
+  assert.equal(normalizeMealContext('Pre-meal'), 'Before Meal');
+  assert.equal(normalizeMealContext('post meal'), 'After Meal');
+  assert.equal(normalizeMealContext('Bedtime'), 'Bedtime');
+  assert.equal(normalizeMealContext('Fasting'), 'Fasting');
 });

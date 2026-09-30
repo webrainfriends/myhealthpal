@@ -34,6 +34,9 @@ function detectGlucoseTable(rows) {
     unitIndex: header.findIndex((h) => h === 'glucose units' || h === 'unit' || h === 'units'),
     mealIndex: header.findIndex((h) => h === 'meal' || h === 'meal context'),
     sourceIndex: header.findIndex((h) => h === 'source'),
+    feelingIndex: header.findIndex((h) => h === 'feeling' || h === 'mood'),
+    hematocritIndex: header.findIndex((h) => h === 'hematocrit' || h === 'hct'),
+    noteIndex: header.findIndex((h) => h === 'note' || h === 'notes' || h === 'comment'),
   };
 }
 
@@ -59,8 +62,27 @@ function toMgDl(value, unit) {
   return Math.round((isMmol ? numeric * MMOL_TO_MGDL : numeric) * 10) / 10;
 }
 
+// Meters label the meal context in their own words ("Before Meal", "Pre-meal",
+// "No Meal Info"...). Stored as one of a fixed set so the card can group and
+// compare on it; "No Meal Info" (the meter's "not set") is stored as null.
+function normalizeMealContext(value) {
+  const text = String(value ?? '').trim();
+  if (!text || /^(no meal info|none|n\/a|-+|unknown|not set)$/i.test(text)) return null;
+  const key = text.toLowerCase().replace(/[^a-z]+/g, ' ').trim();
+  if (/fasting/.test(key)) return 'Fasting';
+  if (/(before|pre) ?(meal|breakfast|lunch|dinner)|premeal/.test(key)) return 'Before Meal';
+  if (/(after|post) ?(meal|breakfast|lunch|dinner)|postmeal|postprandial/.test(key)) return 'After Meal';
+  if (/bed ?time|before sleep|night/.test(key)) return 'Bedtime';
+  if (/random|general/.test(key)) return 'Random';
+  return text;
+}
+
+function cellText(row, index) {
+  return index >= 0 ? String(row[index] ?? '').trim() : '';
+}
+
 async function importGlucoseTable(userId, rows, columns, reportId = null) {
-  const { dateIndex, glucoseIndex, unitIndex, mealIndex, sourceIndex } = columns;
+  const { dateIndex, glucoseIndex, unitIndex, mealIndex, sourceIndex, feelingIndex = -1, hematocritIndex = -1, noteIndex = -1 } = columns;
   let imported = 0;
 
   for (let i = 1; i < rows.length; i += 1) {
@@ -69,17 +91,29 @@ async function importGlucoseTable(userId, rows, columns, reportId = null) {
     const value = toMgDl(row[glucoseIndex], unitIndex >= 0 ? row[unitIndex] : 'mg/dL');
     if (!measuredAt || value === null) continue;
 
-    const meal = mealIndex >= 0 ? String(row[mealIndex] ?? '').trim() : '';
-    const source = sourceIndex >= 0 ? String(row[sourceIndex] ?? '').trim() : '';
+    const meal = normalizeMealContext(mealIndex >= 0 ? row[mealIndex] : '');
+    const source = cellText(row, sourceIndex);
+    const feeling = cellText(row, feelingIndex);
+    const note = cellText(row, noteIndex);
+    const hematocrit = hematocritIndex >= 0 ? parseNumeric(row[hematocritIndex]) : null;
 
     // Re-uploading an overlapping export must never double-count a reading.
     const result = await pool.query(
-      `INSERT INTO glucose_readings (user_id, report_id, measured_at, value_mg_dl, meal_context, source)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (user_id, measured_at, value_mg_dl) DO NOTHING`,
-      [userId, reportId, measuredAt, value, meal || null, source || null]
+      `INSERT INTO glucose_readings
+         (user_id, report_id, measured_at, value_mg_dl, meal_context, source, feeling, hematocrit, note)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       ON CONFLICT (user_id, measured_at, value_mg_dl) DO UPDATE SET
+         -- A re-upload fills in columns an earlier import didn't capture,
+         -- without ever overwriting what is already stored.
+         meal_context = COALESCE(glucose_readings.meal_context, EXCLUDED.meal_context),
+         source = COALESCE(glucose_readings.source, EXCLUDED.source),
+         feeling = COALESCE(glucose_readings.feeling, EXCLUDED.feeling),
+         hematocrit = COALESCE(glucose_readings.hematocrit, EXCLUDED.hematocrit),
+         note = COALESCE(glucose_readings.note, EXCLUDED.note)
+       RETURNING (xmax = 0) AS inserted`,
+      [userId, reportId, measuredAt, value, meal, source || null, feeling || null, hematocrit, note || null]
     );
-    imported += result.rowCount;
+    if (result.rows[0]?.inserted) imported += 1;
   }
 
   return imported;
@@ -114,6 +148,7 @@ module.exports = {
   detectGlucoseTable,
   importGlucoseTable,
   importGlucoseTablesFrom,
+  normalizeMealContext,
   parseMeasuredAt,
   toMgDl,
 };

@@ -104,6 +104,9 @@ function summarizeGlucose(readings, labs = {}) {
           time: r.time,
           value: r.value,
           mealContext: r.mealContext || null,
+          feeling: r.feeling || null,
+          hematocrit: r.hematocrit ?? null,
+          note: r.note || null,
           band: band(r.value),
         })),
       };
