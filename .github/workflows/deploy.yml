@@ -229,6 +229,10 @@ jobs:
             # this same host/port to the API, so the web build never needs
             # to know the actual host/IP. EXPO_PUBLIC_* vars are inlined at
             # build time; client.js treats this differently from "unset".
+            # Browser pose-tracking engine + model, served from this site so the
+            # web Workout Coach works without a third-party CDN. Never fails
+            # the deploy (the web coach just reports "not available").
+            node scripts/prepare-web-pose-assets.js || echo "[deploy] pose assets skipped"
             NODE_OPTIONS=--max-old-space-size=1536 CI=1 EXPO_PUBLIC_API_BASE_URL= npx expo export --platform web --output-dir dist
             cd ..
             WEB_ROOT=/var/www/myhealthpal-web

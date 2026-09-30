@@ -10,7 +10,7 @@ import { detectExercise, MIN_FRAMES, readyForDetection } from '../../workout/eng
 import { fatigueCheck } from '../../workout/engine/fatigue';
 import { createWorkoutRunner } from '../../workout/engine/workoutRunner';
 import { missingLandmarks } from '../../workout/engine/measure';
-import { getCameraPermission, getPoseCameraComponent, isPoseTrackingAvailable, requestCameraPermission } from '../../workout/poseNative';
+import { getCameraPermission, getPoseCameraComponent, isPoseTrackingAvailable, poseUnavailableReason, requestCameraPermission } from '../../workout/poseNative';
 import useLiveCoach from '../../workout/hooks/useLiveCoach';
 import useWorkoutSync from '../../workout/hooks/useWorkoutSync';
 import { showAlert } from '../../utils/alert';
@@ -53,6 +53,7 @@ export default function LiveWorkoutScreen({ route, navigation }) {
   const [restLeft, setRestLeft] = useState(0);
   const [workoutId, setWorkoutId] = useState(null);
   const [failed, setFailed] = useState(false);
+  const [cameraBlocked, setCameraBlocked] = useState(false);
   const readyFrames = useRef(0);
   const validAnnounced = useRef(0);
   const beganAt = useRef(null);
@@ -266,7 +267,7 @@ export default function LiveWorkoutScreen({ route, navigation }) {
     return (
       <SafeAreaView style={styles.dark}>
         <View style={styles.center}>
-          <Text style={styles.lightText}>{t('workout.cameraUnavailable')}</Text>
+          <Text style={styles.lightText}>{poseUnavailableReason() === 'insecure_context' ? t('workout.cameraInsecure') : t('workout.cameraUnavailable')}</Text>
         </View>
       </SafeAreaView>
     );
@@ -278,6 +279,17 @@ export default function LiveWorkoutScreen({ route, navigation }) {
         <View style={styles.center}>
           <Text style={styles.lightText}>{t('workout.cameraNeeded')}</Text>
           <PrimaryButton title={t('workout.allowCamera')} onPress={async () => setPermission(await requestCameraPermission())} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (cameraBlocked) {
+    return (
+      <SafeAreaView style={styles.dark}>
+        <View style={styles.center}>
+          <Text style={styles.lightText}>{t('workout.cameraBlocked')}</Text>
+          <PrimaryButton title={t('workout.back')} onPress={() => navigation.goBack()} />
         </View>
       </SafeAreaView>
     );
@@ -306,7 +318,7 @@ export default function LiveWorkoutScreen({ route, navigation }) {
 
   return (
     <View style={styles.dark}>
-      <PoseCamera ref={cameraRef} camera="front" onLandmarks={onLandmarks} onError={() => setFailed(true)} style={StyleSheet.absoluteFill} />
+      <PoseCamera ref={cameraRef} camera="front" onLandmarks={onLandmarks} onError={(err) => (err && (err.name === 'NotAllowedError' || err.name === 'NotFoundError' || err.name === 'NotReadableError') ? setCameraBlocked(true) : setFailed(true))} style={StyleSheet.absoluteFill} />
       <SafeAreaView style={styles.overlay} pointerEvents="box-none">
         <View style={styles.badge} accessibilityLiveRegion="polite">
           <Text style={styles.badgeText}>● {cfg.recordVideo && stage !== 'setup' && stage !== 'starting' ? t('workout.recordingNote') : t('workout.cameraActive')}</Text>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import PrimaryButton from '../../components/PrimaryButton';
 import { colors, radii, spacing, typography } from '../../theme/theme';
@@ -174,7 +174,7 @@ export default function WorkoutSetupScreen({ navigation }) {
             )}
           </>
         )}
-        <Chip label={t('workout.recordThis')} selected={recordVideo} onPress={() => setRecordVideo((v) => !v)} />
+        {Platform.OS !== 'web' && <Chip label={t('workout.recordThis')} selected={recordVideo} onPress={() => setRecordVideo((v) => !v)} />}
         <Text style={typography.bodySecondary}>{t('workout.disclaimer')}</Text>
         <PrimaryButton
           title={t('workout.continueToCamera')}
