@@ -44,11 +44,19 @@ backfillMisclassifiedActivityReports().catch((err) => {
 // shouldn't send pushes, e.g. a local dev copy pointed at real data.
 if (process.env.RETEST_REMINDERS !== 'off') {
   const { runReminders } = require('./retest/retestReminderService');
-  const tick = () =>
+  const { runInsuranceReminders } = require('./insurance/insuranceReminderService');
+  const tick = () => {
     runReminders().catch((err) => {
       // eslint-disable-next-line no-console
       console.error('Retest reminder run failed:', err);
     });
+    // My Insurance premium / renewal reminders ride the same hourly tick and
+    // the same RETEST_REMINDERS=off switch (one "don't push from this host").
+    runInsuranceReminders().catch((err) => {
+      // eslint-disable-next-line no-console
+      console.error('Insurance reminder run failed:', err);
+    });
+  };
   setInterval(tick, 60 * 60 * 1000).unref();
   tick();
 }

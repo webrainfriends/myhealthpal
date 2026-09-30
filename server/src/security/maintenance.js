@@ -15,6 +15,7 @@ const FILE_TABLES = [
   { table: 'reports', resourceType: 'report' },
   { table: 'medication_scans', resourceType: 'medication_scan' },
   { table: 'diet_scans', resourceType: 'diet_scan' },
+  { table: 'insurance_policies', resourceType: 'insurance_policy' },
 ];
 
 function sha256(buffer) {

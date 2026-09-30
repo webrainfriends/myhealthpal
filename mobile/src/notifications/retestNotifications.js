@@ -115,7 +115,9 @@ export function onRetestNotificationTap(navigate) {
   if (Platform.OS === 'web') return () => {};
   const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
     const data = response.notification.request.content.data;
-    if (data?.screen === 'RetestRadar') navigate('RetestRadar', data);
+    // Retest Radar reminders and My Insurance premium / renewal reminders
+    // share this listener (one push channel); each opens its own screen.
+    if (data?.screen === 'RetestRadar' || data?.screen === 'Insurance') navigate(data.screen, data);
   });
   return () => subscription.remove();
 }

@@ -170,6 +170,28 @@ export async function uploadReport(file) {
   return handleResponse(response);
 }
 
+// The single Upload-tab entry point: the server works out whether the file
+// is a lab result, insurance policy, food photo or diet schedule and files it
+// in the right place (routes/smartUpload.js). `category` is 'auto' (default)
+// or one of 'lab_report' | 'insurance' | 'food' | 'diet_schedule' when the
+// person picked a type themselves.
+export async function uploadSmart(file, { category = 'auto' } = {}) {
+  const formData = new FormData();
+  if (file.file) {
+    formData.append('file', file.file, file.name);
+  } else {
+    formData.append('file', {
+      uri: file.uri,
+      name: file.name,
+      type: file.mimeType || 'application/octet-stream',
+    });
+  }
+  formData.append('category', category);
+
+  const response = await apiFetch('/api/uploads', { method: 'POST', body: formData });
+  return handleResponse(response);
+}
+
 export async function fetchReportFileUrl(reportId) {
   const response = await apiFetch(`/api/reports/${reportId}/file-url`);
   const data = await handleResponse(response);
@@ -1150,3 +1172,78 @@ export async function clearRecipeReaction(recipeSuggestionId) {
 }
 
 export { API_BASE_URL };
+
+// ---- My Insurance ----------------------------------------------------------
+
+export async function fetchInsurance() {
+  const response = await apiFetch('/api/insurance');
+  return handleResponse(response);
+}
+
+export async function fetchInsuranceSummary() {
+  const response = await apiFetch('/api/insurance/summary');
+  return handleResponse(response);
+}
+
+export async function fetchInsurancePolicy(policyId) {
+  const response = await apiFetch(`/api/insurance/${policyId}`);
+  return handleResponse(response);
+}
+
+export async function updateInsurancePolicy(policyId, changes) {
+  const response = await apiFetch(`/api/insurance/${policyId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(changes),
+  });
+  return handleResponse(response);
+}
+
+export async function confirmInsurancePolicy(policyId) {
+  const response = await apiFetch(`/api/insurance/${policyId}/confirm`, { method: 'POST' });
+  return handleResponse(response);
+}
+
+export async function retryInsurancePolicy(policyId) {
+  const response = await apiFetch(`/api/insurance/${policyId}/retry`, { method: 'POST' });
+  return handleResponse(response);
+}
+
+export async function deleteInsurancePolicy(policyId) {
+  const response = await apiFetch(`/api/insurance/${policyId}`, { method: 'DELETE' });
+  if (!response.ok) return handleResponse(response);
+  return null;
+}
+
+export async function addInsuranceItem(policyId, fields) {
+  const response = await apiFetch(`/api/insurance/${policyId}/items`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  });
+  return handleResponse(response);
+}
+
+export async function updateInsuranceItem(policyId, itemId, changes) {
+  const response = await apiFetch(`/api/insurance/${policyId}/items/${itemId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(changes),
+  });
+  return handleResponse(response);
+}
+
+export async function deleteInsuranceItem(policyId, itemId) {
+  const response = await apiFetch(`/api/insurance/${policyId}/items/${itemId}`, { method: 'DELETE' });
+  if (!response.ok) return handleResponse(response);
+  return null;
+}
+
+export async function updateInsuranceSettings(remindersEnabled) {
+  const response = await apiFetch('/api/account/insurance-settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ remindersEnabled }),
+  });
+  return handleResponse(response);
+}

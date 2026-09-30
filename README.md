@@ -25,6 +25,17 @@ covering:
   and every medicine linked to a lab value, a small weekly action to tick
   off until then, and push reminders two weeks before and on the date
   (see "Retest Radar" below).
+- My Insurance: upload a health-insurance policy (PDF, Word, photo) and it is
+  read into the insurer, agent/support contacts, cover period, premium
+  schedule and organ-wise clauses (what each illness covers or excludes, with
+  its ceiling, co-pay and waiting period). Confirmed policies tag every lab
+  result as covered / not covered (several policies can tag the same result),
+  open the clause behind each tag, remind about premiums and renewal, and flag
+  coverage gaps that out-of-range results raise so you can discuss them with
+  your agent. The Upload tab is now one smart entry point: it works out
+  whether a file is a lab result, insurance policy, food photo or diet
+  schedule (`POST /api/uploads`, keyword scoring first, AI only when unclear
+  and consented) and files it in the right place.
 - Family Health Eye: one account looks after parents and family members.
   It can add a "managed" profile for someone who won't use the app, or
   follow another account that shares itself with an invite code (view-only

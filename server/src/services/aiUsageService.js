@@ -35,6 +35,8 @@ const FEATURES = {
   DIET_TIPS: 'diet_tips',
   RECIPES: 'recipes',
   DIET_SCHEDULE_IMPORT: 'diet_schedule_import',
+  INSURANCE_EXTRACTION: 'insurance_extraction',
+  DOCUMENT_CLASSIFICATION: 'document_classification',
   WORKOUT_COACH: 'workout_coach',
 };
 
