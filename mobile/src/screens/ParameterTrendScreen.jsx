@@ -78,14 +78,23 @@ export default function ParameterTrendScreen({ route, navigation }) {
         contentContainerStyle={styles.listContent}
         renderItem={({ item }) => (
           <TouchableOpacity
-            style={styles.row}
+            style={[
+              styles.row,
+              item.outOfRange && (item.isLatest ? styles.rowOutLatest : styles.rowOutPast),
+            ]}
             disabled={!item.reportId}
             onPress={() => item.reportId && navigation.navigate('ReportDetail', { reportId: item.reportId })}
           >
             <View style={styles.rowMain}>
               <Text style={typography.body}>
                 {item.value !== null && item.value !== undefined ? `${item.value} ${item.unit || ''}` : item.qualitativeValue}
+                {item.outOfRange ? (item.direction === 'high' ? ' ↑' : item.direction === 'low' ? ' ↓' : '') : ''}
               </Text>
+              {item.outOfRange ? (
+                <Text style={item.isLatest ? styles.tagLatest : styles.tagPast}>
+                  {item.isLatest ? t('parameterTrend.outOfRangeNow') : t('parameterTrend.outOfRangePast')}
+                </Text>
+              ) : null}
               <Text style={typography.caption}>{formatDate(item.date)}</Text>
               {item.reportFilename ? (
                 <Text style={typography.caption} numberOfLines={1} ellipsizeMode="middle">
@@ -161,6 +170,12 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     gap: spacing.sm,
   },
+  // The newest result is the live status (red); earlier out-of-range results
+  // stay visible as history but muted, so they read as "was", not "is".
+  rowOutLatest: { borderColor: colors.danger, backgroundColor: colors.dangerMuted },
+  rowOutPast: { borderColor: '#E0B45A', backgroundColor: '#FFF7E6', opacity: 0.85 },
+  tagLatest: { fontSize: 12, fontWeight: '700', color: colors.danger },
+  tagPast: { fontSize: 12, fontWeight: '600', color: '#9A6B00' },
   rowMain: {
     flex: 1,
     minWidth: 0,

@@ -787,6 +787,8 @@ export const TRANSLATIONS = {
         vsLabSimilar: 'About the same as lab average',
         fastingVsLab: 'Fasting {{value}} mg/dL vs lab {{lab}} mg/dL',
         noMeal: 'No meal info',
+        feeling: 'Feeling: {{value}}',
+        hematocrit: 'Hematocrit: {{value}}%',
         bandLow: 'Low',
         bandHigh: 'High',
         note: 'Home meters and lab tests can differ by up to about 15%, and a lab HbA1c reflects ~3 months while these are single days — use this as a guide and discuss with your doctor.',
@@ -832,6 +834,8 @@ export const TRANSLATIONS = {
       readAloud: "Read this organ's results aloud",
     },
     parameterTrend: {
+      outOfRangeNow: 'Out of range (latest)',
+      outOfRangePast: 'Was out of range (older result)',
       weeklyAverages: 'Weekly averages shown — {{count}} buckets from dense source data.',
       empty: 'No confirmed results in this range yet.',
       ref: 'Ref: {{range}}',

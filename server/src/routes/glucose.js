@@ -48,7 +48,7 @@ router.get('/summary', async (req, res, next) => {
 
     const { rows } = await pool.query(
       `SELECT to_char(measured_at, 'YYYY-MM-DD') AS day, to_char(measured_at, 'HH24:MI') AS time,
-              value_mg_dl, meal_context
+              value_mg_dl, meal_context, feeling, hematocrit, note
        FROM glucose_readings
        WHERE user_id = $1
          AND measured_at >= (
@@ -62,6 +62,9 @@ router.get('/summary', async (req, res, next) => {
       time: row.time,
       value: Number(row.value_mg_dl),
       mealContext: row.meal_context,
+      feeling: row.feeling,
+      hematocrit: row.hematocrit === null ? null : Number(row.hematocrit),
+      note: row.note,
     }));
 
     res.json(summarizeGlucose(readings, await fetchLatestLabs(userId)));

@@ -4,6 +4,7 @@ const {
   ORGAN_GROUPS,
   buildOrganSummaries,
   buildCardSummaries,
+  evaluateResult,
   organKeyForCustomLabel,
 } = require('../services/organHealthService');
 const { getAllReferenceRangesByCode } = require('../medications/referenceRangeService');
@@ -29,6 +30,57 @@ const DENSE_SERIES_THRESHOLD = 60;
 // 'none'/'confirmed_distinct' rows. Nothing is ever deleted - this only
 // affects what gets displayed as live/current.
 const EXCLUDE_DUPLICATES_SQL = `hm.duplicate_status NOT IN ('suspected', 'confirmed_duplicate')`;
+
+// Needs-attention items are judged on each parameter's most recent result
+// only (the same "latest per parameter" rule as the organ cards): an old
+// out-of-range value that a newer report has since brought back in range
+// must not keep counting. Judged the way the organ cards are - the report's
+// printed flag/range, else the standard range - so the dashboard count and
+// this list always agree with the cards. Results that still need review
+// (unmapped or low-confidence) stay listed until resolved.
+async function fetchNeedsAttention(userId) {
+  const { rows } = await pool.query(
+    `WITH ranked AS (
+       SELECT hm.id, hm.report_id, hm.raw_test_name, hm.raw_value, hm.raw_unit, hm.qualitative_value, hm.status_flag,
+              hm.reference_range_raw, hm.numeric_value, hm.normalized_value, hm.needs_review,
+              hp.code, hp.display_name AS parameter_display_name, r.original_filename, r.effective_date,
+              row_number() OVER (
+                PARTITION BY COALESCE(hm.health_parameter_id::text, lower(hm.raw_test_name))
+                ORDER BY COALESCE(r.effective_date, hm.sample_datetime::date, r.created_at::date) DESC, hm.created_at DESC
+              ) AS rank
+       FROM health_measurements hm
+       JOIN reports r ON r.id = hm.report_id
+       LEFT JOIN health_parameters hp ON hp.id = hm.health_parameter_id
+       WHERE r.user_id = $1
+         AND r.ingestion_status IN ('Needs Review', 'Completed')
+         AND ${EXCLUDE_DUPLICATES_SQL}
+     )
+     SELECT * FROM ranked WHERE rank = 1
+     ORDER BY COALESCE(effective_date, now()::date) DESC`,
+    [userId]
+  );
+
+  const standardRangesByCode = await getAllReferenceRangesByCode();
+  return rows
+    .filter((row) => {
+      if (row.needs_review) return true;
+      const evaluation = evaluateResult(
+        {
+          code: row.code,
+          statusFlag: row.status_flag,
+          referenceRangeRaw: row.reference_range_raw,
+          numericValue: row.numeric_value === null ? null : Number(row.numeric_value),
+          normalizedValue: row.normalized_value === null ? null : Number(row.normalized_value),
+          qualitativeValue: row.qualitative_value,
+          rawValue: row.raw_value,
+        },
+        standardRangesByCode.get(row.code)
+      );
+      return evaluation.status === 'abnormal';
+    })
+    .slice(0, 50)
+    .map(({ rank, code, numeric_value, normalized_value, reference_range_raw, ...item }) => item);
+}
 
 // Latest confirmed measurement per pinned parameter, plus whatever the prior
 // confirmed value was for that same parameter — only used to describe change
@@ -62,23 +114,7 @@ router.get('/snapshot', async (req, res, next) => {
       [userId]
     );
 
-    const needsAttention = await pool.query(
-      `SELECT hm.id, hm.raw_test_name, hm.raw_value, hm.raw_unit, hm.status_flag, hm.needs_review,
-              hp.display_name AS parameter_display_name, r.id AS report_id, r.original_filename, r.effective_date
-       FROM health_measurements hm
-       JOIN reports r ON r.id = hm.report_id
-       LEFT JOIN health_parameters hp ON hp.id = hm.health_parameter_id
-       WHERE r.user_id = $1
-         AND (
-           (hm.status_flag IS NOT NULL AND lower(hm.status_flag) NOT IN ('normal', 'n'))
-           OR hm.needs_review = true
-         )
-         AND r.ingestion_status IN ('Needs Review', 'Completed')
-         AND ${EXCLUDE_DUPLICATES_SQL}
-       ORDER BY COALESCE(r.effective_date, r.created_at::date) DESC
-       LIMIT 20`,
-      [userId]
-    );
+    const needsAttention = await fetchNeedsAttention(userId);
 
     const insights = await pool.query(
       `SELECT i.id, i.insight_type, i.title, i.explanation, i.severity, i.generated_at, i.evidence,
@@ -93,7 +129,7 @@ router.get('/snapshot', async (req, res, next) => {
 
     res.json({
       trackedMetrics: tracked.rows,
-      needsAttention: needsAttention.rows,
+      needsAttention,
       insights: insights.rows,
     });
   } catch (err) {
@@ -327,7 +363,7 @@ router.get('/parameters/:code/trend', async (req, res, next) => {
       `SELECT hm.id AS measurement_id, hm.report_id, r.original_filename, r.source_type,
               COALESCE(r.effective_date, hm.sample_datetime::date, r.created_at::date) AS date,
               hm.normalized_value, hm.numeric_value, hm.normalized_unit, hm.raw_unit, hm.qualitative_value,
-              hm.reference_range_raw
+              hm.reference_range_raw, hm.status_flag
        FROM health_measurements hm
        JOIN reports r ON r.id = hm.report_id
        WHERE r.user_id = $1 AND hm.health_parameter_id = $2 AND hm.is_confirmed = true AND ${EXCLUDE_DUPLICATES_SQL}
@@ -336,7 +372,22 @@ router.get('/parameters/:code/trend', async (req, res, next) => {
       [userId, parameter.id, days]
     );
 
-    const points = rows.map((row) => ({
+    const standardRange = (await getAllReferenceRangesByCode()).get(parameter.code);
+    const points = rows.map((row) => {
+      const evaluation = evaluateResult(
+        {
+          code: parameter.code,
+          statusFlag: row.status_flag,
+          referenceRangeRaw: row.reference_range_raw,
+          numericValue: row.numeric_value === null ? null : Number(row.numeric_value),
+          normalizedValue: row.normalized_value === null ? null : Number(row.normalized_value),
+          qualitativeValue: row.qualitative_value,
+        },
+        standardRange
+      );
+      return {
+      outOfRange: evaluation.status === 'unknown' ? null : evaluation.status === 'abnormal',
+      direction: evaluation.direction,
       date: row.date,
       value: row.normalized_value ?? row.numeric_value,
       unit: row.normalized_unit || row.raw_unit,
@@ -346,7 +397,24 @@ router.get('/parameters/:code/trend', async (req, res, next) => {
       reportId: row.report_id,
       reportFilename: row.original_filename,
       measurementId: row.measurement_id,
-    }));
+      };
+    });
+
+    // Only the newest result (across all time, not just this range) decides
+    // whether the parameter is currently out of range; earlier out-of-range
+    // points are history, and the client shows them as "past" so they are
+    // not mistaken for a live problem.
+    const latest = await pool.query(
+      `SELECT hm.id
+       FROM health_measurements hm
+       JOIN reports r ON r.id = hm.report_id
+       WHERE r.user_id = $1 AND hm.health_parameter_id = $2 AND hm.is_confirmed = true AND ${EXCLUDE_DUPLICATES_SQL}
+       ORDER BY COALESCE(r.effective_date, hm.sample_datetime::date, r.created_at::date) DESC, hm.id DESC
+       LIMIT 1`,
+      [userId, parameter.id]
+    );
+    const latestId = latest.rows[0]?.id;
+    for (const point of points) point.isLatest = point.measurementId === latestId;
 
     const isDense = points.length > DENSE_SERIES_THRESHOLD && points.every((p) => p.value !== null);
 
