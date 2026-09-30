@@ -30,11 +30,13 @@
     "express": "^4.21.2",
     "google-auth-library": "^11.1.0",
     "jsonwebtoken": "^9.0.3",
+    "jszip": "^3.10.2",
     "jwks-rsa": "^4.1.0",
     "mammoth": "^1.8.0",
     "multer": "^2.0.0",
     "pdfjs-dist": "^6.3.289",
     "pg": "^8.13.1",
+    "sax": "^1.6.1",
     "uuid": "^11.0.0"
   },
   "devDependencies": {

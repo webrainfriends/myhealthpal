@@ -14,10 +14,10 @@ const storage = multer.memoryStorage();
 
 function fileFilter(req, file, cb) {
   const ext = extensionOf(file.originalname);
-  const supported = config.supportedExtensions[ext];
+  const supported = config.uploadExtensions[ext];
   if (!supported) {
     req.fileValidationError = `Unsupported file type ".${ext || 'unknown'}". Supported formats: ${Object.keys(
-      config.supportedExtensions
+      config.uploadExtensions
     ).join(', ').toUpperCase()}.`;
     return cb(null, false);
   }
@@ -27,7 +27,7 @@ function fileFilter(req, file, cb) {
 const multerUpload = multer({
   storage,
   fileFilter,
-  limits: { fileSize: config.maxUploadBytes },
+  limits: { fileSize: Math.max(config.maxUploadBytes, config.maxHealthExportBytes) },
 });
 
 // multer calls its callback from request-stream events, which run outside
@@ -62,4 +62,10 @@ const videoUpload = {
   },
 };
 
-module.exports = { upload, videoUpload, extensionOf };
+// Apple Health exports get a bigger cap than other reports; multer only has
+// one limit, so the per-extension one is enforced by the route.
+function maxBytesFor(extension) {
+  return config.healthExportExtensions[extension] ? config.maxHealthExportBytes : config.maxUploadBytes;
+}
+
+module.exports = { upload, videoUpload, extensionOf, maxBytesFor };

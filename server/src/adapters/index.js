@@ -3,6 +3,7 @@ const xlsxAdapter = require('./xlsxAdapter');
 const docxAdapter = require('./docxAdapter');
 const pdfAdapter = require('./pdfAdapter');
 const imageAdapter = require('./imageAdapter');
+const appleHealthAdapter = require('./appleHealthAdapter');
 
 // Format-neutral registry: every adapter resolves to { contentKind, tables, text }
 // so the extraction service downstream never needs to know the source format.
@@ -16,6 +17,9 @@ const ADAPTERS_BY_EXTENSION = {
   jpg: imageAdapter,
   jpeg: imageAdapter,
   png: imageAdapter,
+  zip: appleHealthAdapter,
+  xml: appleHealthAdapter,
+  gpx: appleHealthAdapter,
 };
 
 function getAdapter(extension) {

@@ -19,11 +19,22 @@ class UploadRejectedError extends Error {
   }
 }
 
+// An Apple Health export.zip legitimately holds a multi-GB export.xml (and
+// thousands of route/ECG files), far past the Office-document limits.
+const HEALTH_EXPORT_ZIP_LIMITS = {
+  maxEntries: 50000,
+  maxTotalUncompressed: 4 * 1024 * 1024 * 1024,
+  maxEntryRatio: 200,
+};
+
 async function validateAndScan(buffer, extension) {
   const contentProblem = validateContent(buffer, extension);
   if (contentProblem) throw new UploadRejectedError(contentProblem);
   if (extension === 'docx' || extension === 'xlsx') {
     const zipProblem = inspectZip(buffer);
+    if (zipProblem) throw new UploadRejectedError(zipProblem);
+  } else if (extension === 'zip') {
+    const zipProblem = inspectZip(buffer, HEALTH_EXPORT_ZIP_LIMITS);
     if (zipProblem) throw new UploadRejectedError(zipProblem);
   }
   let result;

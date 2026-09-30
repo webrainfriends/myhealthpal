@@ -64,38 +64,51 @@ export default function UploadScreen({ navigation }) {
     return unsubscribe;
   }, [navigation, loadReports]);
 
-  async function handleUpload(file) {
-    if (!file) return;
+  // Uploads files one at a time (each is its own report, and a failure in
+  // one shouldn't lose the rest), then reports a single combined result.
+  async function handleUpload(files) {
+    const list = (Array.isArray(files) ? files : [files]).filter(Boolean);
+    if (list.length === 0) return;
     setUploading(true);
+    const failures = [];
+    let succeeded = 0;
     try {
-      await uploadReport(file);
-      await loadReports();
-      showAlert(t('upload.uploaded'), t('upload.uploadedMessage'));
-    } catch (err) {
-      if (openPrivacyIfConsentNeeded(err, navigation)) return;
-      showAlert(t('upload.uploadFailed'), err.message);
+      for (const file of list) {
+        try {
+          await uploadReport(file);
+          succeeded += 1;
+        } catch (err) {
+          if (openPrivacyIfConsentNeeded(err, navigation)) return;
+          failures.push(`${file.name}: ${err.message}`);
+        }
+      }
     } finally {
       setUploading(false);
+      await loadReports();
+    }
+    if (failures.length === 0) {
+      showAlert(
+        t('upload.uploaded'),
+        succeeded > 1 ? t('upload.uploadedMultiple', { count: succeeded }) : t('upload.uploadedMessage')
+      );
+    } else {
+      showAlert(t('upload.uploadFailed'), failures.join('\n'));
     }
   }
 
   async function pickDocument() {
     const result = await DocumentPicker.getDocumentAsync({
-      type: [
-        'application/pdf',
-        'image/jpeg',
-        'image/png',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'text/csv',
-        'application/vnd.ms-excel',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      ],
+      // Apple Health exports arrive as .zip/.xml/.gpx, whose MIME types
+      // vary by platform (and are often missing), so don't filter here -
+      // the server validates the extension and contents.
+      type: '*/*',
+      multiple: true,
       copyToCacheDirectory: true,
     });
     if (result.canceled) return;
-    const asset = result.assets[0];
-    handleUpload({ uri: asset.uri, name: asset.name, mimeType: asset.mimeType, file: asset.file });
+    handleUpload(
+      result.assets.map((asset) => ({ uri: asset.uri, name: asset.name, mimeType: asset.mimeType, file: asset.file }))
+    );
   }
 
   async function pickFromLibrary() {

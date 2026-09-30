@@ -59,6 +59,7 @@ const EXPECTED_KIND = {
   m4v: 'mp4',
   mov: 'mp4',
   xls: 'ole',
+  zip: 'zip',
 };
 
 // Returns null when the content matches the extension, else a user-facing
@@ -70,6 +71,11 @@ function validateContent(buffer, extension) {
   if (kind === 'executable') return 'This file looks like a program or script and was rejected.';
   if (extension === 'csv') {
     return kind === 'unknown' && looksLikeText(buffer) ? null : 'This file is not a readable CSV text file.';
+  }
+  if (extension === 'xml' || extension === 'gpx') {
+    return kind === 'unknown' && looksLikeText(buffer) && /^\s*(<\?xml|<)/.test(buffer.subarray(0, 512).toString('utf8'))
+      ? null
+      : `This file is not a readable ${extension.toUpperCase()} file.`;
   }
   if (extension === 'xls' && kind === 'unknown' && looksLikeText(buffer)) return null;
   const expected = EXPECTED_KIND[extension];

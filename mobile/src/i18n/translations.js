@@ -786,6 +786,7 @@ export const TRANSLATIONS = {
       empty: 'No reports uploaded yet. Use one of the options above to add your first one.',
       uploaded: 'Uploaded',
       uploadedMessage: "Your report is processing - it will appear below once ready.",
+      uploadedMultiple: '{{count}} files uploaded - they are processing and will appear below once ready.',
       uploadFailed: 'Upload failed',
       permissionCamera: 'Camera access is required to capture a report.',
       permissionLibrary: 'Photo library access is required to select a scanned report.',

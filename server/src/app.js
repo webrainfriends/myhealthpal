@@ -100,8 +100,9 @@ app.use(
 app.use('/api/integrations/gmail', integrationsGmailRouter);
 app.get('/api/config/supported-formats', (req, res) => {
   res.json({
-    extensions: Object.keys(config.supportedExtensions),
+    extensions: Object.keys(config.uploadExtensions),
     maxUploadBytes: config.maxUploadBytes,
+    maxHealthExportBytes: config.maxHealthExportBytes,
   });
 });
 
