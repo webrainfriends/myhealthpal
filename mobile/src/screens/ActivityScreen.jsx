@@ -4,8 +4,10 @@ import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ActivityRings from '../components/ActivityRings';
 import PrimaryButton from '../components/PrimaryButton';
+import GradientFill from '../components/brand/GradientFill';
+import WorkoutHistoryRow from '../components/WorkoutHistoryRow';
 import SpeakButton from '../components/SpeakButton';
-import { activityRingColors, cardShadow, colors, radii, spacing, typography } from '../theme/theme';
+import { activityRingColors, brandShadow, card3D, cardShadow, colors, radii, spacing, typography } from '../theme/theme';
 import { fetchActivitySummary, fetchWorkoutHistory, logActivity } from '../api/client';
 import { useT } from '../i18n/I18nContext';
 import { showAlert } from '../utils/alert';
@@ -153,23 +155,31 @@ export default function ActivityScreen() {
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <TouchableOpacity
-          style={styles.coachEntry}
+          style={[styles.coachHero, brandShadow, { borderBottomColor: '#4B2BD6' }]}
           onPress={() => navigation.navigate('WorkoutCoach')}
+          activeOpacity={0.85}
           accessibilityRole="button"
         >
-          <Text style={typography.body}>{t('workout.entry')}</Text>
-          <Text style={typography.bodySecondary}>{t('workout.entryHint')}</Text>
+          <GradientFill />
+          <View style={styles.coachHeroBadge}>
+            <Text style={styles.coachHeroIcon}>🏋️</Text>
+          </View>
+          <View style={styles.coachHeroText}>
+            <Text style={styles.coachHeroTitle}>{t('workout.entry')}</Text>
+            <Text style={styles.coachHeroHint}>{t('workout.entryHint')}</Text>
+          </View>
+          <Text style={styles.coachHeroChevron}>›</Text>
         </TouchableOpacity>
         {workouts.length > 0 && (
-          <View style={styles.coachEntry}>
-            <Text style={typography.body}>{t('workout.recentWorkouts')}</Text>
-            {workouts.map((w) => (
-              <TouchableOpacity key={w.id} onPress={() => navigation.navigate('WorkoutSummary', { workoutId: w.id })} accessibilityRole="button">
-                <Text style={typography.bodySecondary}>
-                  {new Date(w.completed_at).toLocaleDateString()} · {w.exercise_name} · {w.valid_reps} reps
-                  {w.estimated_calories_low != null ? ` · ${w.estimated_calories_low}-${w.estimated_calories_high} kcal` : ''}
-                </Text>
-              </TouchableOpacity>
+          <View style={styles.recentList}>
+            <Text style={typography.heading}>{t('workout.recentWorkouts')}</Text>
+            {workouts.map((w, i) => (
+              <WorkoutHistoryRow
+                key={w.id}
+                workout={w}
+                index={i}
+                onPress={() => navigation.navigate('WorkoutSummary', { workoutId: w.id })}
+              />
             ))}
           </View>
         )}
@@ -280,13 +290,32 @@ export default function ActivityScreen() {
 }
 
 const styles = StyleSheet.create({
-  coachEntry: {
-    backgroundColor: colors.primaryMuted,
+  coachHero: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
     borderRadius: radii.lg,
     padding: spacing.md,
-    gap: 4,
     marginBottom: spacing.md,
+    overflow: 'hidden',
+    borderBottomWidth: 6,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.35)',
   },
+  coachHeroBadge: {
+    width: 52,
+    height: 52,
+    borderRadius: radii.pill,
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coachHeroIcon: { fontSize: 26 },
+  coachHeroText: { flex: 1, gap: 2 },
+  coachHeroTitle: { fontSize: 18, fontWeight: '800', color: colors.onBrand },
+  coachHeroHint: { fontSize: 13, color: colors.onBrandMuted },
+  coachHeroChevron: { fontSize: 34, lineHeight: 36, fontWeight: '700', color: colors.onBrand },
+  recentList: { gap: spacing.sm, marginBottom: spacing.md },
   container: {
     flex: 1,
     backgroundColor: colors.background,
