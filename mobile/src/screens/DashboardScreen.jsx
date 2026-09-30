@@ -6,6 +6,7 @@ import OrganHealthCard from '../components/OrganHealthCard';
 import { cardSpeech } from '../utils/organReadout';
 import ActivityCard from '../components/ActivityCard';
 import DietCard from '../components/DietCard';
+import InsuranceCard from '../components/InsuranceCard';
 import SpeakButton from '../components/SpeakButton';
 import SummaryCard from '../components/SummaryCard';
 import RetestPlanCard from '../components/RetestPlanCard';
@@ -19,6 +20,7 @@ import {
   fetchCustomCards,
   fetchDashboardSnapshot,
   fetchDietSummary,
+  fetchInsuranceSummary,
   fetchOrganHealth,
   fetchPairedDevices,
   fetchRetestPlans,
@@ -123,6 +125,7 @@ export default function DashboardScreen({ navigation }) {
   const [diet, setDiet] = useState(null);
   const [pairedDeviceCount, setPairedDeviceCount] = useState(0);
   const [retestPlans, setRetestPlans] = useState([]);
+  const [insurance, setInsurance] = useState(null);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [weather, setWeather] = useState(null);
   const [water, setWater] = useState(null);
@@ -152,7 +155,7 @@ export default function DashboardScreen({ navigation }) {
     // entire dashboard (organ grid, insights/attention counts, tracked
     // metrics, activity, diet - everything), not just its own card.
     // allSettled lets each section populate independently of the others.
-    const [snapshotResult, organResult, customCardResult, activityResult, dietResult, devicesResult, retestResult, waterResult] =
+    const [snapshotResult, organResult, customCardResult, activityResult, dietResult, devicesResult, retestResult, waterResult, insuranceResult] =
       await Promise.allSettled([
         fetchDashboardSnapshot(),
         fetchOrganHealth(),
@@ -169,6 +172,7 @@ export default function DashboardScreen({ navigation }) {
         fetchPairedDevices(),
         fetchRetestPlans(),
         fetchWaterSummary(),
+        fetchInsuranceSummary(),
       ]);
 
     if (snapshotResult.status === 'fulfilled') setSnapshot(snapshotResult.value);
@@ -197,6 +201,9 @@ export default function DashboardScreen({ navigation }) {
 
     if (waterResult.status === 'fulfilled') setWater(waterResult.value);
     else console.warn('Failed to load water summary', waterResult.reason?.message);
+
+    if (insuranceResult.status === 'fulfilled') setInsurance(insuranceResult.value);
+    else console.warn('Failed to load insurance summary', insuranceResult.reason?.message);
 
     setLoading(false);
   }, []);
@@ -424,6 +431,12 @@ export default function DashboardScreen({ navigation }) {
                 onPress={() => navigation.navigate('Diet')}
               />
             )}
+          </View>
+        )}
+
+        {insurance && (
+          <View style={styles.sectionSpacing}>
+            <InsuranceCard summary={insurance} onPress={() => navigation.navigate('Insurance')} />
           </View>
         )}
 

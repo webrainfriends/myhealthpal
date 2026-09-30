@@ -22,6 +22,23 @@ router.put('/retest-settings', async (req, res, next) => {
   }
 });
 
+// Premium / renewal reminders for My Insurance - the signed-in account's own
+// switch (it's their phone), like retest-settings above.
+router.put('/insurance-settings', async (req, res, next) => {
+  try {
+    if (typeof req.body.remindersEnabled !== 'boolean') {
+      return res.status(400).json({ error: 'remindersEnabled must be true or false.' });
+    }
+    await pool.query('UPDATE users SET insurance_reminders_enabled = $2 WHERE id = $1', [
+      req.accountUser.id,
+      req.body.remindersEnabled,
+    ]);
+    res.json({ remindersEnabled: req.body.remindersEnabled });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.put('/water-settings', async (req, res, next) => {
   try {
     if (typeof req.body.remindersEnabled !== 'boolean') {

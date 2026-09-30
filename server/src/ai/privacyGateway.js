@@ -25,6 +25,10 @@ const PURPOSES = {
   // photo) - same consent type as report_extraction/diet_photo since it's
   // the same kind of "read my uploaded document" AI processing.
   diet_schedule_import: 'ai_document_processing',
+  // Reading an insurance policy out of an uploaded document, and deciding
+  // what kind of document an upload is - both "read my uploaded document".
+  insurance_extraction: 'ai_document_processing',
+  document_classification: 'ai_document_processing',
   custom_card_grouping: 'ai_health_insights',
   // Workout Coach summary - receives only aggregated session metrics.
   workout_coach: 'ai_health_insights',

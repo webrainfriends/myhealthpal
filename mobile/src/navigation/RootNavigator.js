@@ -38,6 +38,8 @@ import VoiceAccessibilityScreen from '../screens/VoiceAccessibilityScreen';
 import AiUsageScreen from '../screens/AiUsageScreen';
 import AdminSessionsScreen from '../screens/AdminSessionsScreen';
 import RetestRadarScreen from '../screens/RetestRadarScreen';
+import InsuranceScreen from '../screens/InsuranceScreen';
+import InsurancePolicyScreen from '../screens/InsurancePolicyScreen';
 import FamilyScreen from '../screens/FamilyScreen';
 import WorkoutCoachHomeScreen from '../screens/workout/WorkoutCoachHomeScreen';
 import WorkoutSetupScreen from '../screens/workout/WorkoutSetupScreen';
@@ -92,6 +94,8 @@ const linking = {
       Insights: 'insights',
       NeedsAttention: 'needs-attention',
       RetestRadar: 'retest',
+      Insurance: 'insurance',
+      InsurancePolicy: 'insurance/:policyId',
       Family: 'family',
       PrivacyConsent: 'privacy',
       MedicationDetail: 'medications/:medicationId',
@@ -263,6 +267,8 @@ export default function RootNavigator() {
         <Stack.Screen name="Insights" component={InsightsScreen} options={{ title: t('nav.insights') }} />
         <Stack.Screen name="NeedsAttention" component={NeedsAttentionScreen} options={{ title: t('nav.needsAttention') }} />
         <Stack.Screen name="RetestRadar" component={RetestRadarScreen} options={{ title: t('nav.retestRadar') }} />
+        <Stack.Screen name="Insurance" component={InsuranceScreen} options={{ title: t('nav.insurance') }} />
+        <Stack.Screen name="InsurancePolicy" component={InsurancePolicyScreen} options={{ title: t('nav.insurancePolicy') }} />
         <Stack.Screen name="Family" component={FamilyScreen} options={{ title: t('nav.family') }} />
         <Stack.Screen name="PrivacyConsent" component={PrivacyConsentScreen} options={{ title: t('nav.privacy') }} />
         <Stack.Screen name="MedicationDetail" component={MedicationDetailScreen} options={{ title: t('nav.medication') }} />

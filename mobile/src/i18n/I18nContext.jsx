@@ -13,7 +13,10 @@ function lookup(dict, path) {
 
 function interpolate(template, vars) {
   if (!vars) return template;
-  return template.replace(/\{\{(\w+)\}\}/g, (match, name) => (name in vars ? String(vars[name]) : match));
+  // A `count` also provides `{{s}}` ('' for 1, 's' otherwise) so English
+  // strings can say "{{count}} day{{s}}" without a key per plural form.
+  const scope = 'count' in vars && !('s' in vars) ? { ...vars, s: Number(vars.count) === 1 ? '' : 's' } : vars;
+  return template.replace(/\{\{(\w+)\}\}/g, (match, name) => (name in scope ? String(scope[name]) : match));
 }
 
 // Drives both this app's own UI copy (screen titles, buttons, static labels)

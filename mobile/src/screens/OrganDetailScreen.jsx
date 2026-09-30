@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import CoverageBadge from '../components/CoverageBadge';
+import CoverageClauseModal from '../components/CoverageClauseModal';
 import ResultSummaryModal from '../components/ResultSummaryModal';
 import GlucoseDailyCard from '../components/GlucoseDailyCard';
 import SpeakButton from '../components/SpeakButton';
 import { cardShadow, colors, healthStatusColors, radii, spacing, typography } from '../theme/theme';
-import { fetchCustomCards, fetchGlucoseSummary, fetchOrganHealth } from '../api/client';
+import { fetchCustomCards, fetchGlucoseSummary, fetchInsurance, fetchOrganHealth } from '../api/client';
 import { useT } from '../i18n/I18nContext';
 import { formatCalendarDate } from '../utils/date';
 import { cardCounts, cardHeadline, flagLabel, notCheckedNote, outOfRangeList } from '../utils/organReadout';
@@ -55,7 +57,7 @@ function buildOrganSpeech(organ, t) {
   return [headline ? `${headline}.` : null, organSummary(organ, t), ...parts].filter(Boolean).join(' ');
 }
 
-function ParameterRow({ parameter, onPress, onAlertPress, t }) {
+function ParameterRow({ parameter, coverage, onPress, onAlertPress, onCoveragePress, t }) {
   const palette =
     parameter.resultStatus === 'normal'
       ? healthStatusColors.good
@@ -100,6 +102,17 @@ function ParameterRow({ parameter, onPress, onAlertPress, t }) {
           </Text>
         </View>
       </View>
+      {coverage ? (
+        <View style={styles.coverageRow}>
+        {coverage.policies.length === 0 ? (
+            <CoverageBadge status={coverage.overall} compact onPress={onCoveragePress} />
+          ) : (
+            coverage.policies.map((p) => (
+              <CoverageBadge key={p.policyId} status={p.status} policyName={p.policyName} compact onPress={onCoveragePress} />
+            ))
+          )}
+        </View>
+      ) : null}
     </TouchableOpacity>
   );
 }
@@ -117,6 +130,8 @@ export default function OrganDetailScreen({ route, navigation }) {
   const [organ, setOrgan] = useState(initialOrgan || null);
   const [summaryParameter, setSummaryParameter] = useState(null);
   const [glucose, setGlucose] = useState(null);
+  const [insurance, setInsurance] = useState(null);
+  const [coverageTag, setCoverageTag] = useState(null);
   // Custom (AI/heuristic-grouped) cards cover results with no registry
   // match at all - see /api/dashboard/custom-cards - and share this same
   // detail layout, just sourced from a different endpoint keyed the same
@@ -147,13 +162,32 @@ export default function OrganDetailScreen({ route, navigation }) {
     }
   }, [isDiabetes]);
 
+  // Which of these results your insurance covers (best-effort: the results
+  // themselves render without it, and nothing shows until a policy is
+  // confirmed).
+  const loadInsurance = useCallback(async () => {
+    if (isCustom) return;
+    try {
+      setInsurance(await fetchInsurance());
+    } catch (err) {
+      console.warn('Failed to load insurance coverage', err.message);
+    }
+  }, [isCustom]);
+
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
       load();
       loadGlucose();
+      loadInsurance();
     });
     return unsubscribe;
-  }, [navigation, load, loadGlucose]);
+  }, [navigation, load, loadGlucose, loadInsurance]);
+
+  const tagsByCode = useMemo(() => new Map((insurance?.tags || []).map((tag) => [tag.code, tag])), [insurance]);
+  const currencyByPolicy = useMemo(
+    () => Object.fromEntries((insurance?.policies || []).map((p) => [p.id, p.currency])),
+    [insurance]
+  );
 
   useEffect(() => {
     if (organ) navigation.setOptions({ title: organ.label });
@@ -246,6 +280,12 @@ export default function OrganDetailScreen({ route, navigation }) {
             <ParameterRow
               key={parameter.code || parameter.displayName}
               parameter={parameter}
+              coverage={parameter.code ? tagsByCode.get(parameter.code) : null}
+              onCoveragePress={(e) => {
+                // Web bubbles the tap to the row's own trend navigation.
+                e?.stopPropagation?.();
+                setCoverageTag(tagsByCode.get(parameter.code));
+              }}
               t={t}
               onPress={() =>
                 parameter.code
@@ -259,6 +299,19 @@ export default function OrganDetailScreen({ route, navigation }) {
 
         {organ.trackedCount > 0 && suggestedBox}
       </ScrollView>
+
+      <CoverageClauseModal
+        visible={Boolean(coverageTag)}
+        title={coverageTag?.displayName}
+        subtitle={t('insurance.coverageForResult')}
+        organs={(insurance?.organCoverage || []).filter((o) => coverageTag?.organKeys.includes(o.organKey))}
+        currencyByPolicy={currencyByPolicy}
+        onClose={() => setCoverageTag(null)}
+        onOpenPolicy={(policyId) => {
+          setCoverageTag(null);
+          navigation.navigate('InsurancePolicy', { policyId });
+        }}
+      />
 
       <ResultSummaryModal
         parameter={summaryParameter}
@@ -380,11 +433,13 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     marginBottom: spacing.sm,
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: spacing.sm,
   },
   rowMain: {
+    minWidth: 0,
     flex: 1,
     minWidth: 0,
     gap: 2,
@@ -399,6 +454,13 @@ const styles = StyleSheet.create({
   },
   rowNameText: {
     flexShrink: 1,
+  },
+  coverageRow: {
+    width: '100%',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 4,
   },
   relevance: {
     fontSize: 12,
