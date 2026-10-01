@@ -15,6 +15,10 @@ const CONSENT_TYPES = {
   // AI summaries, insight wording, chat, diet and recipe suggestions that
   // use the person's health data.
   ai_health_insights: { required: false },
+  // Letting an external AI app (Claude, ChatGPT) the person has signed in
+  // to read or act on their records through the MCP connector (src/mcp).
+  // Separate from the above: it covers a third party's AI, not ours.
+  external_ai_connector: { required: false },
 };
 
 class ConsentRequiredError extends Error {
