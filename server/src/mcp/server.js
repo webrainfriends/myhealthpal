@@ -30,6 +30,12 @@ function createMcpServer(auth) {
       if (err.code === 'consent_required' || err.code === 'ai_consent_required') {
         return { isError: true, content: [{ type: 'text', text: JSON.stringify({ error: err.code, message: err.message }) }] };
       }
+      // Services signal user-fixable problems (not found, bad input) with a
+      // 4xx `status` and a message written for the person - the REST routes
+      // pass those through too.
+      if (Number.isInteger(err.status) && err.status >= 400 && err.status < 500 && err.message) {
+        return { isError: true, content: [{ type: 'text', text: JSON.stringify({ error: 'invalid_request', message: err.message }) }] };
+      }
       logError(`mcp tool ${name}`, err);
       return { isError: true, content: [{ type: 'text', text: JSON.stringify({ error: 'tool_failed', message: 'That request failed. Try again or narrow it.' }) }] };
     }

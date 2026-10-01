@@ -2,10 +2,12 @@ const chatTools = require('./chatTools');
 const profiles = require('./profiles');
 const wellness = require('./wellness');
 const careAndCover = require('./careAndCover');
+const lifestyle = require('./lifestyle');
+const dashboard = require('./dashboard');
 
 // Every tool: { name, description, inputSchema, scope, annotations, execute,
 // accountLevel?, mutates? }. Feature modules are added here as they land.
-const ALL_TOOLS = [...profiles, ...chatTools, ...wellness, ...careAndCover];
+const ALL_TOOLS = [...profiles, ...chatTools, ...wellness, ...careAndCover, ...lifestyle, ...dashboard];
 
 const byName = new Map(ALL_TOOLS.map((t) => [t.name, t]));
 

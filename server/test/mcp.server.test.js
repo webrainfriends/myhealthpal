@@ -116,7 +116,7 @@ test('tools/list only advertises tools within the granted scopes, with profileId
   await readClient.close();
 
   const familyOnly = await connect(await connectToken(users.owner, ['family:manage']));
-  assert.deepEqual((await familyOnly.listTools()).tools, []);
+  assert.deepEqual((await familyOnly.listTools()).tools.map((t) => t.name), ['get_family_dashboard']);
   assert.equal((await call(familyOnly, 'get_latest_report')).body.error, 'insufficient_scope');
   await familyOnly.close();
 });
