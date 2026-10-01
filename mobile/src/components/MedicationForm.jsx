@@ -153,6 +153,15 @@ export default function MedicationForm({ value, onChange }) {
           placeholder="YYYY-MM-DD"
         />
       </View>
+      <View style={styles.row}>
+        <Field
+          label="Total doses (optional)"
+          value={value.total_doses != null ? String(value.total_doses) : ''}
+          onChangeText={(t) => set('total_doses', t)}
+          placeholder="Defaults to quantity"
+          keyboardType="number-pad"
+        />
+      </View>
     </View>
   );
 }

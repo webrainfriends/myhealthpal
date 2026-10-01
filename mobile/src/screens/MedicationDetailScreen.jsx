@@ -238,6 +238,7 @@ export default function MedicationDetailScreen({ route, navigation }) {
         start_date: draft.start_date || null,
         duration_days: draft.duration_days === '' ? null : draft.duration_days,
         quantity_dispensed: draft.quantity_dispensed === '' ? null : draft.quantity_dispensed,
+        total_doses: draft.total_doses === '' ? null : draft.total_doses,
         expiry_date: draft.expiry_date || null,
         ingredients_raw: draft.ingredients_raw || null,
       });

@@ -44,6 +44,7 @@ export default function MedicationCreateScreen({ navigation }) {
         frequency_per_day: draft.frequency_per_day === '' ? null : draft.frequency_per_day,
         duration_days: draft.duration_days === '' ? null : draft.duration_days,
         quantity_dispensed: draft.quantity_dispensed === '' ? null : draft.quantity_dispensed,
+        total_doses: draft.total_doses === '' ? null : draft.total_doses,
       });
       navigation.replace('MedicationDetail', { medicationId: data.medication.id });
     } catch (err) {
