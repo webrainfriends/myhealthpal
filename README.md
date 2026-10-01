@@ -49,6 +49,12 @@ covering:
   dashboard, insights, and chat history strictly scoped to their own signed-in
   session and never visible to anyone else.
 
+- An MCP connector and skill: use EyeMyHealth from Claude and ChatGPT - read
+  reports and trends, medicines, diet, water, workouts, retests and insurance,
+  log water/meals/doses, add files via a one-time link - signed in with OAuth
+  2.1, scoped per connection, consent-gated and audited
+  (see [docs/mcp.md](docs/mcp.md) and [docs/mcp-tools.md](docs/mcp-tools.md)).
+
 ## Structure
 
 - `server/` — Node.js/Express API, PostgreSQL schema, format-neutral document

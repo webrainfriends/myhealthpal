@@ -1,0 +1,7 @@
+{
+  "name": "eyemyhealth",
+  "version": "1.0.0",
+  "description": "Ask Claude about your own EyeMyHealth records: lab results and trends, medicines, diet, water, workouts, retests and insurance. Connects through the EyeMyHealth MCP connector and includes a skill that teaches Claude to use it safely.",
+  "homepage": "https://eyemyhealth.com",
+  "keywords": ["health", "lab-results", "medications", "mcp"]
+}
