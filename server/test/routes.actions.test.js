@@ -117,3 +117,23 @@ test('weight goal: validation and round trip', async () => {
   assert.deepEqual(put.body, { currentWeightKg: 80, targetWeightKg: 72, targetDate: '2027-01-01' });
   assert.deepEqual((await call('GET', '/api/weight-goal')).body, put.body);
 });
+
+test('DELETE routes backed by recordRemovalService keep their contract (204, then 404; foreign ids 404)', async () => {
+  const mk = {
+    report: async (uid) => (await pool.query(`INSERT INTO reports (user_id, original_filename, mime_type, file_extension, file_size_bytes, storage_path) VALUES ($1,'d.csv','text/csv','csv',1,'/tmp/none') RETURNING id`, [uid])).rows[0].id,
+    insurance: async (uid) => (await pool.query(`INSERT INTO insurance_policies (user_id, original_filename, file_extension, plan_name, ingestion_status) VALUES ($1,'p.pdf','pdf','Plan','Completed') RETURNING id`, [uid])).rows[0].id,
+    medication: async (uid) => (await pool.query(`INSERT INTO medications (user_id, name) VALUES ($1,'DelMed') RETURNING id`, [uid])).rows[0].id,
+    'diet/entries': async (uid) => (await pool.query(`INSERT INTO food_entries (user_id, name, meal_type, consumed_at) VALUES ($1,'Del','lunch',now()) RETURNING id`, [uid])).rows[0].id,
+  };
+  const route = { report: '/api/reports', insurance: '/api/insurance', medication: '/api/medications', 'diet/entries': '/api/diet/entries' };
+  for (const kind of Object.keys(mk)) {
+    const mine = await mk[kind](user.id);
+    const theirs = await mk[kind](other.id);
+    assert.equal((await call('DELETE', `${route[kind]}/${theirs}`)).status, 404, `${kind}: foreign id`);
+    assert.equal((await call('DELETE', `${route[kind]}/not-a-uuid`)).status, 404, `${kind}: malformed id`);
+    assert.equal((await call('DELETE', `${route[kind]}/${mine}`)).status, 204, `${kind}: own id`);
+    assert.equal((await call('DELETE', `${route[kind]}/${mine}`)).status, 404, `${kind}: already gone`);
+  }
+  const audited = await pool.query(`SELECT count(*)::int AS n FROM security_audit_events WHERE event_type = 'REPORT_DELETED' AND user_id = $1`, [user.id]);
+  assert.equal(audited.rows[0].n, 2); // the report and the insurance policy
+});

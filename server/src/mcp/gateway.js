@@ -4,18 +4,10 @@ const consentService = require('../security/consentService');
 const audit = require('../security/auditLog');
 const config = require('../config');
 const { getTool } = require('./tools');
+const { ToolError } = require('./toolError');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_RESULT_BYTES = 200 * 1024;
-
-// A tool failure the model/user should see and can act on. Anything else
-// thrown inside a tool becomes a generic message (no internals leak).
-class ToolError extends Error {
-  constructor(code, message) {
-    super(message);
-    this.code = code;
-  }
-}
 
 const windows = new Map();
 function checkRate(grantId) {
@@ -135,6 +127,7 @@ async function callTool(auth, name, rawArgs) {
     subject,
     language: subject.preferred_language || account.preferred_language || 'en',
     scopes: auth.scopes,
+    grantId: auth.grantId,
   });
 
   const text = JSON.stringify(result.data);
@@ -144,4 +137,4 @@ async function callTool(auth, name, rawArgs) {
   return { data: result.data, evidence: result.evidence || [] };
 }
 
-module.exports = { callTool, toolList, ToolError };
+module.exports = { callTool, toolList };

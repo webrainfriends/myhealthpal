@@ -15,6 +15,7 @@ const { buildMedicationForecast } = require('../medications/medicationForecastSe
 const reminderService = require('../medications/medicationReminderService');
 const reminderRules = require('../medications/medicationReminderRules');
 const { ServiceError } = require('../lib/serviceError');
+const recordRemoval = require('../services/recordRemovalService');
 
 const router = express.Router();
 
@@ -584,13 +585,10 @@ router.post('/:id/confirm', async (req, res, next) => {
 
 router.delete('/:id', async (req, res, next) => {
   try {
-    const { rows } = await pool.query('DELETE FROM medications WHERE id = $1 AND user_id = $2 RETURNING id', [
-      req.params.id,
-      currentUserId(req),
-    ]);
-    if (rows.length === 0) return res.status(404).json({ error: 'Medication not found' });
+    await recordRemoval.deleteMedication(currentUserId(req), req.params.id);
     res.status(204).send();
   } catch (err) {
+    if (err instanceof ServiceError) return res.status(err.status).json({ error: err.message });
     next(err);
   }
 });

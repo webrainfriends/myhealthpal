@@ -8,11 +8,12 @@ const { classifyValue } = require('../extraction/normalizationService');
 const { refreshSummaryForReport } = require('../extraction/reportNarrativeService');
 const { runForMeasurement, supersedeInsightsForMeasurement } = require('../insights/insightService');
 const { signReportDownloadToken } = require('../services/authService');
-const { secureStore, encryptionInsertParts, deleteStoredFile } = require('../security/secureUpload');
+const { secureStore, encryptionInsertParts } = require('../security/secureUpload');
 const { requireConsent } = require('../security/consentService');
 const { loadOwnedReport, toPublicRecord } = require('../security/reportAccess');
 const audit = require('../security/auditLog');
-const { logError } = require('../lib/safeLog');
+const recordRemoval = require('../services/recordRemovalService');
+const { ServiceError } = require('../lib/serviceError');
 
 const router = express.Router();
 
@@ -410,21 +411,10 @@ router.post('/:id/confirm', async (req, res, next) => {
 // event records the deletion.
 router.delete('/:id', async (req, res, next) => {
   try {
-    const report = await loadOwnedReport(currentUserId(req), req.params.id, { purpose: 'report_delete' });
-    if (!report) return res.status(404).json({ error: 'Report not found' });
-
-    await pool.query('DELETE FROM reports WHERE id = $1 AND user_id = $2', [report.id, currentUserId(req)]);
-    try {
-      await deleteStoredFile(report);
-    } catch (err) {
-      // The key is already gone with the row, so the ciphertext is
-      // unreadable; a leftover object is disk space, not exposure.
-      logError(`Could not remove stored file for deleted report ${report.id}`, err);
-    }
-    await audit.record({ eventType: 'REPORT_DELETED', userId: report.user_id, reportId: report.id, purpose: 'user_request' });
-
+    await recordRemoval.deleteReport(currentUserId(req), req.params.id);
     res.status(204).send();
   } catch (err) {
+    if (err instanceof ServiceError) return res.status(err.status).json({ error: err.message });
     next(err);
   }
 });

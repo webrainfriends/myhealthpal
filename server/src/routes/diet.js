@@ -13,6 +13,8 @@ const { NUTRIENT_FIELDS } = require('../extraction/providers/nutrientFields');
 const { nutritionValuesChanged, computeAiVerified } = require('../diet/aiVerificationService');
 const dietRecipeService = require('../diet/dietRecipeService');
 const dietReadService = require('../diet/dietReadService');
+const recordRemoval = require('../services/recordRemovalService');
+const { ServiceError } = require('../lib/serviceError');
 
 const router = express.Router();
 
@@ -398,13 +400,10 @@ router.post('/entries/:id/confirm', async (req, res, next) => {
 
 router.delete('/entries/:id', async (req, res, next) => {
   try {
-    const { rows } = await pool.query('DELETE FROM food_entries WHERE id = $1 AND user_id = $2 RETURNING id', [
-      req.params.id,
-      currentUserId(req),
-    ]);
-    if (rows.length === 0) return res.status(404).json({ error: 'Entry not found' });
+    await recordRemoval.deleteFoodEntry(currentUserId(req), req.params.id);
     res.status(204).send();
   } catch (err) {
+    if (err instanceof ServiceError) return res.status(err.status).json({ error: err.message });
     next(err);
   }
 });

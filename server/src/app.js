@@ -37,6 +37,7 @@ const consentsRouter = require('./routes/consents');
 const connectedAppsRouter = require('./routes/connectedApps');
 const { router: oauthRouter } = require('./oauth/router');
 const mcpRouter = require('./mcp/router');
+const mcpUploadRouter = require('./mcp/uploadRouter');
 const { logError } = require('./lib/safeLog');
 const { runWithContext } = require('./lib/requestContext');
 
@@ -98,6 +99,9 @@ app.use(oauthRouter);
 // Remote MCP endpoint (Streamable HTTP) for Claude / ChatGPT. Authenticated by
 // its own OAuth access tokens (mcp/router.js), never the app's session JWT.
 app.use('/mcp', mcpRouter);
+// One-time upload pages the MCP create_upload_link tool hands out; the signed
+// token in the URL is the credential (see mcp/uploadLinks.js).
+app.use('/mcp-upload', mcpUploadRouter);
 // Not wrapped in requireAuth - see routes/files.js for why (a plain link
 // open can't carry an Authorization header, so a short-lived scoped token
 // is the credential here instead).

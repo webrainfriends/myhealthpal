@@ -6,10 +6,12 @@ const lifestyle = require('./lifestyle');
 const dashboard = require('./dashboard');
 const logging = require('./logging');
 const editing = require('./editing');
+const removal = require('./removal');
+const uploads = require('./uploads');
 
 // Every tool: { name, description, inputSchema, scope, annotations, execute,
 // accountLevel?, mutates? }. Feature modules are added here as they land.
-const ALL_TOOLS = [...profiles, ...chatTools, ...wellness, ...careAndCover, ...lifestyle, ...dashboard, ...logging, ...editing];
+const ALL_TOOLS = [...profiles, ...chatTools, ...wellness, ...careAndCover, ...lifestyle, ...dashboard, ...logging, ...editing, ...removal, ...uploads];
 
 const byName = new Map(ALL_TOOLS.map((t) => [t.name, t]));
 

@@ -75,15 +75,21 @@ test.after(async () => {
   await pool.end();
 });
 
-test('every write tool is non-read-only, scoped log/write, and none deletes', () => {
+test('every write tool is non-read-only and scoped log/write; one-step deletes do not exist', () => {
   const writes = listTools().filter((t) => t.annotations.readOnlyHint === false);
-  assert.ok(writes.length >= 15);
+  assert.ok(writes.length >= 25);
   for (const t of writes) {
     assert.ok(['health:log', 'health:write'].includes(t.scope), `${t.name} scope ${t.scope}`);
-    assert.ok(!/^(delete|remove)_/.test(t.name), `${t.name} must not be a one-step delete`);
-    assert.equal(t.annotations.destructiveHint, false, `${t.name} destructive`);
+    const removes = /^(delete|remove)_/.test(t.name);
+    // Removals are flagged destructive and declare the confirmation field;
+    // nothing else may be.
+    assert.equal(t.annotations.destructiveHint, removes, `${t.name} destructiveHint`);
+    if (removes) assert.ok(t.inputSchema.properties.confirmationToken, `${t.name} must be two-step`);
   }
   for (const t of listTools().filter((x) => x.annotations.readOnlyHint === true)) assert.ok(!t.mutates, `${t.name} flagged mutating`);
+  for (const forbidden of ['delete_account', 'delete_user', 'rewrap_keys', 'set_consent']) {
+    assert.ok(!listTools().some((t) => t.name === forbidden), `${forbidden} must not be exposed`);
+  }
 });
 
 test('a read-only grant cannot see or call write tools, and nothing is written', async () => {

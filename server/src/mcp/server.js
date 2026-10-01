@@ -1,6 +1,7 @@
 const { Server } = require('@modelcontextprotocol/sdk/server/index.js');
 const { ListToolsRequestSchema, CallToolRequestSchema } = require('@modelcontextprotocol/sdk/types.js');
-const { callTool, toolList, ToolError } = require('./gateway');
+const { callTool, toolList } = require('./gateway');
+const { ToolError } = require('./toolError');
 const { logError } = require('../lib/safeLog');
 
 const INSTRUCTIONS =
