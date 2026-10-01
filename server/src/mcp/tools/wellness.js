@@ -1,4 +1,4 @@
-const pool = require('../../db/pool');
+const weightGoalService = require('../../services/weightGoalService');
 const waterService = require('../../water/waterService');
 const waterTargetService = require('../../water/waterTargetService');
 const healthProfileService = require('../../services/healthProfileService');
@@ -49,16 +49,7 @@ const getWeightGoal = readTool({
   name: 'get_weight_goal',
   description: "The person's weight goal: current weight, target weight and target date.",
   async execute(args, { userId }) {
-    const { rows } = await pool.query('SELECT * FROM user_weight_goals WHERE user_id = $1', [userId]);
-    const row = rows[0];
-    return {
-      data: {
-        currentWeightKg: row?.current_weight_kg != null ? Number(row.current_weight_kg) : null,
-        targetWeightKg: row?.target_weight_kg != null ? Number(row.target_weight_kg) : null,
-        targetDate: row?.target_date ? new Date(row.target_date).toISOString().slice(0, 10) : null,
-      },
-      evidence: [],
-    };
+    return { data: await weightGoalService.getWeightGoal(userId), evidence: [] };
   },
 });
 

@@ -1,5 +1,6 @@
 const pool = require('../db/pool');
 const rules = require('./medicationReminderRules');
+const { ServiceError } = require('../lib/serviceError');
 
 const LOOKBACK_DAYS = 3;
 
@@ -63,4 +64,42 @@ async function undoDose(medication, { slot, date }) {
   );
 }
 
-module.exports = { resolveDate, remindersFor, remindersForUser, logDose, undoDose, loadLogsByMedication };
+// Records (or undoes) one dose for a medication the user owns, enforcing the
+// same rules wherever it is called from (REST route, MCP tool): the slot must
+// be one of the medication's scheduled times, and an expired or used-up
+// medicine can't be marked taken. `loggedBy` is the signed-in account, which
+// may be a caregiver acting for a managed profile.
+async function recordDose(userId, medicationId, { slot, status, date: dateInput }, loggedBy) {
+  const { rows } = await pool.query('SELECT * FROM medications WHERE id = $1 AND user_id = $2', [medicationId, userId]);
+  const medication = rows[0];
+  if (!medication) throw new ServiceError(404, 'Medication not found');
+
+  const date = resolveDate(dateInput);
+  if (!['taken', 'skipped', 'undo'].includes(status)) {
+    throw new ServiceError(400, "status must be 'taken', 'skipped' or 'undo'.");
+  }
+  if (!rules.isValidSlot(medication, slot)) {
+    throw new ServiceError(400, "slot is not one of this medication's scheduled times.");
+  }
+
+  if (status === 'undo') {
+    await undoDose(medication, { slot, date });
+  } else {
+    const [before] = await remindersFor([medication], date);
+    const alreadyTaken = before.doses.some((d) => d.slot === slot && d.status === 'taken');
+    if (status === 'taken' && !alreadyTaken) {
+      if (before.stopReason === 'expired') {
+        throw new ServiceError(409, `${medication.name} has expired - do not take it.`);
+      }
+      if (before.dosesRemaining !== null && before.dosesRemaining <= 0) {
+        throw new ServiceError(409, `No doses of ${medication.name} are left.`);
+      }
+    }
+    await logDose(medication, { slot, status, date, loggedBy: loggedBy || userId });
+  }
+
+  const [reminder] = await remindersFor([medication], date);
+  return reminder;
+}
+
+module.exports = { resolveDate, remindersFor, remindersForUser, logDose, undoDose, loadLogsByMedication, recordDose };

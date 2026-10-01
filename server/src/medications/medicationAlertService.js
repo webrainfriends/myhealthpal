@@ -1,5 +1,6 @@
 const pool = require('../db/pool');
 const { evaluateMedicationAlerts } = require('./medicationAlertRules');
+const { ServiceError } = require('../lib/serviceError');
 
 function buildDedupKey(medicationId, type) {
   return `${type}:${medicationId}`;
@@ -83,4 +84,14 @@ async function recomputeAlertsForUser(userId) {
   }
 }
 
-module.exports = { recomputeAlertsForMedication, recomputeAlertsForUser };
+async function dismissAlert(userId, alertId) {
+  const { rows } = await pool.query(
+    `UPDATE medication_alerts SET lifecycle_state = 'dismissed', updated_at = now()
+     WHERE id = $1 AND user_id = $2 RETURNING *`,
+    [alertId, userId]
+  );
+  if (rows.length === 0) throw new ServiceError(404, 'Alert not found');
+  return rows[0];
+}
+
+module.exports = { recomputeAlertsForMedication, recomputeAlertsForUser, dismissAlert };
