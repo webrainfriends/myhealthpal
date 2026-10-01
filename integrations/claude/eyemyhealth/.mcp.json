@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "eyemyhealth": {
+      "type": "http",
+      "url": "https://eyemyhealth.com/mcp"
+    }
+  }
+}

@@ -32,6 +32,10 @@ const EVENT_TYPES = new Set([
   'UPLOAD_REJECTED',
   'ACCESS_DENIED',
   'ACCOUNT_DELETED',
+  'MCP_GRANT_CREATED',
+  'MCP_GRANT_REVOKED',
+  'MCP_TOOL_CALLED',
+  'MCP_TOOL_DENIED',
 ]);
 
 function hashKey() {

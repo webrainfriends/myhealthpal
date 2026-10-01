@@ -238,6 +238,26 @@ export const TRANSLATIONS = {
     privacy: {
       settingsTitle: 'Privacy & AI',
       settingsSubtitle: 'How your reports are protected, and what AI may do with them',
+      connectedApps: {
+        title: 'Connected AI apps',
+        subtitle: 'Claude, ChatGPT and other apps you have allowed to use your records',
+        intro: 'These apps can use EyeMyHealth through your account, only for what you allowed. Disconnect one and it stops immediately.',
+        empty: 'No AI apps are connected. To connect one, add the EyeMyHealth connector in Claude or ChatGPT and sign in.',
+        connectedOn: 'Connected {{date}}',
+        lastUsed: 'Last used {{date}}',
+        neverUsed: 'Not used yet',
+        disconnect: 'Disconnect',
+        disconnectTitle: 'Disconnect {{name}}?',
+        disconnectBody: 'It will immediately lose access to your EyeMyHealth records. You can connect it again later.',
+        couldNotLoad: 'Could not load connected apps',
+        couldNotDisconnect: 'Could not disconnect',
+        scopes: {
+          'health:read': 'Read records',
+          'health:log': 'Log water, meals, doses',
+          'health:write': 'Edit, upload and delete',
+          'family:manage': 'Family profiles',
+        },
+      },
       intro: 'Your health records are personal. Here\'s exactly how EyeMyHealth handles them - and the choices are yours.',
       points: {
         encrypted: {
@@ -286,6 +306,10 @@ export const TRANSLATIONS = {
         ai_health_insights: {
           title: 'AI insights & assistant',
           detail: 'Use AI for summaries, insight wording, the Ask assistant and diet ideas based on my results. Off: simple built-in text is used instead.',
+        },
+        external_ai_connector: {
+          title: 'Other AI apps (Claude, ChatGPT)',
+          detail: 'Let AI apps I connect read and update my records through EyeMyHealth. They only see what I allow, and I can disconnect them any time. Off: connected apps get nothing.',
         },
       },
       revokeNote: 'You can switch AI off at any time. It stops future AI processing; your stored reports stay viewable and deletable.',

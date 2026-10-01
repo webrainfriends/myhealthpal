@@ -85,53 +85,55 @@ async function fetchNeedsAttention(userId) {
 // Latest confirmed measurement per pinned parameter, plus whatever the prior
 // confirmed value was for that same parameter — only used to describe change
 // when both values are on a comparable (normalized) basis.
+async function buildSnapshot(userId) {
+
+  const tracked = await pool.query(
+    `WITH ranked AS (
+       SELECT hm.*, hp.display_name, hp.category, hp.canonical_unit, r.original_filename, r.effective_date,
+              row_number() OVER (
+                PARTITION BY hm.health_parameter_id
+                ORDER BY COALESCE(hm.sample_datetime::date, r.effective_date, r.created_at::date) DESC
+              ) AS rank
+       FROM health_measurements hm
+       JOIN reports r ON r.id = hm.report_id
+       JOIN health_parameters hp ON hp.id = hm.health_parameter_id
+       WHERE r.user_id = $1 AND hm.is_confirmed = true AND ${EXCLUDE_DUPLICATES_SQL}
+     )
+     SELECT pinned.health_parameter_id, latest.display_name, latest.category, latest.canonical_unit,
+            latest.raw_value, latest.normalized_value, latest.normalized_unit, latest.raw_unit,
+            latest.qualitative_value, latest.effective_date, latest.original_filename, latest.report_id,
+            previous.normalized_value AS previous_normalized_value, previous.qualitative_value AS previous_qualitative_value,
+            previous.effective_date AS previous_effective_date
+     FROM user_pinned_parameters pinned
+     LEFT JOIN ranked latest ON latest.health_parameter_id = pinned.health_parameter_id AND latest.rank = 1
+     LEFT JOIN ranked previous ON previous.health_parameter_id = pinned.health_parameter_id AND previous.rank = 2
+     WHERE pinned.user_id = $1
+     ORDER BY latest.display_name ASC NULLS LAST`,
+    [userId]
+  );
+
+  const needsAttention = await fetchNeedsAttention(userId);
+
+  const insights = await pool.query(
+    `SELECT i.id, i.insight_type, i.title, i.explanation, i.severity, i.generated_at, i.evidence,
+            hp.display_name AS parameter_display_name
+     FROM insights i
+     LEFT JOIN health_parameters hp ON hp.id = i.health_parameter_id
+     WHERE i.user_id = $1 AND i.lifecycle_state = 'active'
+     ORDER BY i.generated_at DESC
+     LIMIT 10`,
+    [userId]
+  );
+  return {
+    trackedMetrics: tracked.rows,
+    needsAttention,
+    insights: insights.rows,
+  };
+}
+
 router.get('/snapshot', async (req, res, next) => {
   try {
-    const userId = currentUserId(req);
-
-    const tracked = await pool.query(
-      `WITH ranked AS (
-         SELECT hm.*, hp.display_name, hp.category, hp.canonical_unit, r.original_filename, r.effective_date,
-                row_number() OVER (
-                  PARTITION BY hm.health_parameter_id
-                  ORDER BY COALESCE(hm.sample_datetime::date, r.effective_date, r.created_at::date) DESC
-                ) AS rank
-         FROM health_measurements hm
-         JOIN reports r ON r.id = hm.report_id
-         JOIN health_parameters hp ON hp.id = hm.health_parameter_id
-         WHERE r.user_id = $1 AND hm.is_confirmed = true AND ${EXCLUDE_DUPLICATES_SQL}
-       )
-       SELECT pinned.health_parameter_id, latest.display_name, latest.category, latest.canonical_unit,
-              latest.raw_value, latest.normalized_value, latest.normalized_unit, latest.raw_unit,
-              latest.qualitative_value, latest.effective_date, latest.original_filename, latest.report_id,
-              previous.normalized_value AS previous_normalized_value, previous.qualitative_value AS previous_qualitative_value,
-              previous.effective_date AS previous_effective_date
-       FROM user_pinned_parameters pinned
-       LEFT JOIN ranked latest ON latest.health_parameter_id = pinned.health_parameter_id AND latest.rank = 1
-       LEFT JOIN ranked previous ON previous.health_parameter_id = pinned.health_parameter_id AND previous.rank = 2
-       WHERE pinned.user_id = $1
-       ORDER BY latest.display_name ASC NULLS LAST`,
-      [userId]
-    );
-
-    const needsAttention = await fetchNeedsAttention(userId);
-
-    const insights = await pool.query(
-      `SELECT i.id, i.insight_type, i.title, i.explanation, i.severity, i.generated_at, i.evidence,
-              hp.display_name AS parameter_display_name
-       FROM insights i
-       LEFT JOIN health_parameters hp ON hp.id = i.health_parameter_id
-       WHERE i.user_id = $1 AND i.lifecycle_state = 'active'
-       ORDER BY i.generated_at DESC
-       LIMIT 10`,
-      [userId]
-    );
-
-    res.json({
-      trackedMetrics: tracked.rows,
-      needsAttention,
-      insights: insights.rows,
-    });
+    res.json(await buildSnapshot(currentUserId(req)));
   } catch (err) {
     next(err);
   }
@@ -145,66 +147,68 @@ router.get('/snapshot', async (req, res, next) => {
 // Medications tab scores against) as a fallback. Every group is always
 // returned (even with no data yet)
 // so a user can see the full picture of what is and isn't being tracked.
+async function buildOrgans(userId, language) {
+
+  const { rows } = await pool.query(
+    `WITH ranked AS (
+       SELECT hm.report_id, hm.raw_value, hm.raw_unit, hm.qualitative_value, hm.status_flag,
+              hm.reference_range_raw, hm.numeric_value, hm.normalized_value,
+              hp.code, hp.display_name, hp.category, r.effective_date,
+              row_number() OVER (
+                PARTITION BY hm.health_parameter_id
+                ORDER BY COALESCE(r.effective_date, r.created_at::date) DESC, hm.created_at DESC
+              ) AS rank
+       FROM health_measurements hm
+       JOIN reports r ON r.id = hm.report_id
+       JOIN health_parameters hp ON hp.id = hm.health_parameter_id
+       WHERE r.user_id = $1 AND r.ingestion_status IN ('Needs Review', 'Completed') AND ${EXCLUDE_DUPLICATES_SQL}
+     )
+     SELECT report_id, raw_value, raw_unit, qualitative_value, status_flag,
+            reference_range_raw, numeric_value, normalized_value, code, display_name, category, effective_date
+     FROM ranked
+     WHERE rank = 1`,
+    [userId]
+  );
+
+  const measurements = rows.map((row) => ({
+    code: row.code,
+    displayName: row.display_name,
+    category: row.category,
+    rawValue: row.raw_value,
+    rawUnit: row.raw_unit,
+    qualitativeValue: row.qualitative_value,
+    statusFlag: row.status_flag,
+    referenceRangeRaw: row.reference_range_raw,
+    numericValue: row.numeric_value,
+    normalizedValue: row.normalized_value,
+    effectiveDate: row.effective_date,
+    reportId: row.report_id,
+  }));
+
+  // An unmapped result the custom-card grouping puts in the same kind of
+  // group as one of the organ cards (e.g. a CA-125 grouped as "Tumor
+  // Markers") joins that card rather than showing up on a second card
+  // with the same name - see ORGAN_GROUPS' customLabels. Best-effort: a
+  // failure here only means those results stay on their custom card.
+  try {
+    const classified = await classifyUnmappedMeasurements(userId, language);
+    for (const { row, classification } of classified) {
+      const organKey = organKeyForCustomLabel(classification.label);
+      if (!organKey) continue;
+      const group = ORGAN_GROUPS.find((g) => g.key === organKey);
+      measurements.push(toCardMeasurement(row, group.categories[0]));
+    }
+  } catch (err) {
+    console.warn('Could not fold unmapped results into organ cards', err.message);
+  }
+
+  const standardRangesByCode = await getAllReferenceRangesByCode();
+  return { organs: buildOrganSummaries(measurements, standardRangesByCode) };
+}
+
 router.get('/organs', async (req, res, next) => {
   try {
-    const userId = currentUserId(req);
-
-    const { rows } = await pool.query(
-      `WITH ranked AS (
-         SELECT hm.report_id, hm.raw_value, hm.raw_unit, hm.qualitative_value, hm.status_flag,
-                hm.reference_range_raw, hm.numeric_value, hm.normalized_value,
-                hp.code, hp.display_name, hp.category, r.effective_date,
-                row_number() OVER (
-                  PARTITION BY hm.health_parameter_id
-                  ORDER BY COALESCE(r.effective_date, r.created_at::date) DESC, hm.created_at DESC
-                ) AS rank
-         FROM health_measurements hm
-         JOIN reports r ON r.id = hm.report_id
-         JOIN health_parameters hp ON hp.id = hm.health_parameter_id
-         WHERE r.user_id = $1 AND r.ingestion_status IN ('Needs Review', 'Completed') AND ${EXCLUDE_DUPLICATES_SQL}
-       )
-       SELECT report_id, raw_value, raw_unit, qualitative_value, status_flag,
-              reference_range_raw, numeric_value, normalized_value, code, display_name, category, effective_date
-       FROM ranked
-       WHERE rank = 1`,
-      [userId]
-    );
-
-    const measurements = rows.map((row) => ({
-      code: row.code,
-      displayName: row.display_name,
-      category: row.category,
-      rawValue: row.raw_value,
-      rawUnit: row.raw_unit,
-      qualitativeValue: row.qualitative_value,
-      statusFlag: row.status_flag,
-      referenceRangeRaw: row.reference_range_raw,
-      numericValue: row.numeric_value,
-      normalizedValue: row.normalized_value,
-      effectiveDate: row.effective_date,
-      reportId: row.report_id,
-    }));
-
-    // An unmapped result the custom-card grouping puts in the same kind of
-    // group as one of the organ cards (e.g. a CA-125 grouped as "Tumor
-    // Markers") joins that card rather than showing up on a second card
-    // with the same name - see ORGAN_GROUPS' customLabels. Best-effort: a
-    // failure here only means those results stay on their custom card.
-    try {
-      const classified = await classifyUnmappedMeasurements(userId, req.user.preferred_language);
-      for (const { row, classification } of classified) {
-        const organKey = organKeyForCustomLabel(classification.label);
-        if (!organKey) continue;
-        const group = ORGAN_GROUPS.find((g) => g.key === organKey);
-        measurements.push(toCardMeasurement(row, group.categories[0]));
-      }
-    } catch (err) {
-      console.warn('Could not fold unmapped results into organ cards', err.message);
-    }
-
-    const standardRangesByCode = await getAllReferenceRangesByCode();
-
-    res.json({ organs: buildOrganSummaries(measurements, standardRangesByCode) });
+    res.json(await buildOrgans(currentUserId(req), req.user.preferred_language));
   } catch (err) {
     next(err);
   }
@@ -433,3 +437,7 @@ module.exports = router;
 // Exposed for dashboard.test.js only - module.exports is still the router
 // itself, used identically by app.js.
 module.exports.fetchLatestUnmappedMeasurements = fetchLatestUnmappedMeasurements;
+// Read models shared with the MCP connector (src/mcp/tools/dashboard.js).
+module.exports.buildSnapshot = buildSnapshot;
+module.exports.buildOrgans = buildOrgans;
+module.exports.fetchNeedsAttention = fetchNeedsAttention;

@@ -10,10 +10,12 @@ const audit = require('../security/auditLog');
 const { enqueueMedicationScanProcessing, computeEndDate } = require('../medications/medicationScanService');
 const { syncParameterLinks, findKnowledgeEntry } = require('../medications/medicationLinkingService');
 const { getMedicationKnowledge } = require('../medications/medicationKnowledgeService');
-const { recomputeAlertsForMedication, recomputeAlertsForUser } = require('../medications/medicationAlertService');
+const { recomputeAlertsForMedication, recomputeAlertsForUser, dismissAlert } = require('../medications/medicationAlertService');
 const { buildMedicationForecast } = require('../medications/medicationForecastService');
 const reminderService = require('../medications/medicationReminderService');
 const reminderRules = require('../medications/medicationReminderRules');
+const { ServiceError } = require('../lib/serviceError');
+const recordRemoval = require('../services/recordRemovalService');
 
 const router = express.Router();
 
@@ -102,14 +104,9 @@ router.get('/alerts', async (req, res, next) => {
 
 router.post('/alerts/:id/dismiss', async (req, res, next) => {
   try {
-    const { rows } = await pool.query(
-      `UPDATE medication_alerts SET lifecycle_state = 'dismissed', updated_at = now()
-       WHERE id = $1 AND user_id = $2 RETURNING *`,
-      [req.params.id, currentUserId(req)]
-    );
-    if (rows.length === 0) return res.status(404).json({ error: 'Alert not found' });
-    res.json({ alert: rows[0] });
+    res.json({ alert: await dismissAlert(currentUserId(req), req.params.id) });
   } catch (err) {
+    if (err instanceof ServiceError) return res.status(err.status).json({ error: err.message });
     next(err);
   }
 });
@@ -138,37 +135,15 @@ router.get('/reminders/today', async (req, res, next) => {
 
 router.post('/:id/doses', async (req, res, next) => {
   try {
-    const medication = await loadOwnedMedication(currentUserId(req), req.params.id);
-    if (!medication) return res.status(404).json({ error: 'Medication not found' });
-
-    const { slot, status } = req.body || {};
-    const date = reminderService.resolveDate(req.body && req.body.date);
-    if (!['taken', 'skipped', 'undo'].includes(status)) {
-      return res.status(400).json({ error: "status must be 'taken', 'skipped' or 'undo'." });
-    }
-    if (!reminderRules.isValidSlot(medication, slot)) {
-      return res.status(400).json({ error: 'slot is not one of this medication\'s scheduled times.' });
-    }
-
-    if (status === 'undo') {
-      await reminderService.undoDose(medication, { slot, date });
-    } else {
-      const [before] = await reminderService.remindersFor([medication], date);
-      const alreadyTaken = before.doses.some((d) => d.slot === slot && d.status === 'taken');
-      if (status === 'taken' && !alreadyTaken) {
-        if (before.stopReason === 'expired') {
-          return res.status(409).json({ error: `${medication.name} has expired - do not take it.` });
-        }
-        if (before.dosesRemaining !== null && before.dosesRemaining <= 0) {
-          return res.status(409).json({ error: `No doses of ${medication.name} are left.` });
-        }
-      }
-      await reminderService.logDose(medication, { slot, status, date, loggedBy: req.accountUser ? req.accountUser.id : req.user.id });
-    }
-
-    const [reminder] = await reminderService.remindersFor([medication], date);
+    const reminder = await reminderService.recordDose(
+      currentUserId(req),
+      req.params.id,
+      req.body || {},
+      req.accountUser ? req.accountUser.id : req.user.id
+    );
     res.json({ reminder });
   } catch (err) {
+    if (err instanceof ServiceError) return res.status(err.status).json({ error: err.message });
     next(err);
   }
 });
@@ -610,13 +585,10 @@ router.post('/:id/confirm', async (req, res, next) => {
 
 router.delete('/:id', async (req, res, next) => {
   try {
-    const { rows } = await pool.query('DELETE FROM medications WHERE id = $1 AND user_id = $2 RETURNING id', [
-      req.params.id,
-      currentUserId(req),
-    ]);
-    if (rows.length === 0) return res.status(404).json({ error: 'Medication not found' });
+    await recordRemoval.deleteMedication(currentUserId(req), req.params.id);
     res.status(204).send();
   } catch (err) {
+    if (err instanceof ServiceError) return res.status(err.status).json({ error: err.message });
     next(err);
   }
 });

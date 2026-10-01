@@ -17,11 +17,13 @@
     "rewrap-keys": "node scripts/rewrap-keys.js",
     "reencrypt-files": "node scripts/reencrypt-files.js",
     "check-kms": "node scripts/check-kms.js",
-    "delete-stale-guests": "node scripts/delete-stale-guests.js"
+    "delete-stale-guests": "node scripts/delete-stale-guests.js",
+    "mcp:docs": "node scripts/mcp-tools-doc.js > ../docs/mcp-tools.md"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",
     "@aws-sdk/client-kms": "^3.1141.0",
+    "@modelcontextprotocol/sdk": "^1.31.0",
     "@napi-rs/canvas": "^1.0.9",
     "cors": "^2.8.5",
     "csv-parse": "^7.0.2",

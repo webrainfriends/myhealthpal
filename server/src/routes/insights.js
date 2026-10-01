@@ -2,6 +2,9 @@ const express = require('express');
 const pool = require('../db/pool');
 const { referenceSourceFor } = require('../medications/citationSources');
 
+const { dismissInsight, setInsightFeedback } = require('../services/insightActionService');
+const { ServiceError } = require('../lib/serviceError');
+
 const router = express.Router();
 
 // req.user is set by the requireAuth middleware (app.js) from a verified
@@ -45,35 +48,21 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-router.post('/:id/dismiss', async (req, res, next) => {
-  try {
-    const { rows } = await pool.query(
-      `UPDATE insights SET lifecycle_state = 'dismissed', updated_at = now()
-       WHERE id = $1 AND user_id = $2 RETURNING *`,
-      [req.params.id, currentUserId(req)]
-    );
-    if (rows.length === 0) return res.status(404).json({ error: 'Insight not found' });
-    res.json({ insight: rows[0] });
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.post('/:id/feedback', async (req, res, next) => {
-  try {
-    if (!['useful', 'not_useful'].includes(req.body.feedback)) {
-      return res.status(400).json({ error: 'feedback must be "useful" or "not_useful".' });
+function handle(fn) {
+  return async (req, res, next) => {
+    try {
+      res.json(await fn(req));
+    } catch (err) {
+      if (err instanceof ServiceError) return res.status(err.status).json({ error: err.message });
+      next(err);
     }
-    const { rows } = await pool.query(
-      `UPDATE insights SET user_feedback = $3, updated_at = now()
-       WHERE id = $1 AND user_id = $2 RETURNING *`,
-      [req.params.id, currentUserId(req), req.body.feedback]
-    );
-    if (rows.length === 0) return res.status(404).json({ error: 'Insight not found' });
-    res.json({ insight: rows[0] });
-  } catch (err) {
-    next(err);
-  }
-});
+  };
+}
+
+router.post('/:id/dismiss', handle(async (req) => ({ insight: await dismissInsight(currentUserId(req), req.params.id) })));
+
+router.post('/:id/feedback', handle(async (req) => ({
+  insight: await setInsightFeedback(currentUserId(req), req.params.id, req.body.feedback),
+})));
 
 module.exports = router;

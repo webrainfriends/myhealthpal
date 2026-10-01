@@ -3,9 +3,8 @@ const pool = require('../db/pool');
 const insuranceService = require('../insurance/insuranceService');
 const { enqueueInsuranceProcessing } = require('../insurance/insuranceImportService');
 const rules = require('../insurance/insuranceRules');
-const { deleteStoredFile } = require('../security/secureUpload');
-const audit = require('../security/auditLog');
-const { logError } = require('../lib/safeLog');
+const recordRemoval = require('../services/recordRemovalService');
+const { ServiceError } = require('../lib/serviceError');
 
 const router = express.Router();
 
@@ -191,20 +190,10 @@ router.post('/:id/retry', async (req, res, next) => {
 
 router.delete('/:id', async (req, res, next) => {
   try {
-    const owned = await insuranceService.loadOwnedPolicy(currentUserId(req), req.params.id);
-    if (!owned) return res.status(404).json({ error: 'Policy not found' });
-    // Coverage items and sent-reminder rows go with it (ON DELETE CASCADE);
-    // once the row - and so the wrapped key - is gone the ciphertext can no
-    // longer be decrypted, same as a deleted report.
-    await pool.query('DELETE FROM insurance_policies WHERE id = $1 AND user_id = $2', [owned.id, currentUserId(req)]);
-    try {
-      await deleteStoredFile(owned);
-    } catch (err) {
-      logError(`Could not remove stored file for deleted insurance policy ${owned.id}`, err);
-    }
-    await audit.record({ eventType: 'REPORT_DELETED', userId: owned.user_id, resourceType: 'insurance_policy', purpose: 'user_request' });
+    await recordRemoval.deletePolicy(currentUserId(req), req.params.id);
     res.status(204).send();
   } catch (err) {
+    if (err instanceof ServiceError) return res.status(err.status).json({ error: err.message });
     next(err);
   }
 });

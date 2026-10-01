@@ -579,6 +579,19 @@ export async function fetchConsents() {
   return handleResponse(response);
 }
 
+// AI apps (Claude, ChatGPT) the signed-in account connected through the MCP
+// connector - listed and disconnected here (server: routes/connectedApps.js).
+export async function fetchConnectedApps() {
+  const response = await apiFetch('/api/connected-apps');
+  return handleResponse(response);
+}
+
+export async function disconnectConnectedApp(id) {
+  const response = await apiFetch(`/api/connected-apps/${id}`, { method: 'DELETE' });
+  if (!response.ok) return handleResponse(response);
+  return null;
+}
+
 export async function setConsent(type, granted) {
   const response = await apiFetch(`/api/consents/${type}`, {
     method: 'PUT',

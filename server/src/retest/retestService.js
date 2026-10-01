@@ -1,5 +1,6 @@
 const pool = require('../db/pool');
-const { evaluateRetest, daysUntil, weekStart, checkinStreak } = require('./retestRules');
+const { evaluateRetest, daysUntil, weekStart, checkinStreak, addDays } = require('./retestRules');
+const { ServiceError } = require('../lib/serviceError');
 
 // Same exclusion the dashboard uses - a suspected/confirmed duplicate is
 // never live data, so it must not drive (or close) a plan.
@@ -148,4 +149,48 @@ async function listVisiblePlans(userId, today = new Date()) {
   });
 }
 
-module.exports = { recomputeForUser, listVisiblePlans };
+const MAX_SNOOZE_DAYS = 60;
+
+// Plan actions shared by /api/retest/* and the MCP connector. Each returns
+// the updated row (or visible plan) and throws ServiceError(404/400).
+async function snoozePlan(userId, planId, daysInput = 7) {
+  const days = Number(daysInput);
+  if (!Number.isInteger(days) || days < 1 || days > MAX_SNOOZE_DAYS) {
+    throw new ServiceError(400, `days must be a whole number from 1 to ${MAX_SNOOZE_DAYS}.`);
+  }
+  const snoozedUntil = addDays(new Date().toISOString().slice(0, 10), days);
+  const { rows } = await pool.query(
+    `UPDATE retest_plans SET status = 'snoozed', snoozed_until = $3, updated_at = now()
+     WHERE id = $1 AND user_id = $2 AND status IN ('active', 'snoozed') RETURNING id, status, snoozed_until`,
+    [planId, userId, snoozedUntil]
+  );
+  if (rows.length === 0) throw new ServiceError(404, 'Plan not found');
+  return rows[0];
+}
+
+async function dismissPlan(userId, planId) {
+  const { rows } = await pool.query(
+    `UPDATE retest_plans SET status = 'dismissed', updated_at = now()
+     WHERE id = $1 AND user_id = $2 AND status IN ('active', 'snoozed') RETURNING id, status`,
+    [planId, userId]
+  );
+  if (rows.length === 0) throw new ServiceError(404, 'Plan not found');
+  return rows[0];
+}
+
+// Toggles this week's micro-action check-in. Returns the plan as listed
+// (null when it is no longer visible).
+async function setCheckin(userId, planId, done) {
+  const { rows } = await pool.query('SELECT id FROM retest_plans WHERE id = $1 AND user_id = $2', [planId, userId]);
+  if (rows.length === 0) throw new ServiceError(404, 'Plan not found');
+  const week = weekStart(new Date());
+  if (done === false) {
+    await pool.query('DELETE FROM retest_checkins WHERE plan_id = $1 AND week_start = $2', [planId, week]);
+  } else {
+    await pool.query('INSERT INTO retest_checkins (plan_id, week_start) VALUES ($1, $2) ON CONFLICT DO NOTHING', [planId, week]);
+  }
+  const plans = await listVisiblePlans(userId);
+  return plans.find((p) => p.id === planId) || null;
+}
+
+module.exports = { recomputeForUser, listVisiblePlans, snoozePlan, dismissPlan, setCheckin };

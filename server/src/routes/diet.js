@@ -12,6 +12,9 @@ const dietTextProvider = require('../extraction/providers/dietTextProvider');
 const { NUTRIENT_FIELDS } = require('../extraction/providers/nutrientFields');
 const { nutritionValuesChanged, computeAiVerified } = require('../diet/aiVerificationService');
 const dietRecipeService = require('../diet/dietRecipeService');
+const dietReadService = require('../diet/dietReadService');
+const recordRemoval = require('../services/recordRemovalService');
+const { ServiceError } = require('../lib/serviceError');
 
 const router = express.Router();
 
@@ -148,36 +151,7 @@ router.post('/scans/:id/retry', async (req, res, next) => {
 // captured on an earlier day than "today".
 router.get('/entries', async (req, res, next) => {
   try {
-    const userId = currentUserId(req);
-
-    if (req.query.unconfirmed === 'true') {
-      const { rows } = await pool.query(
-        `SELECT * FROM food_entries WHERE user_id = $1 AND is_confirmed = false ORDER BY consumed_at DESC`,
-        [userId]
-      );
-      return res.json({ entries: rows });
-    }
-
-    let from;
-    let to;
-    if (req.query.date) {
-      from = `${req.query.date}T00:00:00.000Z`;
-      to = `${req.query.date}T23:59:59.999Z`;
-    } else if (req.query.from || req.query.to) {
-      from = req.query.from ? `${req.query.from}T00:00:00.000Z` : '1970-01-01T00:00:00.000Z';
-      to = req.query.to ? `${req.query.to}T23:59:59.999Z` : new Date().toISOString();
-    } else {
-      const today = new Date().toISOString().slice(0, 10);
-      from = `${today}T00:00:00.000Z`;
-      to = `${today}T23:59:59.999Z`;
-    }
-
-    const { rows } = await pool.query(
-      `SELECT * FROM food_entries WHERE user_id = $1 AND consumed_at BETWEEN $2 AND $3
-       ORDER BY consumed_at ASC`,
-      [userId, from, to]
-    );
-    res.json({ entries: rows });
+    res.json({ entries: await dietReadService.listEntries(currentUserId(req), req.query) });
   } catch (err) {
     next(err);
   }
@@ -426,13 +400,10 @@ router.post('/entries/:id/confirm', async (req, res, next) => {
 
 router.delete('/entries/:id', async (req, res, next) => {
   try {
-    const { rows } = await pool.query('DELETE FROM food_entries WHERE id = $1 AND user_id = $2 RETURNING id', [
-      req.params.id,
-      currentUserId(req),
-    ]);
-    if (rows.length === 0) return res.status(404).json({ error: 'Entry not found' });
+    await recordRemoval.deleteFoodEntry(currentUserId(req), req.params.id);
     res.status(204).send();
   } catch (err) {
+    if (err instanceof ServiceError) return res.status(err.status).json({ error: err.message });
     next(err);
   }
 });
@@ -441,49 +412,7 @@ router.delete('/entries/:id', async (req, res, next) => {
 // GET /api/activity/summary.
 router.get('/summary', async (req, res, next) => {
   try {
-    const userId = currentUserId(req);
-    const days = Math.min(Math.max(Number.parseInt(req.query.days, 10) || 7, 1), 90);
-
-    const { rows } = await pool.query(
-      `SELECT id, name, meal_type, ${NUTRIENT_FIELDS.join(', ')}, consumed_at, is_confirmed, needs_quantity, needs_review
-       FROM food_entries
-       WHERE user_id = $1 AND consumed_at >= CURRENT_DATE - ($2::int - 1) AND is_confirmed = true
-       ORDER BY consumed_at ASC`,
-      [userId, days]
-    );
-
-    function emptyDay(key) {
-      const day = { date: key, meals: { breakfast: [], lunch: [], snack: [], dinner: [], supper: [] } };
-      for (const field of NUTRIENT_FIELDS) day[field] = 0;
-      return day;
-    }
-
-    const byDay = new Map();
-    for (const row of rows) {
-      const key = new Date(row.consumed_at).toISOString().slice(0, 10);
-      const day = byDay.get(key) || emptyDay(key);
-      for (const field of NUTRIENT_FIELDS) day[field] += Number(row[field]) || 0;
-      day.meals[row.meal_type].push({ id: row.id, name: row.name, calories: row.calories });
-      byDay.set(key, day);
-    }
-
-    const history = [];
-    for (let i = days - 1; i >= 0; i -= 1) {
-      const d = new Date();
-      d.setUTCDate(d.getUTCDate() - i);
-      const key = d.toISOString().slice(0, 10);
-      history.push(byDay.get(key) || emptyDay(key));
-    }
-
-    const todayKey = new Date().toISOString().slice(0, 10);
-    const today = byDay.get(todayKey) || history[history.length - 1];
-
-    const pendingReview = await pool.query(
-      `SELECT count(*)::int AS count FROM food_entries WHERE user_id = $1 AND is_confirmed = false`,
-      [userId]
-    );
-
-    res.json({ today, history, pendingReviewCount: pendingReview.rows[0].count });
+    res.json(await dietReadService.getSummary(currentUserId(req), req.query.days));
   } catch (err) {
     next(err);
   }
