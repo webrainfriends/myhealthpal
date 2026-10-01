@@ -1,7 +1,7 @@
 const { getAiClient } = require('../../ai/privacyGateway');
 const config = require('../../config');
 const { recordAiUsage, FEATURES } = require('../../services/aiUsageService');
-const { ORGAN_KEYS, COVERAGE_STATUSES, PREMIUM_FREQUENCIES, normalizeOrganKey } = require('../../insurance/insuranceRules');
+const { ORGAN_KEYS, COVERAGE_STATUSES, PREMIUM_FREQUENCIES, normalizeOrganKey, currentCoverPeriod } = require('../../insurance/insuranceRules');
 
 // Reads a health-insurance policy document (schedule, wording, brochure or
 // a photo of the policy card) into structured data: the insurer and policy
@@ -35,6 +35,7 @@ const INSTRUCTION =
   'any waiting period in months, the clause reference (section / clause number) and the verbatim clause_text. ' +
   'Put policy-wide clauses (general exclusions, pre-existing disease rules, cosmetic or dental exclusions that name no organ) under organ_key "general". ' +
   'If a limit or co-pay applies to the whole policy rather than one illness, add it to the relevant organ items or to a "general" item. ' +
+  'An endorsement that says it "applies from" a date gives the policy_start_date. Set renews_annually when the wording says the policy renews each year; do not read lifetime/age-limit/benefit-term clauses as the cover end date. ' +
   'If the document is unreadable or is not an insurance policy, still call the tool with empty coverage_items and null fields.';
 
 const nullableString = (description) => ({ type: ['string', 'null'], description });
@@ -55,7 +56,14 @@ const EXTRACTION_TOOL = {
       sum_insured: nullableNumber('The base sum insured as a plain number.'),
       currency: nullableString('ISO code or symbol, e.g. INR, USD.'),
       policy_start_date: nullableString('Cover start date, YYYY-MM-DD.'),
-      policy_end_date: nullableString('Cover end / renewal date, YYYY-MM-DD.'),
+      renews_annually: {
+        type: 'boolean',
+        description:
+          'true when the document says the policy is guaranteed/automatically renewed each year on the policy anniversary, or its cover runs in 12-month "policy years" with no fixed end (typical of health/hospital plans). false for a fixed-term policy.',
+      },
+      policy_end_date: nullableString(
+        'End of the CURRENT cover period, YYYY-MM-DD: for a fixed-term policy its stated expiry; for an annually renewing policy the day before the first anniversary (start + 12 months - 1 day). Never a lifetime, maximum-age or "benefit term" date, and never a date that is not printed or derivable this way.'
+      ),
       initial_waiting_days: nullableNumber('The initial waiting period in days (commonly 30), if stated.'),
       preexisting_waiting_months: nullableNumber('The pre-existing disease waiting period in months, if stated.'),
       premium_amount: nullableNumber('The premium per instalment, including taxes if that is what is printed.'),
@@ -206,6 +214,7 @@ function normalizeExtraction(input) {
     currency: trimmed(input?.currency),
     policyStartDate: isoDate(input?.policy_start_date),
     policyEndDate: isoDate(input?.policy_end_date),
+    renewsAnnually: input?.renews_annually === true,
     initialWaitingDays: nonNegativeInt(input?.initial_waiting_days),
     preexistingWaitingMonths: nonNegativeInt(input?.preexisting_waiting_months),
     premiumAmount: positive(input?.premium_amount),
@@ -229,6 +238,12 @@ function normalizeExtraction(input) {
       .map((c) => ({ role: trimmed(c.role), name: trimmed(c.name), phone: trimmed(c.phone), email: trimmed(c.email) })),
     summary: trimmed(input?.summary),
   };
+
+  // A renewing plan's end date is just its first policy year; never trust a
+  // model-read lifetime / age-limit date for it.
+  if (policy.renewsAnnually && policy.policyStartDate) {
+    policy.policyEndDate = currentCoverPeriod({ policy_start_date: policy.policyStartDate, renews_annually: true }, new Date(`${policy.policyStartDate}T00:00:00Z`)).end;
+  }
 
   const items = (Array.isArray(input?.coverage_items) ? input.coverage_items : [])
     .filter((item) => item && trimmed(item.condition_name) && COVERAGE_STATUSES.includes(item.coverage_status))

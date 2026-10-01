@@ -99,7 +99,7 @@ async function saveExtraction(policyId, { policy, items, warnings, rawModelOutpu
          provider_website = $20, claims_phone = $21, claims_email = $22, agent_name = $23, agent_phone = $24,
          agent_email = $25, support_phone = $26, support_email = $27, tpa_name = $28, tpa_phone = $29,
          other_contacts = $30, summary = $31, raw_model_output = $32,
-         ingestion_status = 'Needs Review', processing_error = $33, updated_at = now()
+         renews_annually = $34, ingestion_status = 'Needs Review', processing_error = $33, updated_at = now()
        WHERE id = $1`,
       [
         policyId, policy.providerName, policy.planName, policy.policyNumber, policy.policyType, policy.policyholderName,
@@ -113,6 +113,7 @@ async function saveExtraction(policyId, { policy, items, warnings, rawModelOutpu
         // Non-fatal notes (a truncated document, ...) ride along in the same
         // column a failure would use, so the review screen can show them.
         warnings.length ? warnings.join(' ') : null,
+        policy.renewsAnnually,
       ]
     );
     await client.query('COMMIT');

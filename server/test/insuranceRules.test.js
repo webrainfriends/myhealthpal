@@ -252,3 +252,24 @@ test('extraction output is normalised into database-safe shapes', () => {
   assert.equal(items[1].organKey, 'general');
   assert.equal(items[1].needsReview, true);
 });
+
+test('annually renewing policy: cover period is the current policy year and rolls forward', () => {
+  const policy = { policy_start_date: '2026-07-20', policy_end_date: null, renews_annually: true };
+  const first = rules.policyPeriod(policy, new Date('2026-10-01T00:00:00Z'));
+  assert.equal(first.periodStart, '2026-07-20');
+  assert.equal(first.periodEnd, '2027-07-19');
+  assert.equal(first.renewalDate, '2027-07-20');
+  assert.equal(first.state, 'active');
+  assert.equal(first.daysToRenewal, 292);
+
+  const later = rules.policyPeriod(policy, new Date('2028-01-05T00:00:00Z'));
+  assert.equal(later.periodStart, '2027-07-20');
+  assert.equal(later.periodEnd, '2028-07-19');
+  assert.notEqual(later.state, 'expired');
+});
+
+test('fixed-term policy is unchanged', () => {
+  const p = rules.policyPeriod({ policy_start_date: '2026-01-01', policy_end_date: '2026-12-31' }, new Date('2026-10-01T00:00:00Z'));
+  assert.equal(p.periodEnd, '2026-12-31');
+  assert.equal(p.renewsAnnually, false);
+});

@@ -8,7 +8,9 @@ import { formatCalendarDate } from '../utils/date';
 export default function PolicyPeriodBar({ policy }) {
   const t = useT();
   const { period } = policy;
-  if (!policy.policyStartDate && !policy.policyEndDate) {
+  const startDate = period.periodStart || policy.policyStartDate;
+  const endDate = period.periodEnd || policy.policyEndDate;
+  if (!startDate && !endDate) {
     return <Text style={typography.caption}>{t('insurance.periodUnknown')}</Text>;
   }
   const expired = period.state === 'expired';
@@ -27,9 +29,9 @@ export default function PolicyPeriodBar({ policy }) {
         </View>
       ) : null}
       <View style={styles.labels}>
-        <Text style={typography.caption}>{policy.policyStartDate ? formatCalendarDate(policy.policyStartDate) : '—'}</Text>
+        <Text style={typography.caption}>{startDate ? formatCalendarDate(startDate) : '—'}</Text>
         <Text style={[typography.caption, { color: fill, fontWeight: '700' }]}>{status}</Text>
-        <Text style={typography.caption}>{policy.policyEndDate ? formatCalendarDate(policy.policyEndDate) : '—'}</Text>
+        <Text style={typography.caption}>{endDate ? formatCalendarDate(endDate) : '—'}</Text>
       </View>
     </View>
   );
