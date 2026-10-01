@@ -288,6 +288,53 @@ jobs:
               '        proxy_set_header X-Forwarded-Proto $scheme;' \
               '    }' \
               '' \
+              '    # MCP connector for Claude / ChatGPT: the MCP endpoint, its OAuth' \
+              '    # server and discovery documents. Without these the SPA fallback below' \
+              '    # would answer them with index.html. Responses are plain JSON, so no' \
+              '    # special streaming setup is needed.' \
+              '    location ~ ^/mcp/?$ {' \
+              "        proxy_pass http://127.0.0.1:${APP_PORT};" \
+              '        proxy_http_version 1.1;' \
+              '        proxy_set_header Host $host;' \
+              '        proxy_set_header X-Real-IP $remote_addr;' \
+              '        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' \
+              '        proxy_set_header X-Forwarded-Proto $scheme;' \
+              '        proxy_read_timeout 120s;' \
+              '    }' \
+              '' \
+              '    location /oauth/ {' \
+              "        proxy_pass http://127.0.0.1:${APP_PORT};" \
+              '        proxy_http_version 1.1;' \
+              '        proxy_set_header Host $host;' \
+              '        proxy_set_header X-Real-IP $remote_addr;' \
+              '        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' \
+              '        proxy_set_header X-Forwarded-Proto $scheme;' \
+              '    }' \
+              '' \
+              '    location ^~ /.well-known/oauth- {' \
+              "        proxy_pass http://127.0.0.1:${APP_PORT};" \
+              '        proxy_http_version 1.1;' \
+              '        proxy_set_header Host $host;' \
+              '        proxy_set_header X-Real-IP $remote_addr;' \
+              '        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' \
+              '        proxy_set_header X-Forwarded-Proto $scheme;' \
+              '    }' \
+              '' \
+              '    # One-time upload pages handed out by the MCP create_upload_link tool.' \
+              '    # The signed token is in the URL path, so this location is never logged.' \
+              '    # Same 500 MB ceiling as report uploads (health exports).' \
+              '    location /mcp-upload/ {' \
+              '        access_log off;' \
+              '        client_max_body_size 500m;' \
+              "        proxy_pass http://127.0.0.1:${APP_PORT};" \
+              '        proxy_http_version 1.1;' \
+              '        proxy_set_header Host $host;' \
+              '        proxy_set_header X-Real-IP $remote_addr;' \
+              '        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' \
+              '        proxy_set_header X-Forwarded-Proto $scheme;' \
+              '        proxy_read_timeout 300s;' \
+              '    }' \
+              '' \
               '    location /api/ {' \
               "        proxy_pass http://127.0.0.1:${APP_PORT};" \
               '        proxy_http_version 1.1;' \
@@ -472,6 +519,13 @@ jobs:
             set_env ENCRYPTED_STORE_DIR "$VAULT_DIR"
             set_env LEGACY_PLAINTEXT_READS deny
             set_env LOCAL_DEV_MASTER_KEY ""
+            # Public origin the MCP connector's OAuth metadata and one-time
+            # upload links are built from; must be the https address clients reach.
+            if [ -n "$APP_DOMAIN" ]; then
+              set_env PUBLIC_BASE_URL "https://${APP_DOMAIN}"
+            else
+              set_env PUBLIC_BASE_URL "http://${PUBLIC_HOST}:${NGINX_PORT}"
+            fi
             cd ..
 
             echo "[deploy] installing app dependencies"
