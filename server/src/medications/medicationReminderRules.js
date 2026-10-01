@@ -24,9 +24,38 @@ function addDays(dateStr, n) {
   return d.toISOString().slice(0, 10);
 }
 
-// The named times a medication is taken at each day. Explicit times_of_day
-// win; otherwise they're derived from frequency_per_day. Null = no schedule.
+const NAMED_TIMES = ['morning', 'afternoon', 'evening', 'night'];
+const FOOD_RELATIONS = ['before_food', 'after_food', 'with_food', 'empty_stomach'];
+const DEFAULT_FIRST_DOSE = '08:00';
+const HHMM = /^([01]?\d|2[0-3]):([0-5]\d)$/;
+
+function pad(n) {
+  return String(n).padStart(2, '0');
+}
+
+// "Every X hours" -> clock times across the day, starting from the first
+// explicit HH:MM time if one was given, else 08:00 (e.g. 8h -> 08:00, 16:00, 00:00).
+function intervalSlots(intervalHours, times) {
+  const interval = Number(intervalHours);
+  if (!interval || interval < 1 || interval > 24) return null;
+  const first = (times || []).find((t) => HHMM.test(t)) || DEFAULT_FIRST_DOSE;
+  const [h, m] = first.split(':').map(Number);
+  const count = Math.min(MAX_SLOTS, Math.max(1, Math.floor(24 / interval)));
+  const slots = Array.from({ length: count }, (_, i) => {
+    const minutes = (h * 60 + m + Math.round(i * interval * 60)) % (24 * 60);
+    return `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
+  });
+  return [...new Set(slots)].sort();
+}
+
+// The times a medication is taken at each day: an "every X hours" interval
+// first, else the explicit times_of_day the person picked (or the prescription
+// listed), else derived from frequency_per_day. Null = no schedule.
 function dailySlots(medication) {
+  if (medication.interval_hours) {
+    const slots = intervalSlots(medication.interval_hours, medication.times_of_day);
+    if (slots) return slots;
+  }
   const explicit = Array.isArray(medication.times_of_day) ? medication.times_of_day.filter(Boolean) : [];
   if (explicit.length > 0) return [...new Set(explicit)].slice(0, MAX_SLOTS);
   const perDay = Math.round(Number(medication.frequency_per_day));
@@ -95,6 +124,8 @@ function buildReminder(medication, logs, todayStr) {
     name: medication.name,
     active: reason === null,
     stopReason: reason,
+    foodRelation: medication.food_relation || null,
+    intervalHours: medication.interval_hours ? Number(medication.interval_hours) : null,
     totalDoses: total,
     dosesTaken: taken,
     dosesRemaining,
@@ -134,4 +165,4 @@ function isValidSlot(medication, slot) {
   return !!slots && slots.includes(slot);
 }
 
-module.exports = { dailySlots, totalDoses, stopReason, buildReminder, countMissed, isValidSlot, addDays, dateOnly };
+module.exports = { NAMED_TIMES, FOOD_RELATIONS, intervalSlots, dailySlots, totalDoses, stopReason, buildReminder, countMissed, isValidSlot, addDays, dateOnly };

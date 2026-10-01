@@ -16,6 +16,9 @@ const EMPTY = {
   medicine_system: 'allopathic',
   ingredients_raw: null,
   frequency_per_day: null,
+  times_of_day: [],
+  interval_hours: null,
+  food_relation: null,
   instructions: null,
   prescribed_for: null,
   prescribing_doctor: null,
@@ -44,6 +47,7 @@ export default function MedicationCreateScreen({ navigation }) {
         frequency_per_day: draft.frequency_per_day === '' ? null : draft.frequency_per_day,
         duration_days: draft.duration_days === '' ? null : draft.duration_days,
         quantity_dispensed: draft.quantity_dispensed === '' ? null : draft.quantity_dispensed,
+        interval_hours: draft.interval_hours === '' ? null : draft.interval_hours,
         total_doses: draft.total_doses === '' ? null : draft.total_doses,
       });
       navigation.replace('MedicationDetail', { medicationId: data.medication.id });

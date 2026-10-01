@@ -1,5 +1,6 @@
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import ChipSelect from './ChipSelect';
+import MultiChipSelect from './MultiChipSelect';
 import { colors, radii, spacing, typography } from '../theme/theme';
 
 const FORM_OPTIONS = [
@@ -15,6 +16,18 @@ const FORM_OPTIONS = [
   'other',
 ].map((v) => ({ value: v, label: v[0].toUpperCase() + v.slice(1) }));
 const DOSAGE_UNIT_OPTIONS = ['mg', 'mcg', 'g', 'ml', 'iu', 'percent', 'other'].map((v) => ({ value: v, label: v }));
+const TIME_OF_DAY_OPTIONS = [
+  { value: 'morning', label: 'Morning' },
+  { value: 'afternoon', label: 'Afternoon' },
+  { value: 'evening', label: 'Evening' },
+  { value: 'night', label: 'Night' },
+];
+const FOOD_OPTIONS = [
+  { value: 'before_food', label: 'Before food' },
+  { value: 'after_food', label: 'After food' },
+  { value: 'with_food', label: 'With food' },
+  { value: 'empty_stomach', label: 'Empty stomach' },
+];
 const MEDICINE_SYSTEM_OPTIONS = [
   { value: 'allopathic', label: 'Allopathic (modern medicine)' },
   { value: 'ayurvedic', label: 'Ayurvedic' },
@@ -85,6 +98,29 @@ export default function MedicationForm({ value, onChange }) {
         value={value.ingredients_raw}
         onChangeText={(t) => set('ingredients_raw', t)}
         placeholder="e.g. Paracetamol 500mg, Caffeine 65mg"
+      />
+      <MultiChipSelect
+        label="When do you take it? (pick all that apply)"
+        options={TIME_OF_DAY_OPTIONS}
+        value={(value.times_of_day || []).filter((t) => TIME_OF_DAY_OPTIONS.some((o) => o.value === t))}
+        onChange={(next) => {
+          // Keep any clock times already set (e.g. 06:00) alongside the named ones.
+          const clock = (value.times_of_day || []).filter((t) => !TIME_OF_DAY_OPTIONS.some((o) => o.value === t));
+          set('times_of_day', [...next, ...clock]);
+        }}
+      />
+      <Field
+        label="Or every X hours (leave empty if not hourly)"
+        value={value.interval_hours != null ? String(value.interval_hours) : ''}
+        onChangeText={(t) => set('interval_hours', t)}
+        placeholder="e.g. 8"
+        keyboardType="decimal-pad"
+      />
+      <ChipSelect
+        label="Food"
+        options={FOOD_OPTIONS}
+        value={value.food_relation || null}
+        onChange={(v) => set('food_relation', v)}
       />
       <Field
         label="Times per day"

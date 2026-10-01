@@ -456,6 +456,12 @@ export const TRANSLATIONS = {
     medications: {
       todaysDoses: "Today's doses",
       doseFailed: 'Could not update dose',
+      food: {
+        before_food: 'Take before food',
+        after_food: 'Take after food',
+        with_food: 'Take with food',
+        empty_stomach: 'Take on an empty stomach',
+      },
       dosesLeft: '{{count}} doses left',
       taken: 'Taken',
       skip: 'Skip',
