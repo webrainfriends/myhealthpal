@@ -12,6 +12,9 @@ const SYSTEM_PROMPT = [
   'This is a data-capture task, not a prescribing or diagnostic one: never add clinical advice beyond what is printed.',
 ].join(' ');
 
+const TIMES_OF_DAY = ['morning', 'afternoon', 'evening', 'night'];
+const FOOD_RELATIONS = ['before_food', 'after_food', 'with_food', 'empty_stomach'];
+
 function instructionFor(scanType) {
   if (scanType === 'tablet_photo') {
     return (
@@ -27,7 +30,7 @@ function instructionFor(scanType) {
   }
   return (
     'This is a doctor\'s prescription. Extract every distinct medicine listed by calling record_medications once. Put ' +
-    'everything about one medicine (dose, form, frequency, route, instructions, duration/quantity, what it was prescribed ' +
+    'everything about one medicine (dose, form, frequency, the time(s) of day or hourly interval, before/after-food direction, route, instructions, duration/quantity, what it was prescribed ' +
     'for, and its printed composition/ingredients into "ingredients" if a compounded formula is spelled out) in its own ' +
     'entry in "medications", and the prescription-level details (prescribing doctor, prescription date, pharmacy/clinic ' +
     'name) in "document". If the document is unreadable or lists no medicines, still call it with an empty medications ' +
@@ -73,8 +76,18 @@ const EXTRACTION_TOOL = {
             frequency_per_day: { type: ['number', 'null'], description: 'Number of doses per day, e.g. 2 for "twice daily", or null.' },
             times_of_day: {
               type: 'array',
-              items: { type: 'string' },
-              description: 'Times of day if stated (e.g. "morning", "night"). Omit if not stated.',
+              items: { type: 'string', enum: ['morning', 'afternoon', 'evening', 'night'] },
+              description:
+                'Every time of day it is taken, as printed: "1-0-1" = morning + night, "1-1-1" = morning + afternoon + night, "BD" = morning + night, "HS" = night. Omit if not stated.',
+            },
+            interval_hours: {
+              type: ['number', 'null'],
+              description: 'For "every 6 hours" / "q8h" style directions, the hours between doses; else null.',
+            },
+            food_relation: {
+              type: ['string', 'null'],
+              enum: ['before_food', 'after_food', 'with_food', 'empty_stomach', null],
+              description: 'Relation to meals if stated ("AC"/before food, "PC"/after food, with food, empty stomach), else null.',
             },
             route: { type: ['string', 'null'], description: 'Route of administration if stated (e.g. "oral"), or null.' },
             instructions: { type: ['string', 'null'], description: 'Free-text instructions as printed (e.g. "after food"), or null.' },
@@ -175,7 +188,11 @@ async function extract(document, context = {}) {
       dosage_unit: m.dosage_unit || null,
       form: m.form || null,
       frequency_per_day: typeof m.frequency_per_day === 'number' ? m.frequency_per_day : null,
-      times_of_day: Array.isArray(m.times_of_day) ? m.times_of_day.filter((t) => typeof t === 'string' && t.trim()) : [],
+      times_of_day: Array.isArray(m.times_of_day)
+        ? [...new Set(m.times_of_day.map((t) => String(t).trim().toLowerCase()).filter((t) => TIMES_OF_DAY.includes(t)))]
+        : [],
+      interval_hours: typeof m.interval_hours === 'number' && m.interval_hours >= 1 && m.interval_hours <= 24 ? m.interval_hours : null,
+      food_relation: FOOD_RELATIONS.includes(m.food_relation) ? m.food_relation : null,
       route: m.route || null,
       instructions: m.instructions || null,
       prescribed_for: m.prescribed_for || null,

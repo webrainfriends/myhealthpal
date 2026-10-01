@@ -60,8 +60,8 @@ async function processMedicationScan(scanId) {
            frequency_per_day, times_of_day, route, instructions, prescribed_for,
            prescribing_doctor, prescribing_clinic, prescription_date, start_date, duration_days, end_date,
            quantity_dispensed, quantity_unit, expiry_date, ingredients_raw,
-           source_type, status, extraction_confidence, needs_review, is_confirmed
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,'active',$23,$24,false)
+           source_type, status, extraction_confidence, needs_review, is_confirmed, interval_hours, food_relation
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,'active',$23,$24,false,$25,$26)
          RETURNING id`,
         [
           scan.user_id,
@@ -89,6 +89,8 @@ async function processMedicationScan(scanId) {
           scan.scan_type === 'tablet_photo' ? 'tablet_photo' : 'prescription_scan',
           med.confidence,
           med.needs_review,
+          med.interval_hours,
+          med.food_relation,
         ]
       );
       const medicationId = inserted[0].id;

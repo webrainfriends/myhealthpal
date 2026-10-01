@@ -39,6 +39,26 @@ async function loadOwnedMedication(userId, medicationId) {
   return rows[0] || null;
 }
 
+// Dose-timing fields: times_of_day is any mix of morning/afternoon/evening/
+// night and HH:MM clock times; interval_hours is "every X hours" (1-24);
+// food_relation is before/after/with food or empty stomach.
+function validateTiming(source) {
+  const times = Array.isArray(source.times_of_day) ? source.times_of_day.map((t) => String(t).trim().toLowerCase()).filter(Boolean) : [];
+  if (times.some((t) => !reminderRules.NAMED_TIMES.includes(t) && !/^([01]?\d|2[0-3]):[0-5]\d$/.test(t))) {
+    return { error: 'times_of_day must be morning, afternoon, evening, night or an HH:MM time.' };
+  }
+  let interval = source.interval_hours === '' || source.interval_hours === undefined ? null : source.interval_hours;
+  if (interval !== null) {
+    interval = Number(interval);
+    if (!(interval >= 1 && interval <= 24)) return { error: 'interval_hours must be between 1 and 24.' };
+  }
+  const food = source.food_relation || null;
+  if (food !== null && !reminderRules.FOOD_RELATIONS.includes(food)) {
+    return { error: 'food_relation must be before_food, after_food, with_food or empty_stomach.' };
+  }
+  return { times_of_day: times.length > 0 ? [...new Set(times)] : null, interval_hours: interval, food_relation: food };
+}
+
 router.get('/', async (req, res, next) => {
   try {
     await recomputeAlertsForUser(currentUserId(req));
@@ -264,6 +284,9 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ error: 'name is required.' });
     }
 
+    const timing = validateTiming(body);
+    if (timing.error) return res.status(400).json({ error: timing.error });
+
     const endDate = computeEndDate(body.start_date, body.duration_days);
     const { rows } = await pool.query(
       `INSERT INTO medications (
@@ -271,8 +294,8 @@ router.post('/', async (req, res, next) => {
          frequency_per_day, times_of_day, route, instructions, prescribed_for, prescribing_doctor,
          prescribing_clinic, prescription_date,
          start_date, duration_days, end_date, quantity_dispensed, quantity_unit, expiry_date, ingredients_raw,
-         medicine_system, source_type, status, notes, is_confirmed, total_doses, reminders_enabled
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,'manual',$24,$25,true,$26,$27)
+         medicine_system, source_type, status, notes, is_confirmed, total_doses, reminders_enabled, interval_hours, food_relation
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,'manual',$24,$25,true,$26,$27,$28,$29)
        RETURNING *`,
       [
         currentUserId(req),
@@ -283,7 +306,7 @@ router.post('/', async (req, res, next) => {
         body.dosage_amount ?? null,
         body.dosage_unit || null,
         body.frequency_per_day ?? null,
-        Array.isArray(body.times_of_day) && body.times_of_day.length > 0 ? body.times_of_day : null,
+        timing.times_of_day,
         body.route || null,
         body.instructions || null,
         body.prescribed_for || null,
@@ -302,6 +325,8 @@ router.post('/', async (req, res, next) => {
         body.notes || null,
         body.total_doses || null,
         body.reminders_enabled === false ? false : true,
+        timing.interval_hours,
+        timing.food_relation,
       ]
     );
     const medication = rows[0];
@@ -473,6 +498,8 @@ const EDITABLE_FIELDS = [
   'notes',
   'total_doses',
   'reminders_enabled',
+  'interval_hours',
+  'food_relation',
 ];
 const IDENTITY_FIELDS = new Set(['name', 'generic_name', 'brand_name']);
 
@@ -492,6 +519,11 @@ router.patch('/:id', async (req, res, next) => {
       next_[field] = req.body[field];
       if (IDENTITY_FIELDS.has(field)) identityChanged = true;
     }
+    const timing = validateTiming(next_);
+    if (timing.error) return res.status(400).json({ error: timing.error });
+    next_.times_of_day = timing.times_of_day;
+    next_.interval_hours = timing.interval_hours;
+    next_.food_relation = timing.food_relation;
     next_.end_date = computeEndDate(next_.start_date, next_.duration_days);
 
     const { rows } = await pool.query(
@@ -500,7 +532,7 @@ router.patch('/:id', async (req, res, next) => {
          frequency_per_day = $8, times_of_day = $9, route = $10, instructions = $11, prescribed_for = $12,
          prescribing_doctor = $13, prescribing_clinic = $14, prescription_date = $15, start_date = $16, duration_days = $17, end_date = $18,
          quantity_dispensed = $19, quantity_unit = $20, expiry_date = $21, ingredients_raw = $22,
-         medicine_system = $23, status = $24, notes = $25, total_doses = $26, reminders_enabled = $27, updated_at = now()
+         medicine_system = $23, status = $24, notes = $25, total_doses = $26, reminders_enabled = $27, interval_hours = $28, food_relation = $29, updated_at = now()
        WHERE id = $1
        RETURNING *`,
       [
@@ -512,7 +544,7 @@ router.patch('/:id', async (req, res, next) => {
         next_.dosage_amount,
         next_.dosage_unit,
         next_.frequency_per_day,
-        Array.isArray(next_.times_of_day) && next_.times_of_day.length > 0 ? next_.times_of_day : null,
+        next_.times_of_day,
         next_.route,
         next_.instructions,
         next_.prescribed_for,
@@ -531,6 +563,8 @@ router.patch('/:id', async (req, res, next) => {
         next_.notes,
         next_.total_doses || null,
         next_.reminders_enabled === false ? false : true,
+        next_.interval_hours,
+        next_.food_relation,
       ]
     );
     const medication = rows[0];

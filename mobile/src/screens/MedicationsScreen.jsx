@@ -62,6 +62,9 @@ function DoseRow({ reminder, date, onChange, t }) {
           <Text style={typography.caption}>{t('medications.dosesLeft', { count: reminder.dosesRemaining })}</Text>
         )}
       </View>
+      {reminder.foodRelation && (
+        <Text style={typography.caption}>{t(`medications.food.${reminder.foodRelation}`)}</Text>
+      )}
       {!reminder.active && reminder.stopReason && (
         <Text style={typography.caption}>{t(`medications.remindersStopped.${reminder.stopReason}`)}</Text>
       )}

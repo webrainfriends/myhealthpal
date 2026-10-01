@@ -75,3 +75,19 @@ test('dashboard summary carries adherence and flags missed doses as attention', 
   });
   assert.equal(level, 'attention');
 });
+
+test('multi-select times of day, incl. morning + afternoon + night', () => {
+  const m = med({ frequency_per_day: 1, times_of_day: ['morning', 'afternoon', 'night'] });
+  assert.deepEqual(rules.dailySlots(m), ['morning', 'afternoon', 'night']);
+});
+
+test('every X hours expands to clock times from the first dose time', () => {
+  assert.deepEqual(rules.dailySlots(med({ interval_hours: 8 })), ['00:00', '08:00', '16:00']);
+  assert.deepEqual(rules.dailySlots(med({ interval_hours: 6, times_of_day: ['06:00'] })), ['00:00', '06:00', '12:00', '18:00']);
+  assert.equal(rules.dailySlots(med({ interval_hours: 0 })).length, 2, 'invalid interval falls back to frequency');
+});
+
+test('reminder exposes the food relation', () => {
+  const r = rules.buildReminder(med({ food_relation: 'after_food' }), [], TODAY);
+  assert.equal(r.foodRelation, 'after_food');
+});
