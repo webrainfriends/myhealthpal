@@ -122,6 +122,7 @@ function buildPolicyUpdates(body) {
   for (const [key, column] of Object.entries(DATE_FIELDS)) {
     if (body[key] !== undefined) updates[column] = parseDateField(body[key], key);
   }
+  if (body.renewsAnnually !== undefined) updates.renews_annually = body.renewsAnnually === true || body.renewsAnnually === 'true';
   if (body.premiumFrequency !== undefined) {
     if (!isBlank(body.premiumFrequency) && !rules.PREMIUM_FREQUENCIES.includes(body.premiumFrequency)) {
       throw new ValidationError(`premiumFrequency must be one of: ${rules.PREMIUM_FREQUENCIES.join(', ')}.`);

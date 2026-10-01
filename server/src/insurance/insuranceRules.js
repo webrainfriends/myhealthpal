@@ -113,12 +113,42 @@ function addMonths(value, months) {
 
 // ---- Policy period & premium ---------------------------------------------
 
+// The cover period "today" falls in. A fixed-term policy is simply its stored
+// start..end. A guaranteed-renewable (annual) policy has no fixed end: its
+// period is the current 12-month policy year, rolled forward from the start
+// date to the latest anniversary on or before today (end = day before the
+// next anniversary), so it never shows as expired or as a multi-decade term.
+function currentCoverPeriod(policy, today = new Date()) {
+  const start = parseDate(policy.policy_start_date);
+  if (policy.renews_annually && start) {
+    let periodStart = toDateString(start);
+    let guard = 0;
+    while (guard < 200) {
+      const next = addMonths(periodStart, 12);
+      if (daysUntil(next, today) > 0) break; // next anniversary still ahead
+      periodStart = next;
+      guard += 1;
+    }
+    const nextAnniversary = addMonths(periodStart, 12);
+    const lastDay = toDateString(new Date(parseDate(nextAnniversary).getTime() - MS_PER_DAY));
+    return { start: periodStart, end: lastDay, renewalDate: nextAnniversary, annual: true };
+  }
+  const end = policy.policy_end_date ? String(policy.policy_end_date).slice(0, 10) : null;
+  return {
+    start: policy.policy_start_date ? String(policy.policy_start_date).slice(0, 10) : null,
+    end,
+    renewalDate: end,
+    annual: false,
+  };
+}
+
 // Where "today" sits inside the policy's cover period.
 function policyPeriod(policy, today = new Date()) {
-  const start = parseDate(policy.policy_start_date);
-  const end = parseDate(policy.policy_end_date);
-  const daysToEnd = daysUntil(policy.policy_end_date, today);
-  const daysToStart = daysUntil(policy.policy_start_date, today);
+  const cover = currentCoverPeriod(policy, today);
+  const start = parseDate(cover.start);
+  const end = parseDate(cover.end);
+  const daysToEnd = daysUntil(cover.end, today);
+  const daysToStart = daysUntil(cover.start, today);
   let state = 'unknown';
   if (end && daysToEnd < 0) state = 'expired';
   else if (start && daysToStart > 0) state = 'upcoming';
@@ -128,7 +158,11 @@ function policyPeriod(policy, today = new Date()) {
   if (start && end && end > start) {
     elapsedPercent = Math.min(100, Math.max(0, Math.round(((todayUtc(today) - start.getTime()) / (end.getTime() - start.getTime())) * 100)));
   }
-  return { state, daysToEnd, daysToStart, elapsedPercent };
+  return {
+    state, daysToEnd, daysToStart, elapsedPercent,
+    periodStart: cover.start, periodEnd: cover.end, renewalDate: cover.renewalDate,
+    daysToRenewal: daysUntil(cover.renewalDate, today), renewsAnnually: cover.annual,
+  };
 }
 
 // The next premium instalment. A due date printed on the document that has
@@ -148,7 +182,8 @@ function nextPremiumDue(policy, today = new Date()) {
   }
   if (!due) return null;
 
-  const endDays = daysUntil(policy.policy_end_date, today);
+  // A renewing policy has no end to cap instalments at.
+  const endDays = policy.renews_annually ? null : daysUntil(policy.policy_end_date, today);
   let days = daysUntil(due, today);
   if (days === null) return null;
 
@@ -467,10 +502,11 @@ function pendingInsuranceReminders(policies, alreadySent, today = new Date()) {
         pending.push({ policy, kind, period: premium.dueDate, daysLeft: premium.daysLeft, amount: policy.premium_amount });
       }
     }
-    const endDays = daysUntil(policy.policy_end_date, today);
+    const cover = currentCoverPeriod(policy, today);
+    const endDays = daysUntil(cover.renewalDate, today);
     if (endDays !== null && endDays >= 0) {
       const kind = endDays <= 7 ? 'renewal_7d' : endDays <= 30 ? 'renewal_30d' : null;
-      const period = String(policy.policy_end_date).slice(0, 10);
+      const period = String(cover.renewalDate).slice(0, 10);
       if (kind && !alreadySent.has(`${policy.id}:${kind}:${period}`)) {
         pending.push({ policy, kind, period, daysLeft: endDays });
       }
@@ -500,6 +536,7 @@ module.exports = {
   computeCoverageGaps,
   abnormalParameters,
   pendingInsuranceReminders,
+  currentCoverPeriod,
   contactFor,
   HIGH_COPAY_PERCENT,
   LOW_CEILING_SHARE,

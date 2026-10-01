@@ -59,6 +59,7 @@ function serializePolicy(row, today = new Date()) {
     currency: row.currency,
     policyStartDate: row.policy_start_date,
     policyEndDate: row.policy_end_date,
+    renewsAnnually: !!row.renews_annually,
     initialWaitingDays: row.initial_waiting_days,
     preexistingWaitingMonths: row.preexisting_waiting_months,
     premiumAmount: num(row.premium_amount),
@@ -209,11 +210,12 @@ function upcomingDates(policies, today) {
         estimated: premium.estimated, overdue: premium.overdue,
       });
     }
-    const endDays = rules.daysUntil(policy.policy_end_date, today);
+    const cover = rules.currentCoverPeriod(policy, today);
+    const endDays = rules.daysUntil(cover.renewalDate, today);
     if (endDays !== null && endDays >= 0) {
       dates.push({
         kind: 'renewal', policyId: policy.id, policyName: rules.policyLabel(policy),
-        date: String(policy.policy_end_date).slice(0, 10), daysLeft: endDays, amount: null, currency: null, estimated: false, overdue: false,
+        date: String(cover.renewalDate).slice(0, 10), daysLeft: endDays, amount: null, currency: null, estimated: false, overdue: false,
       });
     }
   }
