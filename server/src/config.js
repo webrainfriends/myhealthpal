@@ -107,6 +107,21 @@ module.exports = {
   // A full Apple Health export.zip is routinely far larger than a lab PDF.
   maxHealthExportBytes: Number(process.env.MAX_HEALTH_EXPORT_BYTES) || 500 * 1024 * 1024,
   jwtSecret,
+  // Public https origin of this API (no trailing slash). The MCP connector's
+  // OAuth metadata, resource identifier and token audience are built from it.
+  publicBaseUrl: (process.env.PUBLIC_BASE_URL || `http://localhost:${Number(process.env.PORT) || 4000}`).replace(/\/+$/, ''),
+  mcp: {
+    accessTokenTtlSeconds: Number(process.env.MCP_ACCESS_TOKEN_TTL_SECONDS) || 3600,
+    refreshTokenTtlDays: Number(process.env.MCP_REFRESH_TOKEN_TTL_DAYS) || 30,
+    // Optional comma-separated allowlist of redirect hosts a dynamically
+    // registered client may use (e.g. claude.ai,chatgpt.com). Empty = any
+    // https host (plus loopback http for local clients).
+    redirectHostAllowlist: (process.env.MCP_REDIRECT_HOST_ALLOWLIST || '')
+      .split(',')
+      .map((h) => h.trim().toLowerCase())
+      .filter(Boolean),
+    rateLimitPerMinute: Number(process.env.MCP_RATE_LIMIT_PER_MINUTE) || 120,
+  },
   nodeEnv: process.env.NODE_ENV || 'development',
   // Encrypted medical-file vault (issue #104, docs/security/). Every
   // uploaded report/scan is stored only as AES-256-GCM ciphertext under
