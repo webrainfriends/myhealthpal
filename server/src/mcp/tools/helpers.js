@@ -17,8 +17,23 @@ function readTool({ name, description, properties, required, scope = 'health:rea
   };
 }
 
+// A tool that changes data. Anything non-read-only is refused for view-only
+// family links by the gateway, whatever its scope.
+function writeTool({ name, description, properties, required, scope = 'health:log', destructive = false, idempotent = false, execute }) {
+  return {
+    name,
+    description,
+    inputSchema: schema(properties, required),
+    scope,
+    accountLevel: false,
+    mutates: true,
+    annotations: { readOnlyHint: false, destructiveHint: destructive, idempotentHint: idempotent, openWorldHint: false },
+    execute,
+  };
+}
+
 function evidence(type, rows, idField = 'id', labelField) {
   return (rows || []).filter((r) => r && r[idField]).map((r) => ({ type, id: r[idField], label: labelField ? r[labelField] : undefined }));
 }
 
-module.exports = { schema, readTool, evidence };
+module.exports = { schema, readTool, writeTool, evidence };
