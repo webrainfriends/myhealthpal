@@ -9,13 +9,14 @@ import { useT } from '../i18n/I18nContext';
 import { showAlert } from '../utils/alert';
 
 // Privacy & AI Processing (issue #104 §4): a short, plain-language trust
-// panel plus three separate choices - never one bundled checkbox. Opened
+// panel plus four separate choices - never one bundled checkbox. Opened
 // from Settings, and automatically before a first upload.
 const TRUST_POINTS = ['encrypted', 'access', 'purpose', 'aiProvider', 'notDiagnosis', 'deletion'];
 const CHOICES = [
   { type: 'medical_record_storage', icon: '🔒' },
   { type: 'ai_document_processing', icon: '📄' },
   { type: 'ai_health_insights', icon: '💡' },
+  { type: 'external_ai_connector', icon: '🤖' },
 ];
 
 function TrustPoint({ id, t }) {

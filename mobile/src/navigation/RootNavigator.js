@@ -50,6 +50,7 @@ import WorkoutPlanEditScreen from '../screens/workout/WorkoutPlanEditScreen';
 import LiveWorkoutScreen from '../screens/workout/LiveWorkoutScreen';
 import WorkoutSummaryScreen from '../screens/workout/WorkoutSummaryScreen';
 import PrivacyConsentScreen from '../screens/PrivacyConsentScreen';
+import ConnectedAppsScreen from '../screens/ConnectedAppsScreen';
 import { onRetestNotificationTap, registerForRetestPush } from '../notifications/retestNotifications';
 import { onWaterNotificationTap } from '../notifications/waterNotifications';
 import { useAuth } from '../auth/AuthContext';
@@ -100,6 +101,7 @@ const linking = {
       Family: 'family',
       BeneficiaryDashboard: 'beneficiaries',
       PrivacyConsent: 'privacy',
+      ConnectedApps: 'connected-apps',
       MedicationDetail: 'medications/:medicationId',
       MedicationScanReview: 'medications/scans/:scanId',
       Activity: 'activity',
@@ -274,6 +276,7 @@ export default function RootNavigator() {
         <Stack.Screen name="Family" component={FamilyScreen} options={{ title: t('nav.family') }} />
         <Stack.Screen name="BeneficiaryDashboard" component={BeneficiaryDashboardScreen} options={{ title: t('nav.beneficiaries') }} />
         <Stack.Screen name="PrivacyConsent" component={PrivacyConsentScreen} options={{ title: t('nav.privacy') }} />
+        <Stack.Screen name="ConnectedApps" component={ConnectedAppsScreen} options={{ title: t('privacy.connectedApps.title') }} />
         <Stack.Screen name="MedicationDetail" component={MedicationDetailScreen} options={{ title: t('nav.medication') }} />
         <Stack.Screen
           name="MedicationScanReview"

@@ -165,6 +165,11 @@ export default function SettingsScreen({ navigation }) {
           subtitle={t('privacy.settingsSubtitle')}
           onPress={() => navigation.navigate('PrivacyConsent')}
         />
+        <SettingsRow
+          title={t('privacy.connectedApps.title')}
+          subtitle={t('privacy.connectedApps.subtitle')}
+          onPress={() => navigation.navigate('ConnectedApps')}
+        />
         <RetestRemindersRow t={t} />
         <WaterRemindersRow />
         <SettingsRow
