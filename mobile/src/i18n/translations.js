@@ -881,6 +881,8 @@ export const TRANSLATIONS = {
       needsReview: '{{count}} policy awaiting review',
       medications: 'Medicine reminders',
       noMedications: 'No active medicines.',
+      policyCount: '{{count}} active policies',
+      renewalsSoon: '{{count}} renewing within 90 days',
       refillSoon: 'Refill soon',
       missedDoses: '{{count}} missed doses',
       dosesToday: 'Today: {{taken}} taken, {{due}} to go',

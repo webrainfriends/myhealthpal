@@ -7,6 +7,8 @@ const { evaluateResult } = require('../services/organHealthService');
 // retest/retestRules.js), so every rule is unit-testable.
 
 const TEST_DUE_SOON_DAYS = 14;
+const PREMIUM_SOON_DAYS = 30;
+const RENEWAL_SOON_DAYS = 90;
 const MAX_OUT_OF_RANGE = 8;
 const SEVERITY_RANK = { critical: 0, marked: 1, mild: 2 };
 
@@ -160,8 +162,10 @@ function summarizeInsurance(overview, summary) {
         sumInsured: p.sumInsured,
         currency: p.currency,
       })),
-    // Premiums and renewals falling due soon (<= 30 days) or already overdue.
-    upcoming: dates.filter((d) => d.overdue || d.daysLeft <= 30),
+    // Premiums falling due within 30 days and renewals within 90 days (or
+    // already overdue) - a sponsor needs longer notice to arrange a renewal.
+    upcoming: dates.filter((d) => d.overdue || d.daysLeft <= (d.kind === 'renewal' ? RENEWAL_SOON_DAYS : PREMIUM_SOON_DAYS)),
+    renewalCount: dates.filter((d) => d.kind === 'renewal' && (d.overdue || d.daysLeft <= RENEWAL_SOON_DAYS)).length,
     nextPremium: summary.nextPremium,
     nextRenewal: summary.nextRenewal,
     gapCount: summary.gapCount,
@@ -221,6 +225,7 @@ function buildTotals(cards) {
     testsOverdue: sum((c) => c.testsDue.overdueCount),
     testsDueSoon: sum((c) => c.testsDue.dueSoonCount),
     activePolicies: sum((c) => c.insurance.activePolicyCount),
+    renewalsWithin90Days: sum((c) => c.insurance.renewalCount || 0),
     upcomingInsuranceDates: sum((c) => c.insurance.upcoming.length),
     refillsSoon: sum((c) => c.medications.refillSoonCount),
     missedDoses: sum((c) => c.medications.missedDoseCount || 0),
@@ -231,6 +236,8 @@ function buildTotals(cards) {
 
 module.exports = {
   TEST_DUE_SOON_DAYS,
+  PREMIUM_SOON_DAYS,
+  RENEWAL_SOON_DAYS,
   summarizeTestsDue,
   summarizeMedications,
   summarizeLabResults,
