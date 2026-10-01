@@ -486,4 +486,6 @@ async function executeTool(name, args, context) {
   return tool.execute(args || {}, context);
 }
 
-module.exports = { getToolDefinitions, executeTool };
+// Raw tool objects, shared with the MCP connector (src/mcp/tools) so the in-app
+// assistant and external AI apps run exactly the same read logic.
+module.exports = { getToolDefinitions, executeTool, TOOLS };

@@ -36,6 +36,7 @@ const adminRouter = require('./routes/admin');
 const consentsRouter = require('./routes/consents');
 const connectedAppsRouter = require('./routes/connectedApps');
 const { router: oauthRouter } = require('./oauth/router');
+const mcpRouter = require('./mcp/router');
 const { logError } = require('./lib/safeLog');
 const { runWithContext } = require('./lib/requestContext');
 
@@ -94,6 +95,9 @@ app.use('/api/connected-apps', requireAccountAuth, connectedAppsRouter);
 // OAuth 2.1 authorization server for the MCP connector (/.well-known/*,
 // /oauth/*). Public by nature: it is how a client obtains a token at all.
 app.use(oauthRouter);
+// Remote MCP endpoint (Streamable HTTP) for Claude / ChatGPT. Authenticated by
+// its own OAuth access tokens (mcp/router.js), never the app's session JWT.
+app.use('/mcp', mcpRouter);
 // Not wrapped in requireAuth - see routes/files.js for why (a plain link
 // open can't carry an Authorization header, so a short-lived scoped token
 // is the credential here instead).
