@@ -189,3 +189,32 @@ test('revoking the grant stops the token immediately', async () => {
   assert.equal(res.status, 401);
   await client.close().catch(() => {});
 });
+
+test('ChatGPT-style search and fetch return the exact shapes that client expects, scoped to the caller', async () => {
+  await pool.query(`INSERT INTO reports (user_id, original_filename, mime_type, file_extension, file_size_bytes, storage_path, report_type) VALUES ($1, 'thyroid-panel.csv', 'text/csv', 'csv', 1, '/tmp/x', 'thyroid')`, [users.owner.id]);
+  const client = await connect(await connectToken(users.owner, ['health:read']));
+  const found = await client.callTool({ name: 'search', arguments: { query: 'thyroid' } });
+  const body = JSON.parse(found.content[0].text);
+  assert.ok(Array.isArray(body.results) && body.results.length >= 1);
+  assert.deepEqual(Object.keys(body.results[0]).sort(), ['id', 'title', 'url']);
+  assert.match(body.results[0].id, /^report:[0-9a-f-]{36}$/);
+  assert.ok(!('data' in body), 'raw tools skip the envelope');
+
+  const doc = JSON.parse((await client.callTool({ name: 'fetch', arguments: { id: body.results[0].id } })).content[0].text);
+  assert.deepEqual(Object.keys(doc).sort(), ['id', 'metadata', 'text', 'title', 'url']);
+  assert.equal(doc.metadata.type, 'report');
+  assert.ok(doc.text.includes('thyroid-panel.csv'));
+
+  // someone else's id is just "not found", and a made-up kind is refused
+  const foreign = await client.callTool({ name: 'fetch', arguments: { id: `report:${users.other.reportId}` } });
+  assert.equal(foreign.isError, true);
+  assert.ok(!JSON.stringify(foreign).includes('private.csv'));
+  assert.equal((await client.callTool({ name: 'fetch', arguments: { id: 'user:123' } })).isError, true);
+  // another user's data never shows up in search
+  const other = JSON.parse((await client.callTool({ name: 'search', arguments: { query: 'private' } })).content[0].text);
+  assert.deepEqual(other.results, []);
+  // LIKE wildcards in the query are literal
+  const wild = JSON.parse((await client.callTool({ name: 'search', arguments: { query: '%' } })).content[0].text);
+  assert.deepEqual(wild.results, []);
+  await client.close();
+});

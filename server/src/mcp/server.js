@@ -1,6 +1,7 @@
 const { Server } = require('@modelcontextprotocol/sdk/server/index.js');
 const { ListToolsRequestSchema, CallToolRequestSchema } = require('@modelcontextprotocol/sdk/types.js');
 const { callTool, toolList } = require('./gateway');
+const { getTool } = require('./tools');
 const { ToolError } = require('./toolError');
 const { logError } = require('../lib/safeLog');
 
@@ -20,6 +21,11 @@ function createMcpServer(auth) {
     const { name, arguments: args } = request.params;
     try {
       const { data, evidence } = await callTool(auth, name, args);
+      // `raw` tools (ChatGPT's standard search/fetch) return exactly the shape
+      // that client expects, without our {data, evidence} envelope.
+      if (getTool(name)?.raw) {
+        return { content: [{ type: 'text', text: JSON.stringify(data) }], structuredContent: data };
+      }
       return {
         content: [{ type: 'text', text: JSON.stringify({ data, evidence }) }],
         structuredContent: { data, evidence },

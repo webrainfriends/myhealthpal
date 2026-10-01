@@ -5,8 +5,9 @@ function schema(properties = {}, required = []) {
   return { type: 'object', additionalProperties: false, properties, ...(required.length ? { required } : {}) };
 }
 
-function readTool({ name, description, properties, required, scope = 'health:read', accountLevel = false, execute }) {
+function readTool({ name, description, properties, required, scope = 'health:read', accountLevel = false, raw = false, execute }) {
   return {
+    raw,
     name,
     description,
     inputSchema: schema(properties, required),
