@@ -2,11 +2,17 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { loadToken } from '../auth/tokenStorage';
 
+const PRODUCTION_API_URL = 'https://eyemyhealth.com';
+
 function defaultBaseUrl() {
   // On web, the app and API are served from the same origin (nginx serves
   // the static build at "/" and proxies "/api/" to the Node app) — a
   // relative base URL means the build works unmodified behind any host.
   if (Platform.OS === 'web') return '';
+  // A store/release build has no dev machine to reach: point at production
+  // (HTTPS - iOS App Transport Security and Android both refuse plain HTTP).
+  // EAS profiles normally set EXPO_PUBLIC_API_BASE_URL explicitly.
+  if (!__DEV__) return PRODUCTION_API_URL;
   // Android emulators can't reach the host machine via localhost.
   if (Platform.OS === 'android') return 'http://10.0.2.2:4000';
   return 'http://localhost:4000';

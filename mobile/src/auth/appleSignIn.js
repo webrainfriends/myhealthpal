@@ -26,6 +26,8 @@ function loadScript() {
 // caller should hide the "Sign in with Apple" option entirely when this is
 // false rather than show a button that can only ever fail.
 export function isAppleSignInEligible() {
+  // iOS/iPadOS: the native system sheet, no origin/HTTPS requirement.
+  if (Platform.OS === 'ios') return true;
   if (Platform.OS !== 'web' || typeof window === 'undefined') return false;
   return window.location.protocol === 'https:' || window.location.hostname === 'localhost';
 }
@@ -37,7 +39,8 @@ export function isAppleSignInEligible() {
 // not something this app controls), so it must be captured and sent to
 // the server that one time or it's lost for good.
 export async function signInWithApple({ clientId }) {
-  if (Platform.OS !== 'web') throw new Error('Sign in with Apple is only available on web in this app.');
+  if (Platform.OS === 'ios') return signInWithAppleNative();
+  if (Platform.OS !== 'web') throw new Error('Sign in with Apple is only available on iOS and web.');
   await loadScript();
   window.AppleID.auth.init({
     clientId,
@@ -50,4 +53,23 @@ export async function signInWithApple({ clientId }) {
     ? [result.user.name.firstName, result.user.name.lastName].filter(Boolean).join(' ')
     : null;
   return { identityToken: result.authorization.id_token, fullName };
+}
+
+// Native iOS/iPadOS flow (expo-apple-authentication). The identity token's
+// audience is the app's bundle identifier, which the server accepts alongside
+// the web Services ID (APPLE_CLIENT_ID is a comma-separated list). Lazy
+// require so web and Android bundles never load the native module. A user
+// dismissing the sheet rejects with code ERR_REQUEST_CANCELED, surfaced as-is.
+async function signInWithAppleNative() {
+  const AppleAuthentication = require('expo-apple-authentication');
+  const credential = await AppleAuthentication.signInAsync({
+    requestedScopes: [
+      AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+      AppleAuthentication.AppleAuthenticationScope.EMAIL,
+    ],
+  });
+  const fullName = credential.fullName
+    ? [credential.fullName.givenName, credential.fullName.familyName].filter(Boolean).join(' ') || null
+    : null;
+  return { identityToken: credential.identityToken, fullName };
 }

@@ -70,6 +70,13 @@ const navigationTheme = {
   },
 };
 
+// iPad / Android tablets: phone-designed screens stretched edge-to-edge on a
+// 10-13" display are hard to read, so native builds centre content in a
+// readable column and let the background fill the rest. Phones are narrower
+// than the cap so see no change, and web keeps its existing layout.
+const TABLET_CONTENT_STYLE =
+  Platform.OS === 'web' ? undefined : { width: '100%', maxWidth: 840, alignSelf: 'center' };
+
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
@@ -145,6 +152,7 @@ function Tabs() {
   return (
     <Tab.Navigator
       screenOptions={{
+        sceneStyle: TABLET_CONTENT_STYLE,
         headerStyle: { backgroundColor: colors.surface },
         headerTintColor: colors.textPrimary,
         headerShadowVisible: false,
@@ -257,6 +265,7 @@ export default function RootNavigator() {
     <NavigationContainer key={activeProfile?.id || 'self'} ref={navigationRef} theme={navigationTheme} linking={linking}>
       <Stack.Navigator
         screenOptions={{
+          contentStyle: TABLET_CONTENT_STYLE,
           headerStyle: { backgroundColor: colors.surface },
           headerTintColor: colors.primary,
           headerTitleStyle: { color: colors.textPrimary, fontWeight: '700' },

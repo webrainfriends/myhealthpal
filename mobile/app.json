@@ -3,7 +3,7 @@
     "name": "EyeMyHealth",
     "slug": "myhealthpal",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "backgroundColor": "#F7F5FF",
@@ -13,8 +13,14 @@
         "NSBluetoothAlwaysUsageDescription": "MyHealthPal uses Bluetooth to sync readings from paired devices like glucose meters, blood pressure monitors, and smart scales.",
         "NSBluetoothPeripheralUsageDescription": "MyHealthPal uses Bluetooth to sync readings from paired devices like glucose meters, blood pressure monitors, and smart scales.",
         "NSHealthShareUsageDescription": "MyHealthPal reads your step count from Apple Health to show it alongside your other activity, and - only if you turn it on for a workout - your heart rate and active energy during that workout.",
-        "NSMotionUsageDescription": "EyeMyHealth reads your phone's step counter to show your daily steps."
-      }
+        "NSMotionUsageDescription": "EyeMyHealth reads your phone's step counter to show your daily steps.",
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "EyeMyHealth reads a photo you choose, such as a lab report or a meal, to add it to your records.",
+        "NSCameraUsageDescription": "EyeMyHealth uses the camera to photograph lab reports, medicines, insurance papers and meals you want to add."
+      },
+      "bundleIdentifier": "com.eyemyhealth.app",
+      "buildNumber": "1",
+      "usesAppleSignIn": true
     },
     "android": {
       "adaptiveIcon": {
@@ -30,7 +36,14 @@
         "android.permission.health.READ_STEPS",
         "android.permission.health.READ_HEART_RATE",
         "android.permission.health.READ_ACTIVE_CALORIES_BURNED",
-        "android.permission.ACTIVITY_RECOGNITION"
+        "android.permission.ACTIVITY_RECOGNITION",
+        "android.permission.CAMERA",
+        "android.permission.POST_NOTIFICATIONS"
+      ],
+      "package": "com.eyemyhealth.app",
+      "versionCode": 1,
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -44,7 +57,9 @@
         "react-native-ble-plx",
         {
           "isBackgroundEnabled": false,
-          "modes": ["central"],
+          "modes": [
+            "central"
+          ],
           "bluetoothAlwaysPermission": "MyHealthPal uses Bluetooth to sync readings from paired devices like glucose meters, blood pressure monitors, and smart scales."
         }
       ],
@@ -78,7 +93,25 @@
         {
           "locationWhenInUsePermission": "EyeMyHealth uses your location to show the local weather and air quality on your dashboard."
         }
+      ],
+      "expo-apple-authentication",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "EyeMyHealth reads a photo you choose, such as a lab report or a meal, to add it to your records.",
+          "cameraPermission": "EyeMyHealth uses the camera to photograph lab reports, medicines, insurance papers and meals you want to add.",
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
       ]
-    ]
+    ],
+    "scheme": "eyemyhealth"
   }
 }
