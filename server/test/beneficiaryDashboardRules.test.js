@@ -90,3 +90,21 @@ test('sortCards puts the most urgent person first and totals add up', () => {
   assert.equal(totals.outOfRangeResults, 3);
   assert.equal(totals.activePolicies, 3);
 });
+
+test('summarizeInsurance flags renewals within 90 days but premiums only within 30', () => {
+  const overview = {
+    policies: [{ id: 'a' }, { id: 'b' }],
+    activePolicyIds: ['a', 'b'],
+    gaps: [],
+    upcoming: [
+      { kind: 'renewal', policyId: 'a', daysLeft: 80, overdue: false },
+      { kind: 'renewal', policyId: 'b', daysLeft: 120, overdue: false },
+      { kind: 'premium', policyId: 'a', daysLeft: 60, overdue: false },
+      { kind: 'premium', policyId: 'b', daysLeft: 10, overdue: false },
+    ],
+  };
+  const summary = rules.summarizeInsurance(overview, { policyCount: 2, needsReviewCount: 0, providerNames: [], nextPremium: null, nextRenewal: null, gapCount: 0 });
+  assert.equal(summary.activePolicyCount, 2);
+  assert.equal(summary.renewalCount, 1);
+  assert.deepEqual(summary.upcoming.map((d) => `${d.kind}:${d.policyId}`), ['renewal:a', 'premium:b']);
+});

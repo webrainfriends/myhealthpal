@@ -107,6 +107,16 @@ function BeneficiaryCard({ person, t }) {
             {insurance.policies.length === 0 ? (
               <Text style={typography.caption}>{t('bdash.noPolicies')}</Text>
             ) : (
+              <Text style={[typography.caption, styles.policySummary]}>
+                {[
+                  t('bdash.policyCount', { count: insurance.activePolicyCount }),
+                  insurance.renewalCount > 0 ? t('bdash.renewalsSoon', { count: insurance.renewalCount }) : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </Text>
+            )}
+            {insurance.policies.length > 0 &&
               insurance.policies.map((policy) => (
                 <View key={policy.id} style={styles.line}>
                   <Text style={[typography.body, styles.flex]} numberOfLines={1}>
@@ -116,8 +126,7 @@ function BeneficiaryCard({ person, t }) {
                     <Text style={typography.caption}>{t('bdash.sumInsured', { amount: formatMoney(policy.sumInsured, policy.currency) })}</Text>
                   ) : null}
                 </View>
-              ))
-            )}
+              ))}
             {insurance.upcoming.map((item) => (
               <Text key={`${item.kind}-${item.policyId}`} style={[typography.caption, item.overdue || item.daysLeft <= 14 ? { color: colors.danger } : null]}>
                 {insuranceDateLabel(item, t)}
@@ -290,6 +299,7 @@ const styles = StyleSheet.create({
   sectionTitle: { ...typography.caption, fontWeight: '700', textTransform: 'uppercase' },
   line: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   medRow: { gap: 2 },
+  policySummary: { fontWeight: '600' },
   resultValue: { fontSize: 13, fontWeight: '600' },
   note: { textAlign: 'center' },
 });
