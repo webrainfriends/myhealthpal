@@ -6,7 +6,14 @@ import * as ImagePicker from 'expo-image-picker';
 import MedicationCard from '../components/MedicationCard';
 import PrimaryButton from '../components/PrimaryButton';
 import { alertSeverityColors, colors, radii, spacing, typography } from '../theme/theme';
-import { dismissMedicationAlert, fetchMedicationAlerts, fetchMedications, uploadMedicationScan } from '../api/client';
+import {
+  dismissMedicationAlert,
+  fetchMedicationAlerts,
+  fetchMedicationReminders,
+  fetchMedications,
+  logMedicationDose,
+  uploadMedicationScan,
+} from '../api/client';
 import { useT } from '../i18n/I18nContext';
 import { showAlert } from '../utils/alert';
 import { openPrivacyIfConsentNeeded } from '../utils/consent';
@@ -32,18 +39,77 @@ function AlertBanner({ alert, onDismiss, onPress }) {
   );
 }
 
+function localDate() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function DoseRow({ reminder, date, onChange, t }) {
+  async function mark(slot, status) {
+    try {
+      const data = await logMedicationDose(reminder.medicationId, slot, status, date);
+      onChange(data.reminder);
+    } catch (err) {
+      showAlert(t('medications.doseFailed'), err.message);
+    }
+  }
+  return (
+    <View style={styles.doseCard}>
+      <View style={styles.doseHeader}>
+        <Text style={[typography.body, styles.alertTitle]}>{reminder.name}</Text>
+        {reminder.dosesRemaining !== null && (
+          <Text style={typography.caption}>{t('medications.dosesLeft', { count: reminder.dosesRemaining })}</Text>
+        )}
+      </View>
+      {!reminder.active && reminder.stopReason && (
+        <Text style={typography.caption}>{t(`medications.remindersStopped.${reminder.stopReason}`)}</Text>
+      )}
+      {reminder.doses.map((dose) => (
+        <View key={dose.slot} style={styles.doseLine}>
+          <Text style={[typography.body, styles.alertBody]}>{dose.slot}</Text>
+          {dose.status === 'pending' ? (
+            <>
+              <TouchableOpacity onPress={() => mark(dose.slot, 'taken')}>
+                <Text style={styles.altAction}>{t('medications.taken')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => mark(dose.slot, 'skipped')}>
+                <Text style={styles.dismissLabel}>{t('medications.skip')}</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <TouchableOpacity onPress={() => mark(dose.slot, 'undo')}>
+              <Text style={typography.caption}>
+                {dose.status === 'taken' ? '✓ ' : '– '}
+                {t(dose.status === 'taken' ? 'medications.taken' : 'medications.skip')} · {t('medications.undo')}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      ))}
+    </View>
+  );
+}
+
 export default function MedicationsScreen({ navigation }) {
   const t = useT();
   const [medications, setMedications] = useState([]);
   const [alerts, setAlerts] = useState([]);
+  const [reminders, setReminders] = useState([]);
+  const date = localDate();
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [medData, alertData] = await Promise.all([fetchMedications(), fetchMedicationAlerts('active')]);
+      const [medData, alertData, reminderData] = await Promise.all([
+        fetchMedications(),
+        fetchMedicationAlerts('active'),
+        fetchMedicationReminders(localDate()),
+      ]);
       setMedications(medData.medications);
       setAlerts(alertData.alerts);
+      setReminders(reminderData.reminders);
     } catch (err) {
       console.warn('Failed to load medications', err.message);
     } finally {
@@ -157,6 +223,25 @@ export default function MedicationsScreen({ navigation }) {
               </TouchableOpacity>
             </View>
 
+            {reminders.some((r) => r.doses.length > 0) && (
+              <View style={styles.section}>
+                <Text style={[typography.heading, styles.sectionHeading]}>{t('medications.todaysDoses')}</Text>
+                {reminders
+                  .filter((r) => r.doses.length > 0)
+                  .map((reminder) => (
+                    <DoseRow
+                      key={reminder.medicationId}
+                      reminder={reminder}
+                      date={date}
+                      t={t}
+                      onChange={(next) =>
+                        setReminders((prev) => prev.map((r) => (r.medicationId === next.medicationId ? { ...r, ...next } : r)))
+                      }
+                    />
+                  ))}
+              </View>
+            )}
+
             {alerts.length > 0 && (
               <View style={styles.section}>
                 <Text style={[typography.heading, styles.sectionHeading]}>{t('medications.alertsHeading')}</Text>
@@ -244,6 +329,22 @@ const styles = StyleSheet.create({
   dismissLabel: {
     color: colors.textTertiary,
     fontSize: 14,
+  },
+  doseCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    gap: spacing.xs,
+  },
+  doseHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  doseLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
   },
   empty: {
     textAlign: 'center',

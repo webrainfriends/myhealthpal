@@ -3,6 +3,7 @@ const familyService = require('../services/familyService');
 const insuranceService = require('../insurance/insuranceService');
 const retestService = require('../retest/retestService');
 const { getAllReferenceRangesByCode } = require('../medications/referenceRangeService');
+const reminderService = require('../medications/medicationReminderService');
 const rules = require('./beneficiaryDashboardRules');
 
 async function loadActiveMedications(userId) {
@@ -37,7 +38,11 @@ async function buildCard(member, standardRanges, today) {
     ),
     safely(
       'medications',
-      async () => rules.summarizeMedications(await loadActiveMedications(member.id), today),
+      async () => {
+        const medications = await loadActiveMedications(member.id);
+        const reminders = await reminderService.remindersFor(medications, today.toISOString().slice(0, 10));
+        return rules.summarizeMedications(medications, today, new Map(reminders.map((r) => [r.medicationId, r])));
+      },
       rules.summarizeMedications([])
     ),
     safely(

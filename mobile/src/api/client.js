@@ -781,6 +781,22 @@ export async function dismissMedicationAlert(alertId) {
   return handleResponse(response);
 }
 
+// Dose reminders: independent of lab reports. `date` is the caller's local
+// YYYY-MM-DD so "today" matches the person's own day, not the server's.
+export async function fetchMedicationReminders(date) {
+  const response = await apiFetch(`/api/medications/reminders/today?date=${date}`);
+  return handleResponse(response);
+}
+
+export async function logMedicationDose(medicationId, slot, status, date) {
+  const response = await apiFetch(`/api/medications/${medicationId}/doses`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slot, status, date }),
+  });
+  return handleResponse(response);
+}
+
 export async function uploadDietScan(file, consumedAt) {
   const formData = new FormData();
   if (file.file) {

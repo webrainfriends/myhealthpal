@@ -79,6 +79,7 @@ function BeneficiaryCard({ person, t }) {
         {testsDue.overdueCount > 0 && <Pill tone="urgent" label={`${t('bdash.testsDue')}: ${testsDue.overdueCount} ⚠`} />}
         {testsDue.dueSoonCount > 0 && <Pill tone="attention" label={`${t('bdash.testsDue')}: ${testsDue.dueSoonCount}`} />}
         {medications.refillSoonCount > 0 && <Pill tone="attention" label={`${t('bdash.refillSoon')}: ${medications.refillSoonCount}`} />}
+        {medications.missedDoseCount > 0 && <Pill tone="attention" label={t('bdash.missedDoses', { count: medications.missedDoseCount })} />}
         {medications.expiringSoonCount > 0 && <Pill tone="attention" label={`${t('bdash.expiringSoon')}: ${medications.expiringSoonCount}`} />}
         {health.outOfRangeCount > 0 && (
           <Pill tone={health.criticalCount > 0 ? 'urgent' : 'attention'} label={t('bdash.healthCount', { count: health.outOfRangeCount })} />
@@ -138,6 +139,17 @@ function BeneficiaryCard({ person, t }) {
                     </Text>
                     <Text style={typography.caption}>{[med.frequency, ...(med.timesOfDay || [])].filter(Boolean).join(' · ')}</Text>
                   </View>
+                  {med.reminder && med.reminder.active && (
+                    <Text style={typography.caption}>
+                      {[
+                        t('bdash.dosesToday', { taken: med.reminder.takenToday, due: med.reminder.dueToday }),
+                        med.reminder.dosesRemaining !== null ? t('bdash.dosesLeft', { count: med.reminder.dosesRemaining }) : null,
+                        med.reminder.missedRecent > 0 ? t('bdash.missedDoses', { count: med.reminder.missedRecent }) : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </Text>
+                  )}
                   {med.alerts.map((alert) => (
                     <Text key={alert.type} style={[typography.caption, { color: alert.severity === 'info' ? colors.textSecondary : colors.warning }]}>
                       {alert.title}

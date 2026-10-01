@@ -49,11 +49,26 @@ function frequencyLabel(medication) {
   return perDay === 1 ? 'once a day' : `${perDay} times a day`;
 }
 
+// The adherence view a sponsor/caretaker gets of one medication's reminders.
+function summarizeReminder(reminder) {
+  if (!reminder) return null;
+  return {
+    active: reminder.active,
+    stopReason: reminder.stopReason,
+    dueToday: reminder.dueCount,
+    takenToday: reminder.takenCount,
+    missedRecent: reminder.missedRecent,
+    dosesRemaining: reminder.dosesRemaining,
+    daysOfSupplyLeft: reminder.daysOfSupplyLeft,
+    lastTakenAt: reminder.lastTakenAt,
+  };
+}
+
 // Active, confirmed medications with their daily reminder schedule, plus the
 // deterministic alerts (refill / expiry / course) computed fresh against
 // today - read-only, so viewing a dashboard never changes the person's own
 // alert lifecycle (dismissals etc.).
-function summarizeMedications(medications, today = new Date()) {
+function summarizeMedications(medications, today = new Date(), reminders = new Map()) {
   const items = medications.map((medication) => {
     const alerts = evaluateMedicationAlerts(medication, today).map((alert) => ({
       type: alert.type,
@@ -71,6 +86,7 @@ function summarizeMedications(medications, today = new Date()) {
       timesOfDay: medication.times_of_day || [],
       expiryDate: dateOnly(medication.expiry_date),
       endDate: dateOnly(medication.end_date),
+      reminder: summarizeReminder(reminders.get(medication.id)),
       refillSoon: alerts.some((a) => a.type === 'refill_needed'),
       expiringSoon: alerts.some((a) => a.type === 'expiring_soon' || a.type === 'expired'),
       alerts,
@@ -80,6 +96,9 @@ function summarizeMedications(medications, today = new Date()) {
     activeCount: items.length,
     refillSoonCount: items.filter((m) => m.refillSoon).length,
     expiringSoonCount: items.filter((m) => m.expiringSoon).length,
+    dosesDueToday: items.reduce((n, m) => n + (m.reminder ? m.reminder.dueToday : 0), 0),
+    dosesTakenToday: items.reduce((n, m) => n + (m.reminder ? m.reminder.takenToday : 0), 0),
+    missedDoseCount: items.reduce((n, m) => n + (m.reminder ? m.reminder.missedRecent : 0), 0),
     // Medications needing action first.
     items: items.sort(
       (a, b) => b.alerts.length - a.alerts.length || String(a.name).localeCompare(String(b.name))
@@ -162,6 +181,7 @@ function attentionLevel({ testsDue, medications, health, insurance }) {
     health.outOfRangeCount > 0 ||
     testsDue.dueSoonCount > 0 ||
     medications.refillSoonCount > 0 ||
+    medications.missedDoseCount > 0 ||
     medications.expiringSoonCount > 0 ||
     insurance.upcoming.length > 0 ||
     insurance.gapCount > 0 ||
@@ -203,6 +223,7 @@ function buildTotals(cards) {
     activePolicies: sum((c) => c.insurance.activePolicyCount),
     upcomingInsuranceDates: sum((c) => c.insurance.upcoming.length),
     refillsSoon: sum((c) => c.medications.refillSoonCount),
+    missedDoses: sum((c) => c.medications.missedDoseCount || 0),
     medicationsExpiringSoon: sum((c) => c.medications.expiringSoonCount),
     outOfRangeResults: sum((c) => c.health.outOfRangeCount),
   };

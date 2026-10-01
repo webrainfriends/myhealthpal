@@ -12,6 +12,8 @@ const { syncParameterLinks, findKnowledgeEntry } = require('../medications/medic
 const { getMedicationKnowledge } = require('../medications/medicationKnowledgeService');
 const { recomputeAlertsForMedication, recomputeAlertsForUser } = require('../medications/medicationAlertService');
 const { buildMedicationForecast } = require('../medications/medicationForecastService');
+const reminderService = require('../medications/medicationReminderService');
+const reminderRules = require('../medications/medicationReminderRules');
 
 const router = express.Router();
 
@@ -87,6 +89,65 @@ router.post('/alerts/:id/dismiss', async (req, res, next) => {
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Alert not found' });
     res.json({ alert: rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Dose reminders. They run off each medication's own quantity, number of
+// doses, schedule and expiry - never a lab report. A caretaker with manage
+// access reaches these as the member's profile (X-Profile-Id); a sponsor
+// sees the same figures on the beneficiary dashboard.
+router.get('/reminders/today', async (req, res, next) => {
+  try {
+    const date = reminderService.resolveDate(req.query.date);
+    const reminders = await reminderService.remindersForUser(currentUserId(req), date);
+    res.json({
+      date,
+      reminders,
+      totals: {
+        due: reminders.reduce((n, r) => n + r.dueCount, 0),
+        taken: reminders.reduce((n, r) => n + r.takenCount, 0),
+        missedRecent: reminders.reduce((n, r) => n + r.missedRecent, 0),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:id/doses', async (req, res, next) => {
+  try {
+    const medication = await loadOwnedMedication(currentUserId(req), req.params.id);
+    if (!medication) return res.status(404).json({ error: 'Medication not found' });
+
+    const { slot, status } = req.body || {};
+    const date = reminderService.resolveDate(req.body && req.body.date);
+    if (!['taken', 'skipped', 'undo'].includes(status)) {
+      return res.status(400).json({ error: "status must be 'taken', 'skipped' or 'undo'." });
+    }
+    if (!reminderRules.isValidSlot(medication, slot)) {
+      return res.status(400).json({ error: 'slot is not one of this medication\'s scheduled times.' });
+    }
+
+    if (status === 'undo') {
+      await reminderService.undoDose(medication, { slot, date });
+    } else {
+      const [before] = await reminderService.remindersFor([medication], date);
+      const alreadyTaken = before.doses.some((d) => d.slot === slot && d.status === 'taken');
+      if (status === 'taken' && !alreadyTaken) {
+        if (before.stopReason === 'expired') {
+          return res.status(409).json({ error: `${medication.name} has expired - do not take it.` });
+        }
+        if (before.dosesRemaining !== null && before.dosesRemaining <= 0) {
+          return res.status(409).json({ error: `No doses of ${medication.name} are left.` });
+        }
+      }
+      await reminderService.logDose(medication, { slot, status, date, loggedBy: req.accountUser ? req.accountUser.id : req.user.id });
+    }
+
+    const [reminder] = await reminderService.remindersFor([medication], date);
+    res.json({ reminder });
   } catch (err) {
     next(err);
   }
@@ -210,8 +271,8 @@ router.post('/', async (req, res, next) => {
          frequency_per_day, times_of_day, route, instructions, prescribed_for, prescribing_doctor,
          prescribing_clinic, prescription_date,
          start_date, duration_days, end_date, quantity_dispensed, quantity_unit, expiry_date, ingredients_raw,
-         medicine_system, source_type, status, notes, is_confirmed
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,'manual',$24,$25,true)
+         medicine_system, source_type, status, notes, is_confirmed, total_doses, reminders_enabled
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,'manual',$24,$25,true,$26,$27)
        RETURNING *`,
       [
         currentUserId(req),
@@ -239,6 +300,8 @@ router.post('/', async (req, res, next) => {
         body.medicine_system || 'allopathic',
         body.status || 'active',
         body.notes || null,
+        body.total_doses || null,
+        body.reminders_enabled === false ? false : true,
       ]
     );
     const medication = rows[0];
@@ -408,6 +471,8 @@ const EDITABLE_FIELDS = [
   'medicine_system',
   'status',
   'notes',
+  'total_doses',
+  'reminders_enabled',
 ];
 const IDENTITY_FIELDS = new Set(['name', 'generic_name', 'brand_name']);
 
@@ -435,7 +500,7 @@ router.patch('/:id', async (req, res, next) => {
          frequency_per_day = $8, times_of_day = $9, route = $10, instructions = $11, prescribed_for = $12,
          prescribing_doctor = $13, prescribing_clinic = $14, prescription_date = $15, start_date = $16, duration_days = $17, end_date = $18,
          quantity_dispensed = $19, quantity_unit = $20, expiry_date = $21, ingredients_raw = $22,
-         medicine_system = $23, status = $24, notes = $25, updated_at = now()
+         medicine_system = $23, status = $24, notes = $25, total_doses = $26, reminders_enabled = $27, updated_at = now()
        WHERE id = $1
        RETURNING *`,
       [
@@ -464,6 +529,8 @@ router.patch('/:id', async (req, res, next) => {
         next_.medicine_system,
         next_.status,
         next_.notes,
+        next_.total_doses || null,
+        next_.reminders_enabled === false ? false : true,
       ]
     );
     const medication = rows[0];
