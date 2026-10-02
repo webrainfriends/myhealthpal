@@ -139,13 +139,30 @@ async function processReport(reportId) {
       .filter(Boolean)
       .join(' ');
 
-    const { effectiveDate } = await detectAndPersistReportDates({
+    let { effectiveDate } = await detectAndPersistReportDates({
       reportId,
       document,
       measurements,
       uploadTimestamp: report.upload_timestamp,
       aiReportDate: docInfo?.reportDate,
     });
+    // A meter export has no lab-style "Date:" label and no measurements to
+    // date it from, so it would otherwise stay undated and be ranked by its
+    // upload time - ahead of a real lab report from earlier. Date it by its
+    // latest reading instead.
+    if (!effectiveDate && glucoseDetectedTables > 0) {
+      const latest = await pool.query(
+        `SELECT max(measured_at)::date AS day FROM glucose_readings WHERE report_id = $1`,
+        [reportId]
+      );
+      if (latest.rows[0]?.day) {
+        effectiveDate = latest.rows[0].day;
+        await pool.query(
+          `UPDATE reports SET effective_date = $2, date_status = 'Detected', updated_at = now() WHERE id = $1`,
+          [reportId, effectiveDate]
+        );
+      }
+    }
     // Catches the common case dedup couldn't judge during extraction (no
     // per-measurement date was on the line/row itself) now that this
     // report's own effective_date is known - must run before the

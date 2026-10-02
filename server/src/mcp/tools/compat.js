@@ -3,6 +3,7 @@ const config = require('../../config');
 const { executeTool } = require('../../chat/tools');
 const { readTool } = require('./helpers');
 const { ServiceError } = require('../../lib/serviceError');
+const { reportDisplayTitle } = require('../../lib/reportTitle');
 
 // ChatGPT's connectors and deep research look for two tools with these exact
 // names and shapes: search(query) -> { results: [{ id, title, url }] } and
@@ -31,7 +32,7 @@ const search = readTool({
 
     const [reports, insights, meds] = await Promise.all([
       pool.query(
-        `SELECT DISTINCT r.id, r.original_filename, r.effective_date, r.report_type
+        `SELECT DISTINCT r.id, r.original_filename, r.effective_date, r.report_type, r.source_provider, r.modality, r.body_region
          FROM reports r
          LEFT JOIN health_measurements hm ON hm.report_id = r.id
          LEFT JOIN report_summaries rs ON rs.report_id = r.id
@@ -54,7 +55,7 @@ const search = readTool({
         results: [
           ...reports.rows.map((r) => ({
             id: `report:${r.id}`,
-            title: `${r.report_type || 'Report'} - ${r.original_filename}${r.effective_date ? ` (${day(r.effective_date)})` : ''}`,
+            title: reportDisplayTitle(r),
             url: url.report(r.id),
           })),
           ...insights.rows.map((i) => ({ id: `insight:${i.id}`, title: `Insight: ${i.title}`, url: url.insight() })),
@@ -79,7 +80,7 @@ const fetch = readTool({
     const { data } = await executeTool(run[0], run[1], ctx);
     if (data?.found === false) throw new ServiceError(404, 'Item not found');
     const title =
-      kind === 'report' ? data.report?.original_filename : kind === 'insight' ? data.title : data.medication?.name || data.name || 'Medicine';
+      kind === 'report' ? data.report?.displayTitle || data.report?.original_filename : kind === 'insight' ? data.title : data.medication?.name || data.name || 'Medicine';
     return {
       data: { id: args.id, title: title || args.id, text: JSON.stringify(data), url: url[kind](id), metadata: { type: kind } },
       evidence: [],

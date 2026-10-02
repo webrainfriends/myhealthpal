@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../db/pool');
 const config = require('../config');
+const { reportDisplayTitle } = require('../lib/reportTitle');
 const { upload, extensionOf, maxBytesFor } = require('../middleware/upload');
 const { enqueueProcessing } = require('../services/ingestionService');
 const registry = require('../extraction/registry');
@@ -35,13 +36,13 @@ router.get('/', async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT id, original_filename, mime_type, file_extension, file_size_bytes, upload_timestamp,
-              effective_date, date_status, source_type, source_provider, report_type, likely_duplicate_of_report_id,
+              effective_date, date_status, source_type, source_provider, report_type, modality, body_region, likely_duplicate_of_report_id,
               ingestion_status, extraction_status, validation_status, processing_error, generated_summary,
               confirmed_at, created_at, updated_at
        FROM reports WHERE user_id = $1 ORDER BY COALESCE(effective_date, created_at::date) DESC, created_at DESC`,
       [currentUserId(req)]
     );
-    res.json({ reports: rows });
+    res.json({ reports: rows.map((r) => ({ ...r, displayTitle: reportDisplayTitle(r) })) });
   } catch (err) {
     next(err);
   }

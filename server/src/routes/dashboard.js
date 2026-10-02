@@ -8,6 +8,7 @@ const {
   GENERIC_QUALITATIVE_NORMAL,
   organKeyForCustomLabel,
 } = require('../services/organHealthService');
+const { reportDisplayTitle } = require('../lib/reportTitle');
 const { getAllReferenceRangesByCode } = require('../medications/referenceRangeService');
 const { groupTestNames, normalizeTestNameKey } = require('../services/customCardService');
 
@@ -104,6 +105,7 @@ async function fetchNeedsAttention(userId) {
     items.push({
       ...item,
       unit: normalized_unit || canonical_unit || row.raw_unit || null,
+      displayTitle: reportDisplayTitle(row),
       reference_range: reference_range_raw || null,
       status: evaluation.status,
       direction: evaluation.direction,

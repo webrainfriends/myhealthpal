@@ -35,7 +35,7 @@ export default function TimelineItemCard({ item, onPress, onDelete }) {
         </View>
       </View>
       <Text style={typography.bodySecondary} numberOfLines={1}>
-        {item.original_filename}
+        {item.displayTitle || item.original_filename}
         {item.report_type ? ` · ${item.report_type}` : ''}
         {item.source_provider ? ` · ${item.source_provider}` : ''}
       </Text>

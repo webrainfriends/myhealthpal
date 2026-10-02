@@ -1,5 +1,6 @@
 const pool = require('../db/pool');
 const audit = require('./auditLog');
+const { reportDisplayTitle } = require('../lib/reportTitle');
 
 // The single ownership check every report operation goes through (issue
 // #104 §7): the row must belong to the request's user (the signed-in
@@ -43,6 +44,7 @@ function toPublicRecord(row) {
   if (!row) return row;
   const out = { ...row };
   for (const col of PRIVATE_COLUMNS) delete out[col];
+  out.displayTitle = reportDisplayTitle(row);
   out.encrypted = Boolean(row.encryption_version);
   delete out.encryption_version;
   delete out.encrypted_at;

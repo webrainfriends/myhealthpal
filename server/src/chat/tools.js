@@ -1,5 +1,6 @@
 const pool = require('../db/pool');
 const { toPublicRecord } = require('../security/reportAccess');
+const { reportDisplayTitle } = require('../lib/reportTitle');
 const registry = require('../extraction/registry');
 const { findKnowledgeEntry } = require('../medications/medicationLinkingService');
 const { getMedicationKnowledge } = require('../medications/medicationKnowledgeService');
@@ -20,31 +21,59 @@ function comparableValue(m) {
   return m.normalized_value ?? m.numeric_value ?? null;
 }
 
+// A "lab-style" report is one that actually holds results: lab measurements
+// or an imaging report's findings. A home-meter export (glucose readings,
+// activity sheets) has neither, so it must not be mistaken for the user's
+// latest report just because it was uploaded or dated more recently.
+const LAB_STYLE_REPORT_SQL = `(
+  EXISTS (SELECT 1 FROM health_measurements hm WHERE hm.report_id = reports.id)
+  OR reports.modality IS NOT NULL OR reports.findings IS NOT NULL OR reports.impression IS NOT NULL
+)`;
+
+function withTitle(row) {
+  return row ? { ...row, displayTitle: reportDisplayTitle(row) } : row;
+}
+
 const getLatestReport = {
   name: 'get_latest_report',
-  description: "Get the user's most recent uploaded health report, optionally filtered by report type.",
+  description:
+    "Get the user's most recent health report (lab results or imaging), optionally filtered by report type. " +
+    'Glucose-meter and activity exports are skipped unless includeDeviceExports is true.',
   inputSchema: {
     type: 'object',
     additionalProperties: false,
-    properties: { reportType: { type: 'string', description: 'Optional report type filter, e.g. "lipid panel".' } },
+    properties: {
+      reportType: { type: 'string', description: 'Optional report type filter, e.g. "lipid panel".' },
+      includeDeviceExports: {
+        type: 'boolean',
+        description: 'Also consider home-meter exports (glucose readings, activity). Default false.',
+      },
+    },
   },
   async execute(args, { userId }) {
-    const { rows } = await pool.query(
-      `SELECT id, original_filename, effective_date, ingestion_status, generated_summary, report_type
-       FROM reports
-       WHERE user_id = $1 AND ($2::text IS NULL OR report_type ILIKE '%' || $2 || '%')
-       ORDER BY COALESCE(effective_date, created_at::date) DESC, created_at DESC
-       LIMIT 1`,
-      [userId, args.reportType || null]
-    );
+    const run = (labOnly) =>
+      pool.query(
+        `SELECT id, original_filename, effective_date, date_status, ingestion_status, generated_summary,
+                report_type, source_provider, modality, body_region
+         FROM reports
+         WHERE user_id = $1 AND ($2::text IS NULL OR report_type ILIKE '%' || $2 || '%')
+           AND ($3::boolean = false OR ${LAB_STYLE_REPORT_SQL})
+         ORDER BY effective_date DESC NULLS LAST, created_at DESC
+         LIMIT 1`,
+        [userId, args.reportType || null, labOnly]
+      );
+    let { rows } = await run(args.includeDeviceExports !== true);
+    // Someone who only has device exports still gets an answer.
+    if (rows.length === 0 && args.includeDeviceExports !== true) ({ rows } = await run(false));
     if (rows.length === 0) return { data: { found: false }, evidence: [] };
     const report = rows[0];
     const measurementCount = await pool.query('SELECT count(*) FROM health_measurements WHERE report_id = $1', [
       report.id,
     ]);
+    const displayTitle = reportDisplayTitle(report);
     return {
-      data: { ...report, measurementCount: Number(measurementCount.rows[0].count) },
-      evidence: [{ type: 'report', id: report.id, label: report.original_filename }],
+      data: { ...report, displayTitle, measurementCount: Number(measurementCount.rows[0].count) },
+      evidence: [{ type: 'report', id: report.id, label: displayTitle }],
     };
   },
 };
@@ -77,7 +106,7 @@ const getReportById = {
       // metadata - reach the model (ids are stripped by the AI gateway).
       data: { report: toPublicRecord(report), measurements: measurements.rows },
       evidence: [
-        { type: 'report', id: report.id, label: report.original_filename },
+        { type: 'report', id: report.id, label: reportDisplayTitle(report) },
         ...evidenceFor('measurement', measurements.rows),
       ],
     };
@@ -94,7 +123,7 @@ const compareReports = {
     required: ['reportIdA', 'reportIdB'],
   },
   async execute(args, { userId }) {
-    const reports = await pool.query('SELECT id, original_filename FROM reports WHERE id = ANY($1) AND user_id = $2', [
+    const reports = await pool.query('SELECT id, original_filename, effective_date, report_type, source_provider, modality, body_region FROM reports WHERE id = ANY($1) AND user_id = $2', [
       [args.reportIdA, args.reportIdB],
       userId,
     ]);
@@ -132,7 +161,11 @@ const compareReports = {
     }
 
     return {
-      data: { reportA: reports.rows.find((r) => r.id === args.reportIdA), reportB: reports.rows.find((r) => r.id === args.reportIdB), comparisons },
+      data: {
+        reportA: withTitle(reports.rows.find((r) => r.id === args.reportIdA)),
+        reportB: withTitle(reports.rows.find((r) => r.id === args.reportIdB)),
+        comparisons,
+      },
       evidence: [
         ...evidenceFor('report', reports.rows, 'id', 'original_filename'),
         ...evidenceMeasurementIds.map((id) => ({ type: 'measurement', id })),
@@ -307,15 +340,16 @@ const searchReports = {
   },
   async execute(args, { userId }) {
     const { rows } = await pool.query(
-      `SELECT DISTINCT r.id, r.original_filename, r.effective_date
+      `SELECT DISTINCT r.id, r.original_filename, r.effective_date, r.report_type, r.source_provider, r.modality, r.body_region
        FROM reports r
        LEFT JOIN health_measurements hm ON hm.report_id = r.id
        WHERE r.user_id = $1 AND (r.original_filename ILIKE '%' || $2 || '%' OR hm.raw_test_name ILIKE '%' || $2 || '%')
-       ORDER BY COALESCE(r.effective_date, r.created_at::date) DESC
+       ORDER BY r.effective_date DESC NULLS LAST
        LIMIT 10`,
       [userId, args.keyword]
     );
-    return { data: { reports: rows }, evidence: evidenceFor('report', rows, 'id', 'original_filename') };
+    const reports = rows.map(withTitle);
+    return { data: { reports }, evidence: evidenceFor('report', reports, 'id', 'displayTitle') };
   },
 };
 

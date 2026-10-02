@@ -1,4 +1,5 @@
 const pool = require('../db/pool');
+const { reportDisplayTitle } = require('../lib/reportTitle');
 
 // Chronological view across reports, filterable by date range, report type,
 // source, parameter category, and free-text search over the report's
@@ -10,7 +11,7 @@ const pool = require('../db/pool');
 async function listTimeline(userId, { dateFrom = null, dateTo = null, reportType = null, source = null, category = null, search = null } = {}) {
   const { rows } = await pool.query(
     `SELECT r.id, r.original_filename, r.file_extension, r.effective_date, r.date_status, r.source_type,
-            r.source_provider, r.report_type, r.ingestion_status, r.likely_duplicate_of_report_id,
+            r.source_provider, r.report_type, r.modality, r.body_region, r.ingestion_status, r.likely_duplicate_of_report_id,
             r.upload_timestamp, r.created_at,
             (SELECT count(*) FROM health_measurements hm WHERE hm.report_id = r.id) AS measurement_count,
             (SELECT count(*) FROM health_measurements hm
@@ -43,7 +44,7 @@ async function listTimeline(userId, { dateFrom = null, dateTo = null, reportType
     [userId, dateFrom, dateTo, reportType, source, search, category]
   );
 
-  return rows;
+  return rows.map((r) => ({ ...r, displayTitle: reportDisplayTitle(r) }));
 }
 
 module.exports = { listTimeline };
