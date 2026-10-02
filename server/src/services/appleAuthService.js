@@ -16,7 +16,7 @@ function getSigningKey(header, callback) {
 
 // Verifies an identityToken from Apple's JS SDK (AppleID.auth.signIn) -
 // checks signature (against Apple's public keys), issuer, audience (our
-// Services ID), and expiry. No Apple private key/client secret involved:
+// Services ID for web, or the app's bundle ID for native), and expiry. No Apple private key/client secret involved:
 // that's only needed to mint or refresh Apple's own tokens server-side,
 // which this app never does - only verifying a token Apple already issued.
 function verifyAppleIdentityToken(identityToken) {
@@ -27,7 +27,7 @@ function verifyAppleIdentityToken(identityToken) {
     jwt.verify(
       identityToken,
       getSigningKey,
-      { algorithms: ['RS256'], issuer: APPLE_ISSUER, audience: config.appleClientId },
+      { algorithms: ['RS256'], issuer: APPLE_ISSUER, audience: config.appleClientIds },
       (err, payload) => {
         if (err) return reject(err);
         resolve({

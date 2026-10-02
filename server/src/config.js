@@ -173,7 +173,11 @@ module.exports = {
   // audience for the web flow. No Apple private key is needed here: only
   // verifying Apple-issued identity tokens against Apple's public JWKS,
   // never minting/refreshing Apple's own tokens server-side.
-  appleClientId: process.env.APPLE_CLIENT_ID || null,
+  // May list several comma-separated audiences: the web Services ID first
+  // (what the web sign-in button is initialised with), then the iOS app's
+  // bundle identifier (native Sign in with Apple tokens carry that as `aud`).
+  appleClientIds: (process.env.APPLE_CLIENT_ID || '').split(',').map((v) => v.trim()).filter(Boolean),
+  appleClientId: (process.env.APPLE_CLIENT_ID || '').split(',')[0].trim() || null,
   extractionProvider: process.env.EXTRACTION_PROVIDER || 'heuristic',
   summaryProvider: process.env.SUMMARY_PROVIDER || 'heuristic',
   insightProvider: process.env.INSIGHT_PROVIDER || 'heuristic',

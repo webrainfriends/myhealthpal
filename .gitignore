@@ -21,3 +21,4 @@ mobile/*.mobileprovision
 
 # os
 .DS_Store
+mobile/google-play-service-account.json

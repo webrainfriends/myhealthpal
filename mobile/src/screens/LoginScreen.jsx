@@ -168,7 +168,9 @@ export default function LoginScreen() {
     } catch (err) {
       // Same as the Google case above: only a brand-new Apple identity can
       // ever hit the cap, so this never disables sign-in for anyone else.
-      if (err.code === 'registration_closed') {
+      if (err.code === 'ERR_REQUEST_CANCELED') {
+        // The person dismissed the native Apple sheet - not an error.
+      } else if (err.code === 'registration_closed') {
         showAlert(t('login.signInFailedTitle'), t('login.registrationClosed'));
       } else {
         showAlert(t('login.signInFailedTitle'), err.message);
