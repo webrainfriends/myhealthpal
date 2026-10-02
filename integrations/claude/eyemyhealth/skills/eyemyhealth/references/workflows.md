@@ -28,7 +28,7 @@ Short recipes. Tool names are exact.
 4. Say what was saved.
 
 ## "When should I retest?"
-1. `list_retest_plans` - due dates, status, booking link.
+1. `list_retest_plans` - due dates, status, test-day `prepTips` (fasting etc.) and booking link.
 2. `retest_checkin` to tick this week's small action when they say they did it; `snooze_retest` to push a reminder out.
 
 ## "Does my insurance cover this?"
