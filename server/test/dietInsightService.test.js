@@ -187,3 +187,48 @@ test('buildConsiderationTips cites the medication name(s) that produced the cons
   assert.equal(tips.length, 1);
   assert.match(tips[0].heuristicDetail, /Metformin/);
 });
+
+const { buildDietaryProfile } = require('../src/diet/dietaryProfile');
+
+function ironTipText(profile) {
+  const metrics = { loggedDayCount: 5, avgDailyIronMg: 5 };
+  const tips = buildPatternTips(metrics, { lowIron: true }, new Set(), profile);
+  return tips[0].heuristicDetail;
+}
+
+test('iron tip names meat sources only when the diet allows them', () => {
+  assert.match(ironTipText(null), /lean red meat/);
+  assert.match(ironTipText(buildDietaryProfile(['non_vegetarian'], [])), /lean red meat/);
+  const vegetarian = ironTipText(buildDietaryProfile(['vegetarian'], []));
+  assert.doesNotMatch(vegetarian, /meat|fish/);
+  assert.match(vegetarian, /leafy greens/i);
+});
+
+test('an allergy removes the matching foods, including related terms', () => {
+  const soyAllergic = ironTipText(buildDietaryProfile(['vegan'], ['Soy']));
+  assert.doesNotMatch(soyAllergic, /tofu/);
+  const legumeAllergic = ironTipText(buildDietaryProfile(['vegan'], ['lentils']));
+  assert.doesNotMatch(legumeAllergic, /legumes/);
+});
+
+test('lactose allergy drops dairy from the iron-absorption guidance', () => {
+  const med = medication({ name: 'Ferrous sulfate', generic_name: 'ferrous sulfate' });
+  const withDairy = computeConsiderations([med], [], buildDietaryProfile([], []));
+  const noDairy = computeConsiderations([med], [], buildDietaryProfile([], ['lactose']));
+  if (withDairy.length > 0) {
+    assert.match(withDairy[0].guidance, /dairy/);
+    assert.doesNotMatch(noDairy[0].guidance, /dairy/);
+  }
+});
+
+test('gout guidance omits meat for vegetarians', () => {
+  const med = medication({ name: 'Allopurinol', generic_name: 'allopurinol' });
+  const result = computeConsiderations([med], [], buildDietaryProfile(['vegetarian'], []));
+  if (result.length > 0) assert.doesNotMatch(result[0].guidance, /meat/);
+});
+
+test('with no saved preference nothing is filtered', () => {
+  const profile = buildDietaryProfile([], []);
+  assert.equal(profile.allowsMeat, true);
+  assert.match(ironTipText(profile), /lean red meat/);
+});
