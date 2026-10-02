@@ -3,6 +3,42 @@ const pool = require('../db/pool');
 const config = require('../config');
 const { recordAiUsage, FEATURES } = require('../services/aiUsageService');
 const { findKnowledgeEntry } = require('../medications/medicationLinkingService');
+const { fetchDietaryProfile, filterAllowed, joinList, describeProfileForPrompt } = require('./dietaryProfile');
+
+// Foods named in tips. `requires` / `keywords` let the person's saved
+// diet type and allergies filter them (see dietaryProfile.js) so a vegan or
+// lactose-intolerant user is never pointed at foods they don't eat.
+const FIBER_SOURCES = [
+  { text: 'vegetables', keywords: 'vegetable' },
+  { text: 'fruit', keywords: 'fruit' },
+  { text: 'whole grains', keywords: 'wheat gluten grain oats' },
+  { text: 'legumes', keywords: 'legume lentil chickpea bean pea' },
+  { text: 'nuts and seeds', keywords: 'nut seed almond' },
+];
+const IRON_SOURCES = [
+  { text: 'leafy greens', keywords: 'spinach greens' },
+  { text: 'legumes', keywords: 'legume lentil chickpea bean pea' },
+  { text: 'tofu and tempeh', keywords: 'soy tofu tempeh' },
+  { text: 'pumpkin and sesame seeds', keywords: 'seed sesame' },
+  { text: 'lean red meat', requires: 'meat', keywords: 'meat beef lamb' },
+  { text: 'fish', requires: 'meat', keywords: 'fish seafood' },
+];
+const CHOLESTEROL_CONTRIBUTORS = [
+  { text: 'organ meats', requires: 'meat', keywords: 'meat' },
+  { text: 'egg yolks', requires: 'animal', keywords: 'egg' },
+  { text: 'full-fat dairy', requires: 'animal', keywords: 'dairy milk cheese butter cream' },
+  { text: 'fried food', keywords: 'fried' },
+];
+const GOUT_PURINE_FOODS = [
+  { text: 'red meat', requires: 'meat', keywords: 'meat' },
+  { text: 'organ meat', requires: 'meat', keywords: 'meat' },
+  { text: 'alcohol', keywords: 'alcohol' },
+];
+const IRON_SPACING_FOODS = [
+  { text: 'dairy', requires: 'animal', keywords: 'dairy milk cheese' },
+  { text: 'tea', keywords: 'tea' },
+  { text: 'coffee', keywords: 'coffee' },
+];
 
 // General-population dietary guideline defaults (not personalized, not a
 // clinical prescription) used only to decide whether a pattern is worth
@@ -53,9 +89,9 @@ const CATEGORY_CONSIDERATIONS = [
   { pattern: /antidiabetic/i, key: 'diabetes', label: 'blood sugar management', guidance: 'keeping carbohydrate and added-sugar intake steady across the day rather than in large spikes' },
   { pattern: /antihypertensive|diuretic/i, key: 'bloodPressure', label: 'blood pressure management', guidance: 'keeping sodium intake low and consistent day to day' },
   { pattern: /statin|fibrate/i, key: 'cholesterol', label: 'cholesterol management', guidance: 'favoring fiber-rich foods and limiting saturated fat' },
-  { pattern: /xanthine oxidase/i, key: 'gout', label: 'uric acid management', guidance: 'limiting purine-heavy foods like red meat, organ meat, and alcohol, and staying well hydrated' },
+  { pattern: /xanthine oxidase/i, key: 'gout', label: 'uric acid management', guidance: (p) => `limiting purine-heavy foods like ${joinList(filterAllowed(GOUT_PURINE_FOODS, p).map((f) => f.text))}, and staying well hydrated` },
   { pattern: /proton pump inhibitor/i, key: 'reflux', label: 'acid reflux management', guidance: 'avoiding spicy, acidic, or heavy meals close to bedtime' },
-  { pattern: /iron supplement/i, key: 'ironAbsorption', label: 'iron absorption', guidance: 'pairing iron-rich meals with vitamin C and spacing them away from dairy, tea, or coffee' },
+  { pattern: /iron supplement/i, key: 'ironAbsorption', label: 'iron absorption', guidance: (p) => `pairing iron-rich meals with vitamin C and spacing them away from ${joinList(filterAllowed(IRON_SPACING_FOODS, p).map((f) => f.text)).replace(/, and /, ', or ').replace(/ and /, ' or ')}` },
   { pattern: /thyroid hormone/i, key: 'thyroid', label: 'thyroid medication timing', guidance: 'taking it on an empty stomach and waiting before eating, especially avoiding calcium- or iron-rich foods right after' },
 ];
 
@@ -148,7 +184,11 @@ function computeFlags(metrics) {
 // same underlying concern (e.g. "diabetes") raised by both a metformin
 // prescription and a high fasting-glucose result becomes a single tip
 // citing both sources rather than two redundant ones.
-function computeConsiderations(medications, abnormalMeasurements) {
+function resolveGuidance(guidance, profile) {
+  return typeof guidance === 'function' ? guidance(profile) : guidance;
+}
+
+function computeConsiderations(medications, abnormalMeasurements, profile = null) {
   const byKey = new Map();
 
   for (const med of medications) {
@@ -156,7 +196,7 @@ function computeConsiderations(medications, abnormalMeasurements) {
     if (!entry) continue;
     const match = CATEGORY_CONSIDERATIONS.find((c) => c.pattern.test(entry.category));
     if (!match) continue;
-    const existing = byKey.get(match.key) || { key: match.key, label: match.label, guidance: match.guidance, medicationNames: [], labFindings: [] };
+    const existing = byKey.get(match.key) || { key: match.key, label: match.label, guidance: resolveGuidance(match.guidance, profile), medicationNames: [], labFindings: [] };
     existing.medicationNames.push(med.name);
     byKey.set(match.key, existing);
   }
@@ -164,7 +204,7 @@ function computeConsiderations(medications, abnormalMeasurements) {
   for (const m of abnormalMeasurements) {
     const mapping = LAB_CODE_CONSIDERATIONS[m.parameter_code];
     if (!mapping) continue;
-    const fallbackGuidance = CATEGORY_CONSIDERATIONS.find((c) => c.key === mapping.key)?.guidance
+    const fallbackGuidance = resolveGuidance(CATEGORY_CONSIDERATIONS.find((c) => c.key === mapping.key)?.guidance, profile)
       || 'discussing this result with a healthcare professional to see whether a dietary change is appropriate';
     const existing = byKey.get(mapping.key) || { key: mapping.key, label: mapping.label, guidance: fallbackGuidance, medicationNames: [], labFindings: [] };
     existing.labFindings.push({ label: mapping.label, statusFlag: m.status_flag, parameterDisplayName: m.parameter_display_name });
@@ -174,7 +214,18 @@ function computeConsiderations(medications, abnormalMeasurements) {
   return [...byKey.values()];
 }
 
-function buildPatternTips(metrics, flags, considerationKeys) {
+// "More vegetables, fruit, and legumes can help." - the foods are filtered
+// by the person's diet type/allergies. With nothing left to suggest, defers
+// to a dietitian rather than naming a food that doesn't fit.
+function foodHint(prefix, items, profile, suffix, capitalizeList = false) {
+  const names = filterAllowed(items, profile).map((f) => f.text);
+  if (names.length === 0) return 'A dietitian can suggest suitable foods that fit your diet and allergies' + (suffix.endsWith('.') ? '.' : '');
+  const list = joinList(names);
+  const text = capitalizeList ? list.charAt(0).toUpperCase() + list.slice(1) : `${prefix} ${list}`;
+  return `${text}${suffix}`;
+}
+
+function buildPatternTips(metrics, flags, considerationKeys, profile = null) {
   const tips = [];
 
   if (flags.highSodium) {
@@ -212,7 +263,7 @@ function buildPatternTips(metrics, flags, considerationKeys) {
       severity: 'info',
       title: 'Fiber intake looks low',
       templateData: d,
-      heuristicDetail: `You're averaging about ${d.avgDailyFiberG}g of fiber a day, below the general ${d.target}g/day guideline. More vegetables, whole grains, and legumes can help.`,
+      heuristicDetail: `You're averaging about ${d.avgDailyFiberG}g of fiber a day, below the general ${d.target}g/day guideline. ${foodHint('More', FIBER_SOURCES, profile, ' can help.')}`,
     });
   }
 
@@ -225,7 +276,7 @@ function buildPatternTips(metrics, flags, considerationKeys) {
       templateData: d,
       heuristicDetail:
         `You're averaging about ${d.avgDailyIronMg}mg of iron a day, below the general ${d.target}mg/day guideline. ` +
-        `Leafy greens, legumes, and lean red meat are common sources` +
+        `${foodHint('', IRON_SOURCES, profile, ' are common sources', true)}` +
         `${considerationKeys.has('ironAbsorption') ? ', which matters more given your iron-related medication' : ''}.`,
     });
   }
@@ -239,7 +290,7 @@ function buildPatternTips(metrics, flags, considerationKeys) {
       templateData: d,
       heuristicDetail:
         `${d.highCholesterolDayCount} of the last ${d.loggedDayCount} logged days went over ${d.limit}mg of dietary cholesterol ` +
-        `(averaging ${d.avgDailyCholesterolMg}mg/day). Organ meats, egg yolks, and fried food are common contributors` +
+        `(averaging ${d.avgDailyCholesterolMg}mg/day). ${foodHint('', CHOLESTEROL_CONTRIBUTORS, profile, ' are common contributors', true)}` +
         `${considerationKeys.has('cholesterol') ? ', which matters more given your cholesterol-related medication or lab result' : ''}.`,
     });
   }
@@ -362,25 +413,27 @@ function textOnlyReferencesAllowedNumbers(text, allowed) {
   return found.every((token) => allowed.has(Math.round(Math.abs(Number.parseFloat(token)))));
 }
 
-async function rephraseTipWithClaude(client, tip) {
+async function rephraseTipWithClaude(client, tip, profile) {
   const response = await client.messages.create({
     model: config.anthropicModel,
     max_tokens: 250,
     system: [
       'You rephrase one structured diet-pattern observation into one or two warm, plain-language sentences.',
       'Use ONLY the numbers and facts given to you. Never introduce a number, food, date, or fact not present in the input.',
+      'The person\'s dietary profile is a hard constraint: never mention or suggest any food that conflicts with their diet type or allergies. Any foods named in baseText are already compatible with it.',
       'Never diagnose a condition, never suggest starting, stopping, or changing a medication or dose, and never give a specific calorie/macro target unless it is present in the input.',
     ].join(' '),
-    messages: [{ role: 'user', content: JSON.stringify({ type: tip.type, severity: tip.severity, title: tip.title, data: tip.templateData }) }],
+    messages: [{ role: 'user', content: JSON.stringify({ type: tip.type, severity: tip.severity, title: tip.title, data: tip.templateData, baseText: tip.baseDetail, dietaryProfile: describeProfileForPrompt(profile) }) }],
   });
   recordAiUsage(FEATURES.DIET_TIPS, response);
   const textBlock = response.content.find((b) => b.type === 'text');
   return textBlock ? textBlock.text.trim() : null;
 }
 
-async function finalizeTips(tips, userId) {
+async function finalizeTips(tips, userId, profile) {
   const withSafetyTail = tips.map((t) => ({
     ...t,
+    baseDetail: t.heuristicDetail,
     heuristicDetail: t.severity === 'info' ? t.heuristicDetail : `${t.heuristicDetail}${SAFETY_TAIL}`,
   }));
 
@@ -399,7 +452,7 @@ async function finalizeTips(tips, userId) {
   for (const tip of withSafetyTail) {
     const allowed = allowedNumbersFromEvidence(tip.templateData);
     try {
-      const claudeText = await rephraseTipWithClaude(client, tip);
+      const claudeText = await rephraseTipWithClaude(client, tip, profile);
       if (claudeText && textOnlyReferencesAllowedNumbers(claudeText, allowed)) {
         finalTips.push({ type: tip.type, severity: tip.severity, title: tip.title, detail: `${claudeText}${tip.severity === 'info' ? '' : SAFETY_TAIL}` });
         usedClaude = true;
@@ -418,18 +471,19 @@ async function finalizeTips(tips, userId) {
 // the route decides whether regeneration is actually needed based on
 // entries_analyzed_count/generated_at, this function just does the work.
 async function generateRecommendations(userId, windowDays = 14) {
-  const [entries, medications, abnormalLabs] = await Promise.all([
+  const [entries, medications, abnormalLabs, profile] = await Promise.all([
     fetchConfirmedEntries(userId, windowDays),
     fetchActiveMedications(userId),
     fetchAbnormalDietRelevantLabs(userId),
+    fetchDietaryProfile(userId),
   ]);
 
   const metrics = computeMetrics(entries, windowDays);
   const flags = computeFlags(metrics);
-  const considerations = computeConsiderations(medications, abnormalLabs);
+  const considerations = computeConsiderations(medications, abnormalLabs, profile);
   const considerationKeys = new Set(considerations.map((c) => c.key));
 
-  const tips = [...buildPatternTips(metrics, flags, considerationKeys), ...buildConsiderationTips(considerations)];
+  const tips = [...buildPatternTips(metrics, flags, considerationKeys, profile), ...buildConsiderationTips(considerations)];
 
   const summaryHeuristic =
     metrics.loggedDayCount === 0
@@ -437,9 +491,9 @@ async function generateRecommendations(userId, windowDays = 14) {
       : `Over the last ${metrics.loggedDayCount} logged day${metrics.loggedDayCount === 1 ? '' : 's'} (${metrics.entriesAnalyzedCount} entries), you averaged about ${metrics.avgDailyCalories} calories/day.` +
         (tips.length === 0 ? ' No notable patterns stood out - keep it up.' : ` ${tips.length} thing${tips.length === 1 ? '' : 's'} stood out below.`);
 
-  const { tips: finalTips, provider, model } = await finalizeTips(tips, userId);
+  const { tips: finalTips, provider, model } = await finalizeTips(tips, userId, profile);
 
-  const evidence = { metrics, flags, considerations: considerations.map(({ key, label, medicationNames, labFindings }) => ({ key, label, medicationNames, labFindings })) };
+  const evidence = { metrics, flags, dietaryProfile: profileSignature(profile),considerations: considerations.map(({ key, label, medicationNames, labFindings }) => ({ key, label, medicationNames, labFindings })) };
 
   const latestEntry = entries[entries.length - 1];
   const { rows } = await pool.query(
@@ -464,9 +518,17 @@ async function generateRecommendations(userId, windowDays = 14) {
 
 // Whether the cached row is stale enough to regenerate: new confirmed
 // entries since it was last built, or it's simply never been built.
-function isStale(existing, latestEntryCount) {
+// Also stale when the diet type or allergies changed, so a new preference
+// is reflected immediately rather than after the next logged meal.
+function profileSignature(profile) {
+  return { dietTypes: profile.dietTypes, allergens: profile.allergens };
+}
+
+function isStale(existing, latestEntryCount, profile) {
   if (!existing) return true;
-  return existing.entries_analyzed_count !== latestEntryCount;
+  if (existing.entries_analyzed_count !== latestEntryCount) return true;
+  const stored = existing.evidence?.dietaryProfile;
+  return JSON.stringify(stored || null) !== JSON.stringify(profileSignature(profile));
 }
 
 async function getOrGenerateRecommendations(userId, { windowDays = 14, forceRefresh = false } = {}) {
@@ -478,7 +540,7 @@ async function getOrGenerateRecommendations(userId, { windowDays = 14, forceRefr
       `SELECT count(*)::int AS count FROM food_entries WHERE user_id = $1 AND is_confirmed = true AND consumed_at >= now() - ($2::int * INTERVAL '1 day')`,
       [userId, windowDays]
     );
-    if (!isStale(existing, countRows[0].count)) return existing;
+    if (!isStale(existing, countRows[0].count, await fetchDietaryProfile(userId))) return existing;
   }
 
   return generateRecommendations(userId, windowDays);
