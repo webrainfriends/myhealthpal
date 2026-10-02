@@ -124,3 +124,39 @@ test('every plain lab summary is brought in line with the live counts, not only 
     await pool.query('DELETE FROM users WHERE id = $1', [uid]);
   }
 });
+
+test('a reportId limits the run to that report\'s results and summary', async () => {
+  const uid = (await pool.query(`INSERT INTO users (email, display_name) VALUES ('renormalize-scope@example.com', 'SC') RETURNING id`)).rows[0].id;
+  try {
+    const mk = async () =>
+      (
+        await pool.query(
+          `INSERT INTO reports (user_id, original_filename, mime_type, file_extension, file_size_bytes, storage_path, ingestion_status, generated_summary)
+           VALUES ($1, 'r.pdf', 'application/pdf', 'pdf', 1, '/tmp/r', 'Completed', 'Extracted 1 health parameter. 9 flagged outside the reference range: stale.') RETURNING id`,
+          [uid]
+        )
+      ).rows[0].id;
+    const a = await mk();
+    const b = await mk();
+    const add = async (report) =>
+      (
+        await pool.query(
+          `INSERT INTO health_measurements (report_id, raw_test_name, raw_value, raw_unit, value_type, numeric_value, needs_review, extraction_confidence)
+           VALUES ($1, 'Platelet Count', '2.5', 'lakhs/cumm', 'numeric', 2.5, true, 0.9) RETURNING id`,
+          [report]
+        )
+      ).rows[0].id;
+    const ra = await add(a);
+    const rb = await add(b);
+
+    const stats = await renormalize({ dryRun: false, userId: uid, reportId: a });
+    assert.equal(stats.scanned, 1);
+    assert.equal(Number((await row(ra)).normalized_value), 250);
+    assert.equal((await row(rb)).normalized_unit, null);
+    const summaries = (await pool.query('SELECT id, generated_summary FROM reports WHERE id = ANY($1)', [[a, b]])).rows;
+    assert.doesNotMatch(summaries.find((s) => s.id === a).generated_summary, /stale/);
+    assert.match(summaries.find((s) => s.id === b).generated_summary, /stale/);
+  } finally {
+    await pool.query('DELETE FROM users WHERE id = $1', [uid]);
+  }
+});

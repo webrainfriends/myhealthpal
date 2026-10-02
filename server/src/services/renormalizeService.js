@@ -43,7 +43,7 @@ function sameValue(column, a, b) {
   return String(x) === String(y);
 }
 
-async function renormalize({ dryRun = true, userId = null, log = () => {} } = {}) {
+async function renormalize({ dryRun = true, userId = null, reportId = null, log = () => {} } = {}) {
   const stats = {
     scanned: 0,
     skippedEdited: 0,
@@ -67,9 +67,10 @@ async function renormalize({ dryRun = true, userId = null, log = () => {} } = {}
        JOIN reports r ON r.id = hm.report_id
        WHERE ($1::uuid IS NULL OR hm.id > $1)
          AND ($2::uuid IS NULL OR r.user_id = $2)
+         AND ($3::uuid IS NULL OR hm.report_id = $3)
        ORDER BY hm.id
        LIMIT ${BATCH_SIZE}`,
-      [lastId, userId]
+      [lastId, userId, reportId]
     );
     if (rows.length === 0) break;
     lastId = rows[rows.length - 1].id;
@@ -149,8 +150,9 @@ async function renormalize({ dryRun = true, userId = null, log = () => {} } = {}
     const { rows: summaries } = await pool.query(
       `SELECT r.id, r.generated_summary FROM reports r
        WHERE r.generated_summary LIKE 'Extracted %' AND r.generated_summary NOT LIKE '%Imported %'
-         AND ($1::uuid IS NULL OR r.user_id = $1)`,
-      [userId]
+         AND ($1::uuid IS NULL OR r.user_id = $1)
+         AND ($2::uuid IS NULL OR r.id = $2)`,
+      [userId, reportId]
     );
     for (let i = 0; i < summaries.length; i += BATCH_SIZE) {
       const batch = summaries.slice(i, i + BATCH_SIZE);
