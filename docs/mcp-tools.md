@@ -30,7 +30,7 @@ Read-only. Nothing is changed.
 | `list_kitchen_items` | Items in the person's kitchen/pantry that recipe and meal suggestions draw on. | category, search, availableOnly |
 | `get_medication_reminders` | Today's (or a given date's) medicine doses: what is due, taken, skipped, and recently missed. | date |
 | `get_privacy_consents` | Which privacy choices this person has made (record storage, AI document reading, AI insights, AI apps). | - |
-| `list_retest_plans` | Retest Radar: for each out-of-range result (and medicines linked to a lab value), the date to check again by, its status and a booking link. | - |
+| `list_retest_plans` | Retest Radar: for each out-of-range result (and medicines linked to a lab value), the date to check again by, its status, test-day preparation tips and a booking link for the right panel. | - |
 | `get_insurance_overview` | Health-insurance policies on file with insurer, cover period, premium and renewal dates, and which lab results each policy covers or doesn't (coverage gaps). | - |
 | `get_insurance_summary` | A short insurance summary: number of policies, upcoming premium/renewal dates and coverage gaps raised by out-of-range results. | - |
 | `get_insurance_policy` | Full detail for one insurance policy by id: contacts, premium schedule and organ-wise clauses with ceilings, co-pay and waiting periods. | **policyId** |

@@ -97,10 +97,11 @@ module.exports = {
     .map((email) => email.trim().toLowerCase())
     .filter(Boolean),
   // Retest Radar's "Book test" link. {test} is replaced with the URL-encoded
-  // test name - point this at a lab partner's search/booking page when one
+  // test name and {panel} with the panel a lab lists it under (e.g. "lipid
+  // profile") - point this at a lab partner's search/booking page when one
   // exists; the default is a nearby-labs map search.
   labBookingUrlTemplate:
-    process.env.LAB_BOOKING_URL_TEMPLATE || 'https://www.google.com/maps/search/{test}+test+lab+near+me',
+    process.env.LAB_BOOKING_URL_TEMPLATE || 'https://www.google.com/maps/search/{panel}+test+lab+near+me',
   supportedExtensions: SUPPORTED_EXTENSIONS,
   healthExportExtensions: HEALTH_EXPORT_EXTENSIONS,
   uploadExtensions: { ...SUPPORTED_EXTENSIONS, ...HEALTH_EXPORT_EXTENSIONS },

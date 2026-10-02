@@ -63,6 +63,19 @@ export default function RetestPlanCard({ plan, t, onToggleCheckin, onPress, acti
         </TouchableOpacity>
       )}
 
+      {Array.isArray(plan.prepTips) && plan.prepTips.length > 0 && plan.daysLeft <= BOOKING_WINDOW_DAYS && (
+        <View style={styles.prepBox}>
+          <Text style={styles.actionLabel}>
+            {plan.testPanel ? `Before your ${plan.testPanel} test` : 'Before your test'}
+          </Text>
+          {plan.prepTips.map((tip) => (
+            <Text key={tip} style={typography.bodySecondary}>
+              • {tip}
+            </Text>
+          ))}
+        </View>
+      )}
+
       {plan.microAction ? (
         <TouchableOpacity
           style={[styles.actionRow, plan.checkedInThisWeek && styles.actionRowDone]}
@@ -137,6 +150,12 @@ const styles = StyleSheet.create({
     color: colors.onBrand,
     fontSize: 14,
     fontWeight: '700',
+  },
+  prepBox: {
+    backgroundColor: colors.warningMuted,
+    borderRadius: radii.md,
+    padding: spacing.sm,
+    gap: spacing.xs,
   },
   actionRow: {
     flexDirection: 'row',

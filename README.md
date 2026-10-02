@@ -817,7 +817,9 @@ linked caregiver's devices too ("Time to recheck Dad's HbA1c"). Tapping a
 caregiver's reminder opens that profile.
 
 Retest Radar's **Book test** button opens `LAB_BOOKING_URL_TEMPLATE`, with
-`{test}` replaced by the test name. The default is a nearby-labs map search;
+`{test}` replaced by the test name and `{panel}` by the panel a lab lists it
+under (e.g. "lipid profile" for an LDL result). The default is a nearby-labs
+map search for that panel;
 point it at a lab partner's booking page when you have one. The button shows
 prominently once a recheck is 14 days away or less.
 

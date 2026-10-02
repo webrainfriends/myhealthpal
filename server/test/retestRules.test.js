@@ -11,6 +11,9 @@ const {
   reminderKind,
   CRITICAL_INTERVAL_DAYS,
   bookingUrl,
+  bookingFor,
+  prepFor,
+  isAbnormalFlag,
 } = require('../src/retest/retestRules');
 const { pendingReminders, buildMessage } = require('../src/retest/retestReminderService');
 
@@ -175,4 +178,43 @@ test('bookingUrl fills the test name and refuses non-http templates', () => {
   );
   assert.equal(bookingUrl('javascript:alert(1)//{test}', 'x'), null);
   assert.equal(bookingUrl('', 'x'), null);
+});
+
+test('micro-action fallback is parameter-agnostic but useful, and previously unmapped parameters now have their own', () => {
+  assert.match(microActionFor('vitamin_d', 'High'), /usual diet.*steady/);
+  assert.match(microActionFor('ggt', 'High'), /alcohol/);
+  assert.match(microActionFor('creatinine', 'High'), /water/);
+  assert.match(microActionFor('ft4', 'Low'), /thyroid medicine/);
+  assert.match(microActionFor('non_hdl_cholesterol', 'High'), /nuts or a bowl of oats/);
+});
+
+test('prepFor gives parameter-specific test-day steps', () => {
+  const lipid = prepFor({ parameterCode: 'ldl_cholesterol', reason: 'abnormal_recheck' });
+  assert.equal(lipid.panel, 'lipid profile');
+  assert.match(lipid.tips[0], /Fast for 9-12 hours/);
+  assert.match(lipid.tips.at(-1), /lab's or doctor's/);
+  assert.match(prepFor({ parameterCode: 'hba1c' }).tips[0], /No fasting needed/);
+  assert.match(prepFor({ parameterCode: 'alt' }).tips[0], /alcohol for 48 hours/);
+  // Nothing invented for a parameter with no known preparation.
+  assert.deepEqual(prepFor({ parameterCode: 'something_else' }), { panel: null, tips: [] });
+});
+
+test('a medicine-onset plan explains what the retest is for and books the lab panel, not the medicine', () => {
+  const plan = { parameterCode: 'ldl_cholesterol', parameterDisplayName: 'LDL Cholesterol', reason: 'medication_onset', medicationName: 'Atorvastatin' };
+  const prep = prepFor(plan);
+  assert.match(prep.tips[0], /timed to see how Atorvastatin is working/);
+  const booking = bookingFor('https://maps.example/search/{panel}+lab', plan);
+  assert.equal(booking.url, 'https://maps.example/search/lipid%20profile+lab');
+  assert.equal(booking.label, 'Book lipid profile');
+  assert.match(booking.prepNote, /timed to see how Atorvastatin/);
+});
+
+test('bookingUrl falls back to the test name when there is no panel', () => {
+  assert.equal(bookingUrl('https://x.example/?q={panel}', 'Uric Acid'), 'https://x.example/?q=Uric%20Acid');
+});
+
+test('sufficient / negative results are not retest-worthy abnormal flags', () => {
+  assert.equal(isAbnormalFlag('Sufficient'), false);
+  assert.equal(isAbnormalFlag('Negative'), false);
+  assert.equal(isAbnormalFlag('High'), true);
 });
