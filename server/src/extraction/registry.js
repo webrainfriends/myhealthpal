@@ -30,7 +30,10 @@ function unitKey(unit) {
 // answers "no" when it's confident: the parameter has a canonical unit, and
 // the raw unit matches neither it nor any registered conversion.
 async function isUnitPlausible(parameter, rawUnit) {
-  if (!parameter || !parameter.canonical_unit || !rawUnit) return true;
+  if (!parameter || !rawUnit) return true;
+  // A unitless parameter (a ratio, pH, a score) has no unit at all, so any
+  // unit captured next to it came from a neighbouring column.
+  if (!parameter.canonical_unit) return false;
   const key = unitKey(rawUnit);
   if (key === unitKey(parameter.canonical_unit)) return true;
   const { rows } = await pool.query(
@@ -109,20 +112,43 @@ function candidateNamesFor(rawName) {
 // alias exactly matches `rawName` or one of its common decorated forms (see
 // candidateNamesFor). Zero results means "unmapped"; more than one *distinct*
 // parameter means "ambiguous" — callers must not guess between them.
-async function findCanonicalMatches(rawName) {
-  const candidates = candidateNamesFor(rawName);
-  if (candidates.length === 0) return [];
+//
+// Names are compared "squashed" (lower-cased, only letters and digits kept) so
+// spacing and punctuation variants ("TC/HDL Ratio", "TC / HDL  ratio") match
+// the same alias without every variant having to be listed. The full printed
+// name is tried first: only when it matches nothing are the parenthesised /
+// split-out parts tried, so "AST/ALT Ratio (SGOT/SGPT)" resolves to the ratio
+// instead of also matching AST and ALT through its "SGOT" and "SGPT" parts.
+function squash(text) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
 
+async function matchSquashed(names) {
+  const keys = [...new Set(names.map(squash).filter(Boolean))];
+  if (keys.length === 0) return [];
   const { rows } = await pool.query(
     `SELECT DISTINCT hp.*
      FROM health_parameters hp
      LEFT JOIN parameter_aliases pa ON pa.health_parameter_id = hp.id
-     WHERE lower(hp.code) = ANY($1)
-        OR lower(hp.display_name) = ANY($1)
-        OR lower(pa.alias_text) = ANY($1)`,
-    [candidates]
+     WHERE regexp_replace(lower(hp.code), '[^a-z0-9]', '', 'g') = ANY($1)
+        OR regexp_replace(lower(hp.display_name), '[^a-z0-9]', '', 'g') = ANY($1)
+        OR regexp_replace(lower(pa.alias_text), '[^a-z0-9]', '', 'g') = ANY($1)`,
+    [keys]
   );
   return rows;
+}
+
+async function findCanonicalMatches(rawName) {
+  const candidates = candidateNamesFor(rawName);
+  if (candidates.length === 0) return [];
+
+  // candidates[0] is the full printed name (decoration like a trailing "."
+  // already removed).
+  const exact = await matchSquashed([candidates[0]]);
+  if (exact.length > 0) return exact;
+  return matchSquashed(candidates.slice(1));
 }
 
 async function getParameterById(id) {
@@ -172,5 +198,6 @@ module.exports = {
   searchParameters,
   convertToCanonicalUnit,
   isUnitPlausible,
+  squash,
   unitKey,
 };

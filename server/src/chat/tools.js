@@ -1,6 +1,8 @@
 const pool = require('../db/pool');
 const { toPublicRecord } = require('../security/reportAccess');
 const { reportDisplayTitle } = require('../lib/reportTitle');
+const { displayUnit } = require('../lib/displayUnit');
+const { countReports, describeCounts } = require('../services/attentionService');
 const registry = require('../extraction/registry');
 const { findKnowledgeEntry } = require('../medications/medicationLinkingService');
 const { getMedicationKnowledge } = require('../medications/medicationKnowledgeService');
@@ -83,8 +85,21 @@ const getLatestReport = {
       report.id,
     ]);
     const displayTitle = reportDisplayTitle(report);
+    // Live, judged the way the needs-attention list is (the stored
+    // generated_summary is a snapshot from upload time and can disagree).
+    const counts = (await countReports([report.id])).get(report.id);
     return {
-      data: { ...report, displayTitle, measurementCount: Number(measurementCount.rows[0].count) },
+      data: {
+        ...report,
+        displayTitle,
+        measurementCount: Number(measurementCount.rows[0].count),
+        counts: {
+          outOfRange: counts.abnormal,
+          derivedOutOfRange: counts.derivedAbnormal,
+          needReview: counts.review,
+        },
+        summary: describeCounts(counts),
+      },
       evidence: [{ type: 'report', id: report.id, label: displayTitle }],
     };
   },
@@ -107,19 +122,28 @@ const getReportById = {
     if (reportResult.rows.length === 0) return { data: { found: false }, evidence: [] };
     const report = reportResult.rows[0];
     const measurements = await pool.query(
-      `SELECT hm.id, hm.raw_test_name, hm.raw_value, hm.raw_unit, hm.status_flag, hp.display_name AS parameter_display_name
+      `SELECT hm.id, hm.raw_test_name, hm.raw_value, hm.raw_unit, hm.status_flag, hp.display_name AS parameter_display_name,
+              hm.health_parameter_id, hm.normalized_unit, hm.normalization_confidence, hp.canonical_unit
        FROM health_measurements hm
        LEFT JOIN health_parameters hp ON hp.id = hm.health_parameter_id
        WHERE hm.report_id = $1`,
       [report.id]
     );
+    // `unit` is the printed unit unless it can't belong to the result (a "%"
+    // beside a ratio); the raw extraction columns aren't returned.
+    const shown = measurements.rows.map(
+      ({ raw_unit, health_parameter_id, normalized_unit, normalization_confidence, canonical_unit, ...rest }) => ({
+        ...rest,
+        unit: displayUnit({ raw_unit, health_parameter_id, normalized_unit, normalization_confidence, canonical_unit }),
+      })
+    );
     return {
       // Only the report's public fields - never storage paths or key
       // metadata - reach the model (ids are stripped by the AI gateway).
-      data: { report: toPublicRecord(report), measurements: measurements.rows },
+      data: { report: toPublicRecord(report), measurements: shown },
       evidence: [
         { type: 'report', id: report.id, label: reportDisplayTitle(report) },
-        ...evidenceFor('measurement', measurements.rows),
+        ...evidenceFor('measurement', shown),
       ],
     };
   },

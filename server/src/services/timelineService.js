@@ -1,5 +1,6 @@
 const pool = require('../db/pool');
 const { reportDisplayTitle } = require('../lib/reportTitle');
+const { countReports } = require('./attentionService');
 
 // Chronological view across reports, filterable by date range, report type,
 // source, parameter category, and free-text search over the report's
@@ -14,10 +15,6 @@ async function listTimeline(userId, { dateFrom = null, dateTo = null, reportType
             r.source_provider, r.report_type, r.modality, r.body_region, r.ingestion_status, r.likely_duplicate_of_report_id,
             r.upload_timestamp, r.created_at,
             (SELECT count(*) FROM health_measurements hm WHERE hm.report_id = r.id) AS measurement_count,
-            (SELECT count(*) FROM health_measurements hm
-               WHERE hm.report_id = r.id AND hm.status_flag IS NOT NULL
-                 AND lower(hm.status_flag) NOT IN ('normal', 'n', 'wnl', 'within normal limits', 'unremarkable', 'within range', 'sufficient', 'optimal', 'desirable', 'negative', 'absent', 'nil', 'not detected', 'non-reactive'))
-              AS abnormal_count,
             rsv.summary_text AS narrative_summary
      FROM reports r
      LEFT JOIN report_summaries rs ON rs.report_id = r.id
@@ -44,7 +41,14 @@ async function listTimeline(userId, { dateFrom = null, dateTo = null, reportType
     [userId, dateFrom, dateTo, reportType, source, search, category]
   );
 
-  return rows.map((r) => ({ ...r, displayTitle: reportDisplayTitle(r) }));
+  // Out-of-range / review counts are judged the way the needs-attention list
+  // judges them (the printed flag or range, else the standard range), not by
+  // matching the flag text, so a report's count agrees with the list.
+  const counts = await countReports(rows.map((r) => r.id));
+  return rows.map((r) => {
+    const c = counts.get(r.id);
+    return { ...r, displayTitle: reportDisplayTitle(r), abnormal_count: c.abnormal, review_count: c.review };
+  });
 }
 
 module.exports = { listTimeline };

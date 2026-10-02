@@ -75,3 +75,29 @@ test('eGFR printed with "m2" and platelets in raw /cumm convert to the canonical
   assert.equal(plt.normalized_value, 250);
   assert.equal(plt.needs_review, false);
 });
+
+test('a unitless ratio drops the stray unit captured beside it and needs no review', async () => {
+  for (const name of ['AST/ALT Ratio', 'AST/ALT Ratio (SGOT/SGPT)', 'SGOT/SGPT']) {
+    const m = await normalizeCandidate({ test_name: name, value: '1.2', unit: '%', confidence: 0.9 });
+    assert.ok(m.health_parameter_id, `${name} should map to the ratio, not be ambiguous`);
+    assert.equal(m.ambiguous_candidate_ids, null);
+    assert.equal(m.normalized_unit, null);
+    assert.equal(m.normalized_value, 1.2);
+    assert.equal(m.raw_unit, '%'); // the extraction is kept as-is
+    assert.equal(m.needs_review, false);
+  }
+});
+
+test('lipid ratio and HDL spellings map to the right parameter, whatever the spacing', async () => {
+  const idFor = async (name) => (await normalizeCandidate({ test_name: name, value: '3', confidence: 0.9 })).health_parameter_id;
+  const tcHdl = await idFor('TC/HDL Ratio');
+  assert.ok(tcHdl);
+  assert.equal(await idFor('TC / HDL  ratio'), tcHdl);
+  assert.equal(await idFor('TC/HDL CHOLESTEROL RATIO'), tcHdl);
+  assert.ok(await idFor('TG/HDL Ratio'));
+  assert.ok(await idFor('LDL/HDL'));
+  const hdl = await idFor('HDL Cholesterol');
+  assert.ok(hdl);
+  assert.equal(await idFor('Cholesterol - HDL'), hdl);
+  assert.notEqual(hdl, tcHdl);
+});

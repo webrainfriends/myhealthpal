@@ -56,3 +56,21 @@ test('a parameter never declares a conversion from its own canonical unit', () =
     }
   }
 });
+
+test('no two parameters share a name once spacing and punctuation are ignored', () => {
+  // Matching squashes names to letters+digits, so "Cholesterol/HDL" and
+  // "Cholesterol - HDL" are the same key: they must not belong to different
+  // parameters or every such name becomes ambiguous.
+  const squash = (t) => String(t).toLowerCase().replace(/[^a-z0-9]/g, '');
+  const owner = new Map();
+  const clashes = [];
+  for (const p of registryData) {
+    for (const name of [p.code, p.displayName, ...p.aliases]) {
+      const key = squash(name);
+      if (!key) continue;
+      if (owner.has(key) && owner.get(key) !== p.code) clashes.push(`${name} (${p.code}) vs ${owner.get(key)}`);
+      else owner.set(key, p.code);
+    }
+  }
+  assert.deepEqual(clashes, []);
+});

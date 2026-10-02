@@ -99,7 +99,7 @@ export default function MeasurementRow({ measurement, editable, onChange, onChan
               onChangeText={(text) => onChange({ raw_unit: text })}
             />
           ) : (
-            <Text style={typography.body}>{measurement.raw_unit || '—'}</Text>
+            <Text style={typography.body}>{(measurement.display_unit !== undefined ? measurement.display_unit : measurement.raw_unit) || '—'}</Text>
           )}
         </View>
       </View>

@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../db/pool');
 const config = require('../config');
 const { reportDisplayTitle } = require('../lib/reportTitle');
+const { displayUnit } = require('../lib/displayUnit');
 const { upload, extensionOf, maxBytesFor } = require('../middleware/upload');
 const { enqueueProcessing } = require('../services/ingestionService');
 const registry = require('../extraction/registry');
@@ -67,7 +68,7 @@ router.get('/:id', async (req, res, next) => {
 
     res.json({
       report: toPublicRecord(report),
-      measurements: measurements.rows,
+      measurements: measurements.rows.map((m) => ({ ...m, display_unit: displayUnit(m) })),
       dates: dates.rows,
       narrativeSummary: narrative.rows[0] || null,
     });

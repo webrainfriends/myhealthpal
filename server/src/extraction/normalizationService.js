@@ -61,7 +61,15 @@ async function normalizeCandidate(candidate) {
   let unitCorrected = false;
 
   if (matchedParameter) {
-    if (numericValue !== null && candidate.unit) {
+    if (numericValue !== null && candidate.unit && !matchedParameter.canonical_unit) {
+      // A ratio / pH / score has no unit: whatever was captured beside it
+      // (AST/ALT ratio read with a "%" from the next column) is not part of
+      // the result. Keep raw_unit as extracted, but there is nothing to
+      // normalize and nothing for a person to review.
+      normalizedUnit = null;
+      normalizedValue = numericValue;
+      normalizationConfidence = 1.0;
+    } else if (numericValue !== null && candidate.unit) {
       const conversion = await registry.convertToCanonicalUnit(matchedParameter, numericValue, candidate.unit);
       if (conversion) {
         normalizedUnit = conversion.normalizedUnit;
@@ -85,7 +93,7 @@ async function normalizeCandidate(candidate) {
       }
     } else {
       // Qualitative/coded/unitless results map identity-only; no conversion needed.
-      normalizedUnit = candidate.unit || null;
+      normalizedUnit = matchedParameter.canonical_unit ? candidate.unit || null : null;
       normalizedValue = numericValue;
       normalizationConfidence = 0.9;
     }
@@ -95,7 +103,9 @@ async function normalizeCandidate(candidate) {
     Boolean(candidate.needs_review) ||
     !matchedParameter ||
     unitCorrected ||
-    Boolean(matchedParameter && numericValue !== null && candidate.unit && normalizedUnit === null);
+    Boolean(
+      matchedParameter && matchedParameter.canonical_unit && numericValue !== null && candidate.unit && normalizedUnit === null
+    );
 
   return {
     raw_test_name: candidate.test_name,
