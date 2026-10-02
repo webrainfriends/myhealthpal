@@ -175,3 +175,35 @@ test('a unitless ratio is listed without the stray unit; estimated average gluco
     assert.equal(counts.derivedAbnormal, 1);
   });
 });
+
+test('clean culture wording is not listed, but a growth that names an organism still is', async () => {
+  await withReports('needs-attention-culture@example.com', async ({ uid, mkReport }) => {
+    const r = await mkReport('culture.pdf', '2026-02-10');
+    const add = (name, text) =>
+      pool.query(
+        `INSERT INTO health_measurements (report_id, raw_test_name, raw_value, qualitative_value, value_type, needs_review)
+         VALUES ($1, $2, $3, $3, 'qualitative', true)`,
+        [r, name, text]
+      );
+    await add('Urine Culture', 'No growth after 48 hours of incubation');
+    await add('Stool Culture', 'No organism isolated');
+    await add('Sterility Test', 'Sterile');
+    await add('Blood Culture', 'Growth of Escherichia coli >10^5 CFU/mL');
+    await add('Wound Swab', 'Escherichia coli isolated: heavy growth');
+    const { items } = await dashboardRoutes.fetchNeedsAttentionDetailed(uid);
+    assert.deepEqual(items.map((i) => i.raw_test_name).sort(), ['Blood Culture', 'Wound Swab']);
+  });
+});
+
+test('a low-confidence abnormal item stays abnormal and says to check the value', async () => {
+  await withReports('needs-attention-lowconf@example.com', async ({ uid, mkReport, add }) => {
+    const r = await mkReport('r.pdf', '2026-08-31');
+    await add(r, { code: 'hemoglobin', name: 'Hemoglobin', value: '9', flag: 'Low', range: '13-17', review: true });
+    const { items, counts } = await dashboardRoutes.fetchNeedsAttentionDetailed(uid);
+    assert.equal(items[0].attention_reason, 'abnormal');
+    assert.equal(items[0].low_confidence, true);
+    assert.equal(items[0].needs_review, false);
+    assert.match(items[0].confidence_note, /check the value against the original/);
+    assert.equal(counts.lowConfidence, 1);
+  });
+});

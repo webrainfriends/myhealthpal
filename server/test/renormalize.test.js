@@ -81,3 +81,46 @@ test('renormalizing fixes mapping, units and review flags, skips edited rows, an
   const again = await renormalize({ dryRun: false, userId });
   assert.equal(again.changed, 0);
 });
+
+test('every plain lab summary is brought in line with the live counts, not only reports whose rows changed', async () => {
+  const uid = (await pool.query(`INSERT INTO users (email, display_name) VALUES ('renormalize-summary@example.com', 'RS') RETURNING id`)).rows[0].id;
+  try {
+    const mk = async (summary) =>
+      (
+        await pool.query(
+          `INSERT INTO reports (user_id, original_filename, mime_type, file_extension, file_size_bytes, storage_path, ingestion_status, generated_summary)
+           VALUES ($1, 'r.pdf', 'application/pdf', 'pdf', 1, '/tmp/r', 'Needs Review', $2) RETURNING id`,
+          [uid, summary]
+        )
+      ).rows[0].id;
+    const stale = await mk('Extracted 1 health parameter. 16 flagged outside the reference range: Hb. 13 values need manual review.');
+    const imported = await mk('Imported 12 glucose meter readings - see the Diabetes card for daily averages.');
+    const hb = (await pool.query(`SELECT id FROM health_parameters WHERE code = 'hemoglobin'`)).rows[0].id;
+    await pool.query(
+      `INSERT INTO health_measurements (report_id, health_parameter_id, raw_test_name, raw_value, raw_unit, value_type, numeric_value,
+         normalized_value, normalized_unit, normalization_confidence, status_flag, reference_range_raw, needs_review, extraction_confidence)
+       VALUES ($1, $2, 'Hemoglobin', '9', 'g/dL', 'numeric', 9, 9, 'g/dL', 1, 'Low', '13-17', false, 0.9)`,
+      [stale, hb]
+    );
+
+    // Settle the rows, then put the stale text back so the next run has no
+    // result to change - only a summary out of date.
+    await renormalize({ dryRun: false, userId: uid });
+    await pool.query(
+      `UPDATE reports SET generated_summary = 'Extracted 1 health parameter. 16 flagged outside the reference range: Hb. 13 values need manual review.' WHERE id = $1`,
+      [stale]
+    );
+
+    const first = await renormalize({ dryRun: false, userId: uid });
+    assert.equal(first.changed, 0);
+    assert.equal(first.summariesRefreshed, 1);
+    const text = (await pool.query('SELECT generated_summary FROM reports WHERE id = $1', [stale])).rows[0].generated_summary;
+    assert.match(text, /^Extracted 1 health parameter\. 1 outside the reference range\.$/);
+    assert.match((await pool.query('SELECT generated_summary FROM reports WHERE id = $1', [imported])).rows[0].generated_summary, /^Imported 12/);
+
+    const second = await renormalize({ dryRun: false, userId: uid });
+    assert.equal(second.summariesRefreshed, 0);
+  } finally {
+    await pool.query('DELETE FROM users WHERE id = $1', [uid]);
+  }
+});

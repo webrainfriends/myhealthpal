@@ -3,7 +3,7 @@ const config = require('../config');
 const { normalizeCandidate } = require('../extraction/normalizationService');
 const { supersedeInsightsForMeasurement, runForMeasurement } = require('../insights/insightService');
 const { refreshSummaryForReport } = require('../extraction/reportNarrativeService');
-const { countReports, describeCounts } = require('./attentionService');
+const { countReports, liveSummary } = require('./attentionService');
 
 // Re-runs normalization (registry matching, unit handling, value
 // classification) over results that were saved before those rules were
@@ -54,6 +54,7 @@ async function renormalize({ dryRun = true, userId = null, log = () => {} } = {}
     reviewAdded: 0,
     insightsRefreshed: 0,
     reportsRefreshed: 0,
+    summariesRefreshed: 0,
   };
   const changedReports = new Set();
   const insightWork = [];
@@ -141,29 +142,39 @@ async function renormalize({ dryRun = true, userId = null, log = () => {} } = {}
       }
     }
 
-    // The stored one-line summary is a snapshot from upload time; refresh it
-    // for reports whose results changed, so it agrees with the live counts.
-    const ids = [...changedReports];
-    const countsByReport = await countReports(ids);
-    for (const id of ids) {
-      const { rows } = await pool.query('SELECT generated_summary FROM reports WHERE id = $1', [id]);
-      const current = rows[0] && rows[0].generated_summary;
-      // Only the plain lab summary is rewritten; one carrying import notes
-      // (activity/glucose) is left as it is.
-      if (current && /^Extracted \d+ health parameter/.test(current) && !/Imported /.test(current)) {
-        await pool.query('UPDATE reports SET generated_summary = $2, updated_at = now() WHERE id = $1', [
-          id,
-          describeCounts(countsByReport.get(id)),
-        ]);
+    // The stored one-line summary is a snapshot from upload time, so it goes
+    // stale whenever results are re-judged - for every plain lab report, not
+    // only ones whose rows changed in this run. Idempotent: written only when
+    // the text differs.
+    const { rows: summaries } = await pool.query(
+      `SELECT r.id, r.generated_summary FROM reports r
+       WHERE r.generated_summary LIKE 'Extracted %' AND r.generated_summary NOT LIKE '%Imported %'
+         AND ($1::uuid IS NULL OR r.user_id = $1)`,
+      [userId]
+    );
+    for (let i = 0; i < summaries.length; i += BATCH_SIZE) {
+      const batch = summaries.slice(i, i + BATCH_SIZE);
+      const countsByReport = await countReports(batch.map((r) => r.id));
+      for (const report of batch) {
+        const text = liveSummary(report, countsByReport.get(report.id));
+        if (text && text !== report.generated_summary) {
+          await pool.query('UPDATE reports SET generated_summary = $2, updated_at = now() WHERE id = $1', [report.id, text]);
+          stats.summariesRefreshed += 1;
+        }
       }
-      if (config.summaryProvider !== 'claude') {
+    }
+
+    // Narrative text follows the stored results; refresh it for reports whose
+    // results changed in this run.
+    if (config.summaryProvider !== 'claude') {
+      for (const id of changedReports) {
         try {
           await refreshSummaryForReport(id);
+          stats.reportsRefreshed += 1;
         } catch (err) {
           log(`narrative refresh failed for one report: ${err.message}`);
         }
       }
-      stats.reportsRefreshed += 1;
     }
   }
 

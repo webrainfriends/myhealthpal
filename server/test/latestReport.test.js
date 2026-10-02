@@ -116,3 +116,37 @@ test('get_latest_report counts agree with the needs-attention list, and the time
     await pool.query('DELETE FROM users WHERE id = $1', [uid]);
   }
 });
+
+test('a report carries one summary: the live one, never the stale upload-time text beside it', async () => {
+  const { buildOrganSummaries } = require('../src/services/organHealthService'); // keep loaded order stable
+  void buildOrganSummaries;
+  const user = await pool.query(`INSERT INTO users (email, display_name) VALUES ('latest-report-one-summary@example.com', 'OS') RETURNING id`);
+  const uid = user.rows[0].id;
+  try {
+    const rid = (
+      await pool.query(
+        `INSERT INTO reports (user_id, original_filename, mime_type, file_extension, file_size_bytes, storage_path, ingestion_status, effective_date, generated_summary)
+         VALUES ($1, 'p.pdf', 'application/pdf', 'pdf', 10, '/tmp/x', 'Needs Review', '2026-08-31',
+                 'Extracted 3 health parameters. 16 flagged outside the reference range: stale. 13 values need manual review.') RETURNING id`,
+        [uid]
+      )
+    ).rows[0].id;
+    const param = async (code) => (await pool.query('SELECT id FROM health_parameters WHERE code = $1', [code])).rows[0].id;
+    await pool.query(
+      `INSERT INTO health_measurements (report_id, health_parameter_id, raw_test_name, raw_value, value_type, numeric_value, normalized_value, status_flag, reference_range_raw)
+       VALUES ($1, $2, 'Hb', '9', 'numeric', 9, 9, 'Low', '13-17')`,
+      [rid, await param('hemoglobin')]
+    );
+
+    const latest = await executeTool('get_latest_report', {}, { userId: uid });
+    assert.equal('generated_summary' in latest.data, false);
+    assert.match(latest.data.summary, /1 outside the reference range/);
+    assert.doesNotMatch(latest.data.summary, /stale|13 values/);
+
+    const byId = await executeTool('get_report_by_id', { reportId: rid }, { userId: uid });
+    assert.equal(byId.data.report.generated_summary, latest.data.summary);
+    assert.equal(byId.data.counts.outOfRange, 1);
+  } finally {
+    await pool.query('DELETE FROM users WHERE id = $1', [uid]);
+  }
+});

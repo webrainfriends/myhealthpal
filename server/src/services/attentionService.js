@@ -22,9 +22,27 @@ function hasReadableResult(row) {
 // An unjudged result that just reads "Absent" / "Nil" / "Not detected" isn't
 // worth asking a person to review (and an unmapped template field such as a
 // pre-printed "Trichomonas: Absent" can't be judged any other way).
+// Culture / microscopy wording for a clean result ("No growth after 48 hours
+// of incubation", "Sterile", "No organism isolated"). A text that also names a
+// positive finding is never treated as clean.
+const NEGATIVE_FINDING = new RegExp(
+  [
+    '^no (significant |bacterial |microbial |fungal |pathogenic |organism |bacterial or fungal )?growth\\b',
+    '^no (significant )?(organisms?|pathogens?|bacteria|parasites?|ova|cysts?|yeast|casts?|crystals?)\\b.*\\b(isolated|seen|detected|found|present|identified)\\b',
+    '^(sterile|not isolated|negative for\\b.*)$',
+  ].join('|')
+);
+const POSITIVE_FINDING = /(\bgrowth of\b|\bisolated:|\bpositive\b|>\s*10\s*\^|\bcfu\b.*\b\d{3,}\b|\bpredominant)/;
+
+function isNothingFoundText(value) {
+  const text = String(value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+  if (!text) return false;
+  if (GENERIC_QUALITATIVE_NORMAL.has(text)) return true;
+  return NEGATIVE_FINDING.test(text) && !POSITIVE_FINDING.test(text);
+}
+
 function isNothingFound(row) {
-  const text = String(row.qualitative_value ?? row.raw_value ?? '').trim().toLowerCase();
-  return GENERIC_QUALITATIVE_NORMAL.has(text);
+  return isNothingFoundText(row.qualitative_value ?? row.raw_value);
 }
 
 // Row fields are health_measurements columns plus the joined `code`.
@@ -93,10 +111,29 @@ function describeCounts(counts) {
       ? `${counts.abnormal} outside the reference range.`
       : 'All judged values fall within their reference ranges.'
   );
+  if (counts.derivedAbnormal > 0) {
+    parts.push(`${counts.derivedAbnormal} calculated value${counts.derivedAbnormal === 1 ? '' : 's'} (derived from another test) also outside range.`);
+  }
   if (counts.review > 0) {
     parts.push(`${counts.review} more need${counts.review === 1 ? 's' : ''} manual review (unmapped or low confidence).`);
   }
   return parts.join(' ');
 }
 
-module.exports = { toEvalRow, attentionFor, countReports, describeCounts, hasReadableResult, isNothingFound, tally };
+// The one-line summary stored when a report was uploaded counts flags as they
+// were then, and goes stale as soon as results are re-judged. Where it is the
+// plain lab summary, the live counts replace it; summaries that say something
+// else (an activity / glucose import note, an imaging report) are left alone.
+const PLAIN_LAB_SUMMARY = /^Extracted \d+ health parameter/;
+
+function isPlainLabSummary(text) {
+  return Boolean(text) && PLAIN_LAB_SUMMARY.test(text) && !/Imported /.test(text);
+}
+
+function liveSummary(report, counts) {
+  return counts && isPlainLabSummary(report && report.generated_summary)
+    ? describeCounts(counts)
+    : (report && report.generated_summary) || null;
+}
+
+module.exports = { toEvalRow, attentionFor, countReports, describeCounts, liveSummary, isPlainLabSummary, isNothingFoundText, hasReadableResult, isNothingFound, tally };
