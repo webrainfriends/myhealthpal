@@ -4,6 +4,7 @@ const config = require('../config');
 const { reportDisplayTitle } = require('../lib/reportTitle');
 const { displayUnit } = require('../lib/displayUnit');
 const { countReports, liveSummary } = require('../services/attentionService');
+const { recheckReport } = require('../services/recheckService');
 const { upload, extensionOf, maxBytesFor } = require('../middleware/upload');
 const { enqueueProcessing } = require('../services/ingestionService');
 const registry = require('../extraction/registry');
@@ -170,10 +171,28 @@ router.post('/:id/retry', async (req, res, next) => {
     if (report.ingestion_status === 'Processing') {
       return res.status(409).json({ error: 'Report is already processing.' });
     }
+    // Re-processing re-reads the file and stores a second copy of every result
+    // next to the confirmed ones, and takes the report off the dashboard while
+    // it runs. A confirmed report is re-judged with "Re-check results" instead.
+    if (report.ingestion_status === 'Completed') {
+      return res.status(409).json({ error: 'This report is confirmed. Use Re-check results to refresh its values.' });
+    }
 
     enqueueProcessing(report.id);
     res.json({ status: 'queued' });
   } catch (err) {
+    next(err);
+  }
+});
+
+// Re-applies the current matching / unit / flag rules to this report's
+// already-extracted results (no AI, no status change) and returns its counts
+// next to the dashboard's - see services/recheckService.js.
+router.post('/:id/recheck', async (req, res, next) => {
+  try {
+    res.json(await recheckReport(currentUserId(req), req.params.id));
+  } catch (err) {
+    if (err instanceof ServiceError) return res.status(err.status).json({ error: err.message });
     next(err);
   }
 });

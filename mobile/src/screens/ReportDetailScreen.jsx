@@ -13,6 +13,7 @@ import {
   fetchReportFileUrl,
   resolveDuplicateMeasurement,
   retryReport,
+  recheckReport,
   updateMeasurement,
   updateReportDate,
 } from '../api/client';
@@ -106,6 +107,9 @@ export default function ReportDetailScreen({ route, navigation }) {
   const [narrativeSummary, setNarrativeSummary] = useState(null);
   const [busy, setBusy] = useState(false);
   const [openingFile, setOpeningFile] = useState(false);
+  // Bumped to restart polling after an action that puts the report back in
+  // Processing (the effect below otherwise only starts on mount).
+  const [pollNonce, setPollNonce] = useState(0);
   const pendingEdits = useRef({});
   const debounceTimers = useRef({});
 
@@ -141,7 +145,7 @@ export default function ReportDetailScreen({ route, navigation }) {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [load]);
+  }, [load, pollNonce]);
 
   function handleMeasurementChange(measurementId, changes) {
     setMeasurements((prev) => prev.map((m) => (m.id === measurementId ? { ...m, ...changes } : m)));
@@ -209,8 +213,34 @@ export default function ReportDetailScreen({ route, navigation }) {
     try {
       await retryReport(reportId);
       await load();
+      setPollNonce((n) => n + 1);
     } catch (err) {
       showAlert(t('reportDetail.couldNotRetry'), err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Re-applies the current matching / unit / flag rules to this report's
+  // results (no AI, status unchanged) and shows how its counts compare with
+  // the dashboard's.
+  async function handleRecheck() {
+    setBusy(true);
+    try {
+      const result = await recheckReport(reportId);
+      await load();
+      showAlert(
+        t('reportDetail.recheckDone'),
+        [
+          result.stats.updated > 0
+            ? t('reportDetail.recheckUpdated', { count: result.stats.updated })
+            : t('reportDetail.recheckNoChange'),
+          t('reportDetail.recheckCounts', { outOfRange: result.counts.outOfRange, needReview: result.counts.needReview }),
+          t('reportDetail.recheckDashboard', { outOfRange: result.dashboard.outOfRange }),
+        ].join('\n')
+      );
+    } catch (err) {
+      showAlert(t('reportDetail.couldNotRecheck'), err.message);
     } finally {
       setBusy(false);
     }
@@ -383,6 +413,15 @@ export default function ReportDetailScreen({ route, navigation }) {
         )}
 
         {isEditable && <PrimaryButton title={t('reportDetail.confirmReport')} onPress={handleConfirm} loading={busy} />}
+
+        {(report.ingestion_status === 'Needs Review' || report.ingestion_status === 'Completed') && (
+          <PrimaryButton
+            title={t('reportDetail.recheckResults')}
+            variant="secondary"
+            onPress={handleRecheck}
+            loading={busy}
+          />
+        )}
 
         {(report.ingestion_status === 'Failed' || isEditable) && (
           <PrimaryButton

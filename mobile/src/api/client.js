@@ -212,6 +212,14 @@ export async function retryReport(reportId) {
   return handleResponse(response);
 }
 
+// Re-applies the current matching / unit / flag rules to a report's
+// already-extracted results (no AI, status unchanged) and returns its counts
+// next to the dashboard's.
+export async function recheckReport(reportId) {
+  const response = await apiFetch(`/api/reports/${reportId}/recheck`, { method: 'POST' });
+  return handleResponse(response);
+}
+
 export async function updateMeasurement(reportId, measurementId, changes) {
   const response = await apiFetch(`/api/reports/${reportId}/measurements/${measurementId}`, {
     method: 'PATCH',
