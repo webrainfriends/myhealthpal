@@ -785,6 +785,7 @@ export const TRANSLATIONS = {
       dirSteady: 'steady',
     },
     activity: {
+      title: 'Activity',
       loading: 'Loading…',
       lastSynced: 'Last synced {{date}}',
       move: 'Move',
@@ -1489,6 +1490,7 @@ export const TRANSLATIONS = {
       scanOrLogToday: 'Escanea o registra las comidas de hoy',
     },
     activity: {
+      title: 'Actividad',
       loading: 'Cargando…',
       lastSynced: 'Última sincronización {{date}}',
       move: 'Moverse',
