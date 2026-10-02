@@ -16,6 +16,18 @@ connector (`server/src/mcp`) are unchanged and keep using the same API.
 | Privacy | Account deletion in Settings, consent screens, camera/photo/health/location/Bluetooth purpose strings, no microphone permission |
 | Builds | `mobile/eas.json`: `development`, `preview` (internal / APK), `production` (store, auto-increment) |
 
+## Quick test in Expo Go (against the deployed server)
+
+```bash
+cd mobile && npm install
+EXPO_PUBLIC_API_BASE_URL=<app URL from the README deploy section> npm run go
+```
+
+Scan the QR code with Expo Go (same Wi-Fi). Plain-HTTP deployments work in
+Expo Go only, not in store builds. BLE, Apple Health, Health Connect, the AI
+workout camera, push and native Apple sign-in are unavailable there - use
+Continue as Guest.
+
 ## One-time steps only you can do
 
 1. **Accounts**: Apple Developer Program, Google Play Console.
