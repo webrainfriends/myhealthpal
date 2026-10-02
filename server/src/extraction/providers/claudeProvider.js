@@ -7,9 +7,17 @@ const SYSTEM_PROMPT = [
   'Extract only what is explicitly present in the document.',
   'Never invent, infer, or guess a value, unit, reference range, date, or diagnosis that is not printed in the source.',
   'If a field is not present, omit it or use null rather than fabricating one.',
+  'Lab report templates pre-print rows for tests that were not run; skip any row with no actual result (blank, "-", "NA", "Not performed", "Not applicable") instead of reporting it.',
   'If a value is unclear or you are not confident you read it correctly, still report it but lower its confidence score.',
   'This is a data-capture task, not a diagnostic one: never add clinical interpretation beyond what the report itself states.',
 ].join(' ');
+
+// Template rows a lab pre-prints without a result. Dropped here as well as in
+// the prompt, because the model doesn't always follow the instruction.
+const PLACEHOLDER_VALUES = new Set(['', '-', '--', '—', 'na', 'n/a', 'not performed', 'not applicable', 'not done']);
+function isPlaceholderValue(value) {
+  return PLACEHOLDER_VALUES.has(String(value).trim().toLowerCase());
+}
 
 const DOCUMENT_INSTRUCTION =
   'Extract every lab/health test result from this health report, plus the report-level details below, by calling ' +
@@ -227,7 +235,7 @@ async function extract(document, context = {}) {
 
   const parameters = Array.isArray(toolUse.input?.parameters) ? toolUse.input.parameters : [];
   const candidates = parameters
-    .filter((p) => p && p.test_name && p.value !== undefined && p.value !== null)
+    .filter((p) => p && p.test_name && p.value !== undefined && p.value !== null && !isPlaceholderValue(p.value))
     .map((p) => ({
       test_name: String(p.test_name),
       value: String(p.value),

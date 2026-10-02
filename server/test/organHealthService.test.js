@@ -407,3 +407,28 @@ test('a card total counts every tracked test, and an unevaluable one never infla
   assert.equal(d.evaluatedCount, 1);
   assert.equal(d.outOfRange.length, 1);
 });
+
+test('vitamin-style wording is recognized as a low or normal flag', () => {
+  const low = evaluateResult({ statusFlag: 'Insufficient', numericValue: 20.6 });
+  assert.equal(low.status, 'abnormal');
+  assert.equal(low.direction, 'low');
+  assert.equal(evaluateResult({ statusFlag: 'Deficient' }).direction, 'low');
+  assert.equal(evaluateResult({ statusFlag: 'Sufficient' }).status, 'normal');
+});
+
+test('an "A" flag (Absent) is not read as abnormal', () => {
+  assert.notEqual(evaluateResult({ code: 'urine_bile', statusFlag: 'A', qualitativeValue: 'Absent' }).status, 'abnormal');
+  assert.equal(evaluateResult({ code: 'urine_bile', statusFlag: 'A', qualitativeValue: 'Absent' }).status, 'normal');
+});
+
+test('qualitative "nothing found" results are normal for the urine microscopy codes', () => {
+  assert.equal(evaluateResult({ code: 'urine_hyaline_casts', qualitativeValue: 'Absent' }).status, 'normal');
+  assert.equal(evaluateResult({ code: 'urine_pus_cells', qualitativeValue: '0-2' }).status, 'normal');
+  // No entry for the code: still never guessed at.
+  assert.equal(evaluateResult({ code: 'some_new_test', qualitativeValue: 'Nil' }).status, 'unknown');
+});
+
+test('eGFR 117 against its standard range is normal', () => {
+  const standard = { range_low: 90, range_high: 130 };
+  assert.equal(evaluateResult({ code: 'egfr', numericValue: 117 }, standard).status, 'normal');
+});

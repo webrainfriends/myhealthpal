@@ -4,12 +4,40 @@ const pool = require('../db/pool');
 // "gm/dL" vs "g/dL" is the same mass unit, not a conversion; normalizing it
 // here means it matches for every parameter, not just ones someone thought
 // to add a factor=1 conversion row for.
+//
+// Same idea for the other spelling variants labs use for one unit: the
+// micro sign (µ/μ vs u), "cumm"/"mm3" for a microlitre (1 mm3 = 1 uL), a
+// leading "x" or superscript 10^3 on a count unit, and eGFR's "/1.73 m2".
 function unitKey(unit) {
   return String(unit || '')
     .trim()
     .toLowerCase()
     .replace(/\s+/g, '')
+    .replace(/[µμ]/g, 'u')
+    .replace(/³/g, '^3')
+    .replace(/⁶/g, '^6')
+    .replace(/⁹/g, '^9')
+    .replace(/^x(?=10)/, '')
+    .replace(/10\*(\d)/, '10^$1')
+    .replace(/\/(?:cu\.?mm|cumm|mm\^?3|mm³)$/, '/ul')
+    .replace(/(1\.73)(?:m\^?2|m²|m2)$/, '$1')
     .replace(/^gms?\//, 'g/');
+}
+
+// Whether a unit printed next to a result could plausibly belong to the
+// parameter. Guards against a unit captured from a neighbouring column
+// (a differential count's "%" landing on AST/ALT, which are U/L). Only
+// answers "no" when it's confident: the parameter has a canonical unit, and
+// the raw unit matches neither it nor any registered conversion.
+async function isUnitPlausible(parameter, rawUnit) {
+  if (!parameter || !parameter.canonical_unit || !rawUnit) return true;
+  const key = unitKey(rawUnit);
+  if (key === unitKey(parameter.canonical_unit)) return true;
+  const { rows } = await pool.query(
+    `SELECT from_unit FROM unit_conversions WHERE health_parameter_id = $1`,
+    [parameter.id]
+  );
+  return rows.some((row) => unitKey(row.from_unit) === key);
 }
 
 // Specimen types a lab commonly appends after a comma - "Creatinine,
@@ -138,4 +166,11 @@ async function convertToCanonicalUnit(parameter, rawValue, rawUnit) {
   };
 }
 
-module.exports = { findCanonicalMatches, getParameterById, searchParameters, convertToCanonicalUnit };
+module.exports = {
+  findCanonicalMatches,
+  getParameterById,
+  searchParameters,
+  convertToCanonicalUnit,
+  isUnitPlausible,
+  unitKey,
+};

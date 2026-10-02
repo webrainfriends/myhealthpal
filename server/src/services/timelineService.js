@@ -14,7 +14,8 @@ async function listTimeline(userId, { dateFrom = null, dateTo = null, reportType
             r.upload_timestamp, r.created_at,
             (SELECT count(*) FROM health_measurements hm WHERE hm.report_id = r.id) AS measurement_count,
             (SELECT count(*) FROM health_measurements hm
-               WHERE hm.report_id = r.id AND hm.status_flag IS NOT NULL AND lower(hm.status_flag) NOT IN ('normal', 'n'))
+               WHERE hm.report_id = r.id AND hm.status_flag IS NOT NULL
+                 AND lower(hm.status_flag) NOT IN ('normal', 'n', 'wnl', 'within normal limits', 'unremarkable', 'within range', 'sufficient', 'optimal', 'desirable', 'negative', 'absent', 'nil', 'not detected', 'non-reactive'))
               AS abnormal_count,
             rsv.summary_text AS narrative_summary
      FROM reports r

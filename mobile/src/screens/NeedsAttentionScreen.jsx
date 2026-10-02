@@ -16,8 +16,13 @@ function AttentionRow({ item, onPress, t }) {
     <TouchableOpacity style={[styles.row, cardShadow]} onPress={onPress} activeOpacity={0.7}>
       <Text style={typography.body}>{item.parameter_display_name || item.raw_test_name}</Text>
       <Text style={typography.caption}>
-        {item.raw_value} {item.raw_unit || ''} {item.status_flag ? `· ${item.status_flag}` : `· ${t('needsAttention.needsReview')}`} ·{' '}
-        {item.original_filename} · {formatDate(item.effective_date)}
+        {item.raw_value} {item.unit || item.raw_unit || ''}{' '}
+        {item.attention_reason === 'abnormal' && item.direction
+          ? `· ${item.direction === 'high' ? 'High' : 'Low'}`
+          : item.status_flag && item.attention_reason === 'abnormal'
+            ? `· ${item.status_flag}`
+            : `· ${t('needsAttention.needsReview')}`}{' '}
+        · {item.displayTitle || item.original_filename} · {formatDate(item.effective_date)}
       </Text>
     </TouchableOpacity>
   );

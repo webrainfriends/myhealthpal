@@ -58,6 +58,7 @@ async function normalizeCandidate(candidate) {
   let normalizedUnit = null;
   let normalizedValue = null;
   let normalizationConfidence = null;
+  let unitCorrected = false;
 
   if (matchedParameter) {
     if (numericValue !== null && candidate.unit) {
@@ -66,6 +67,17 @@ async function normalizeCandidate(candidate) {
         normalizedUnit = conversion.normalizedUnit;
         normalizedValue = conversion.normalizedValue;
         normalizationConfidence = 1.0;
+      } else if (!(await registry.isUnitPlausible(matchedParameter, candidate.unit))) {
+        // The captured unit can't belong to this parameter at all - e.g. a
+        // differential count's "%" picked up next to AST/ALT (U/L). It came
+        // from a neighbouring column, not from the result, so showing it
+        // would be wrong. Take the value as already being in the parameter's
+        // canonical unit, keep the raw unit as extracted, and leave the row
+        // flagged for a human to confirm.
+        normalizedUnit = matchedParameter.canonical_unit;
+        normalizedValue = numericValue;
+        normalizationConfidence = 0.6;
+        unitCorrected = true;
       } else {
         // Mapped to a canonical parameter, but the unit couldn't be safely
         // converted (unknown unit or no conversion rule) — never fabricate one.
@@ -82,6 +94,7 @@ async function normalizeCandidate(candidate) {
   const needsReview =
     Boolean(candidate.needs_review) ||
     !matchedParameter ||
+    unitCorrected ||
     Boolean(matchedParameter && numericValue !== null && candidate.unit && normalizedUnit === null);
 
   return {

@@ -374,7 +374,7 @@ router.post('/:id/confirm', async (req, res, next) => {
     );
 
     const confirmedMeasurements = await pool.query(
-      `UPDATE health_measurements SET is_confirmed = true, updated_at = now()
+      `UPDATE health_measurements SET is_confirmed = true, needs_review = false, updated_at = now()
        WHERE report_id = $1 RETURNING id, health_parameter_id, duplicate_status`,
       [req.params.id]
     );

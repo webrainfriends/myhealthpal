@@ -166,14 +166,27 @@ const ORGAN_GROUPS = [
   },
 ];
 
-const NORMAL_FLAGS = new Set(['normal', 'n', 'wnl', 'within normal limits', 'unremarkable', 'within range']);
+const NORMAL_FLAGS = new Set([
+  'normal',
+  'n',
+  'wnl',
+  'within normal limits',
+  'unremarkable',
+  'within range',
+  'sufficient',
+  'optimal',
+  'desirable',
+]);
 const ABNORMAL_FLAGS = new Set([
   'high',
   'h',
   'low',
   'l',
   'abnormal',
-  'a',
+  // NOT 'a': many labs print "A" for "Absent", which is a normal finding for
+  // most qualitative tests. Spell "abnormal" out if that is what's meant.
+  'insufficient',
+  'deficient',
   'critical',
   'critically high',
   'critically low',
@@ -234,10 +247,31 @@ const QUALITATIVE_NORMAL_VALUES = {
   urine_bacteria: new Set(['nil', 'absent', 'none']),
   urine_yeast: new Set(['nil', 'absent', 'none']),
   urine_mucus: new Set(['absent', 'nil', 'none']),
+  urine_hyaline_casts: new Set(['nil', 'absent', 'none']),
+  urine_pus_cells: new Set(['nil', 'absent', 'none', 'occasional', '0-2', '0-3', '1-2', '0-5']),
+  urine_epithelial_cells: new Set(['nil', 'absent', 'none', 'occasional', '0-2', '0-3', '1-2', '0-5']),
+  urine_rbc: new Set(['nil', 'absent', 'none', '0-2']),
 };
 
 const HIGH_FLAGS = new Set(['high', 'h', 'critically high']);
-const LOW_FLAGS = new Set(['low', 'l', 'critically low']);
+const LOW_FLAGS = new Set(['low', 'l', 'critically low', 'insufficient', 'deficient']);
+
+// Reads that mean "nothing found" on a qualitative test. Deliberately NOT used
+// by evaluateResult (a numeric-only code with "Nil" must stay 'unknown'); the
+// needs-attention list uses it only to decide a result that couldn't be
+// judged isn't worth a person's time, never to call a result normal.
+const GENERIC_QUALITATIVE_NORMAL = new Set([
+  'negative',
+  'nil',
+  'absent',
+  'none',
+  'not detected',
+  'non reactive',
+  'non-reactive',
+  'nonreactive',
+  'not seen',
+  'normal',
+]);
 const CRITICAL_FLAGS = new Set(['critical', 'critically high', 'critically low', 'panic']);
 
 // How far past its limit a value has to be before it's described as
@@ -349,8 +383,9 @@ function evaluateResult(row, standardRange) {
     }
   } else {
     const normalValues = QUALITATIVE_NORMAL_VALUES[row.code];
-    if (normalValues && row.qualitativeValue) {
-      status = normalValues.has(String(row.qualitativeValue).trim().toLowerCase()) ? 'normal' : 'abnormal';
+    const qualitative = row.qualitativeValue ? String(row.qualitativeValue).trim().toLowerCase() : '';
+    if (normalValues && qualitative) {
+      status = normalValues.has(qualitative) ? 'normal' : 'abnormal';
     }
   }
 
@@ -548,6 +583,9 @@ module.exports = {
   ORGAN_GROUPS,
   buildOrganSummaries,
   buildCardSummaries,
+  ABNORMAL_FLAGS,
+  GENERIC_QUALITATIVE_NORMAL,
+  NORMAL_FLAGS,
   determineResultStatus,
   evaluateResult,
   organKeyForCustomLabel,
