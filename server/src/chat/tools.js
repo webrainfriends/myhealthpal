@@ -25,9 +25,21 @@ function comparableValue(m) {
 // or an imaging report's findings. A home-meter export (glucose readings,
 // activity sheets) has neither, so it must not be mistaken for the user's
 // latest report just because it was uploaded or dated more recently.
+// A glucometer log can still carry extracted glucose results (older uploads
+// were read as lab tables), so "has results" is not enough: it must hold a
+// result that is not just glucose, or an imaging report, and have no meter
+// readings attached.
 const LAB_STYLE_REPORT_SQL = `(
-  EXISTS (SELECT 1 FROM health_measurements hm WHERE hm.report_id = reports.id)
-  OR reports.modality IS NOT NULL OR reports.findings IS NOT NULL OR reports.impression IS NOT NULL
+  reports.modality IS NOT NULL OR reports.findings IS NOT NULL OR reports.impression IS NOT NULL
+  OR (
+    NOT EXISTS (SELECT 1 FROM glucose_readings gr WHERE gr.report_id = reports.id)
+    AND EXISTS (
+      SELECT 1 FROM health_measurements hm
+      LEFT JOIN health_parameters hp ON hp.id = hm.health_parameter_id
+      WHERE hm.report_id = reports.id
+        AND (hp.code IS NULL OR hp.code NOT IN ('glucose', 'glucose_fasting', 'glucose_post_prandial', 'glucose_mean'))
+    )
+  )
 )`;
 
 function withTitle(row) {

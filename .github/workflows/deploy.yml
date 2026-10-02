@@ -538,6 +538,11 @@ jobs:
             # insights all key off of. Safe/cheap to run on every deploy.
             npm run seed
 
+            # Idempotent: re-normalizes results saved before the unit-spelling
+            # fixes (platelets in /cumm, eGFR "m2", AST/ALT read as "%").
+            # Non-fatal - it must never block a deploy.
+            npm run repair-units || echo "[deploy] unit repair skipped"
+
             # One-time (idempotent) encryption of reports/scans uploaded
             # before the vault existed: encrypt -> verify -> delete the
             # plaintext. Prints counts only. A row that fails stays as it is

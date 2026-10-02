@@ -23,10 +23,10 @@ const getOrganHealth = readTool({
 
 const getNeedsAttention = readTool({
   name: 'get_needs_attention',
-  description: 'Only the latest results per test that are out of range (with direction, severity and unit) or are unmapped/unreadable and still need review, with the report each came from. Normal results are never listed.',
+  description: 'Only the latest results per test that are out of range (with direction, severity and unit) or are unmapped/unreadable and still need review, with the report each came from. Normal results are never listed. `counts` gives the totals (abnormal vs review-only; older review-only leftovers are hidden) and `truncated` says whether the list was cut.',
   async execute(args, { userId }) {
-    const items = await dashboardRoutes.fetchNeedsAttention(userId);
-    return { data: { items }, evidence: evidence('report', items, 'report_id', 'displayTitle') };
+    const { items, counts, truncated } = await dashboardRoutes.fetchNeedsAttentionDetailed(userId);
+    return { data: { items, counts, truncated }, evidence: evidence('report', items, 'report_id', 'displayTitle') };
   },
 });
 

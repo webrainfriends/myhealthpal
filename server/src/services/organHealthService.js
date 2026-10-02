@@ -248,10 +248,25 @@ const QUALITATIVE_NORMAL_VALUES = {
   urine_yeast: new Set(['nil', 'absent', 'none']),
   urine_mucus: new Set(['absent', 'nil', 'none']),
   urine_hyaline_casts: new Set(['nil', 'absent', 'none']),
-  urine_pus_cells: new Set(['nil', 'absent', 'none', 'occasional', '0-2', '0-3', '1-2', '0-5']),
-  urine_epithelial_cells: new Set(['nil', 'absent', 'none', 'occasional', '0-2', '0-3', '1-2', '0-5']),
-  urine_rbc: new Set(['nil', 'absent', 'none', '0-2']),
 };
+
+// Urine microscopy counts per high-power field are reported as a range
+// ("2-3", "0-1", "Occasional") rather than a fixed word, so a word list can't
+// judge them. The upper end of the reading is compared with the report's own
+// printed ceiling (e.g. "0-5/HPF"), else these typical limits.
+const MICROSCOPY_COUNT_LIMITS = { urine_pus_cells: 5, urine_epithelial_cells: 5, urine_rbc: 2 };
+
+function microscopyCountVerdict(code, qualitative, referenceRangeRaw) {
+  const limit = MICROSCOPY_COUNT_LIMITS[code];
+  if (limit === undefined || !qualitative) return null;
+  const text = String(qualitative).trim().toLowerCase();
+  if (['nil', 'absent', 'none', 'occasional', 'few', 'not seen'].includes(text)) return 'normal';
+  const match = /^(\d+(?:\.\d+)?)\s*(?:-|to)?\s*(\d+(?:\.\d+)?)?(?:\s*\/?\s*hpf)?$/.exec(text);
+  if (!match) return null;
+  const upper = Number(match[2] ?? match[1]);
+  const printed = parseRange(referenceRangeRaw);
+  return upper <= (printed ? printed.max : limit) ? 'normal' : 'abnormal';
+}
 
 const HIGH_FLAGS = new Set(['high', 'h', 'critically high']);
 const LOW_FLAGS = new Set(['low', 'l', 'critically low', 'insufficient', 'deficient']);
@@ -296,6 +311,11 @@ const MARKED_HIGH_AT = {
   glucose_mean: 140, // mg/dL - eAG equivalent of HbA1c 6.5%
 };
 
+function rawComparableValue(row) {
+  const value = row.numericValue ?? row.normalizedValue;
+  return value === null || value === undefined || !Number.isFinite(Number(value)) ? null : Number(value);
+}
+
 function numericValueOf(row) {
   const value = row.normalizedValue ?? row.numericValue;
   return value === null || value === undefined || !Number.isFinite(Number(value)) ? null : Number(value);
@@ -305,13 +325,14 @@ function numericValueOf(row) {
 // "min-max" range when it has one, else the app's standard range.
 function limitsFor(row, standardRange) {
   const range = parseRange(row.referenceRangeRaw);
-  if (range) return { low: range.min, high: range.max };
+  if (range) return { low: range.min, high: range.max, source: 'printed' };
   if (standardRange) {
     const low = standardRange.range_low;
     const high = standardRange.range_high;
     return {
       low: low === null || low === undefined ? null : Number(low),
       high: high === null || high === undefined ? null : Number(high),
+      source: 'standard',
     };
   }
   return null;
@@ -340,8 +361,13 @@ function deviationPast(limit, value, direction) {
 // tab scores against, used here only as a fallback.
 function evaluateResult(row, standardRange) {
   const flag = String(row.statusFlag || '').trim().toLowerCase();
-  const value = numericValueOf(row);
   const limits = limitsFor(row, standardRange);
+  // The report's printed range is in the units the report printed (platelets
+  // "1.5-4.1" lakhs/cumm), so the printed number is what it is compared with;
+  // the unit-converted value (150 x10^3/uL) belongs against the standard
+  // range, which is in the canonical unit. Comparing across the two put a
+  // normal platelet count out of range.
+  const value = limits && limits.source === 'printed' ? rawComparableValue(row) : numericValueOf(row);
 
   let status = 'unknown';
   let direction = null;
@@ -382,6 +408,8 @@ function evaluateResult(row, standardRange) {
       status = 'normal';
     }
   } else {
+    const countVerdict = microscopyCountVerdict(row.code, row.qualitativeValue, row.referenceRangeRaw);
+    if (countVerdict) status = countVerdict;
     const normalValues = QUALITATIVE_NORMAL_VALUES[row.code];
     const qualitative = row.qualitativeValue ? String(row.qualitativeValue).trim().toLowerCase() : '';
     if (normalValues && qualitative) {
