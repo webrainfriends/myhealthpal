@@ -57,7 +57,8 @@
     "web": "expo start --web",
     "test": "node --test",
     "build:ios": "eas build --platform ios --profile production",
-    "build:android": "eas build --platform android --profile production"
+    "build:android": "eas build --platform android --profile production",
+    "go": "expo start --go"
   },
   "private": true
 }
