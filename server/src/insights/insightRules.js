@@ -9,8 +9,14 @@ const LARGE_CHANGE_THRESHOLD_PCT = 30;
 const TREND_WINDOW = 3;
 const REPEATED_ABNORMAL_WINDOW = 3;
 
+// Flag text that means "nothing wrong" besides anything containing "normal"
+// (e.g. "Within normal limits"): the qualitative and vitamin-style wordings.
+const NORMAL_FLAG_TOKEN = /^(n|wnl|within range|sufficient|optimal|desirable|negative|absent|nil|none|not detected|non[- ]?reactive)$/i;
+
 function isAbnormalFlag(flag) {
-  return Boolean(flag) && !/normal/i.test(flag);
+  if (!flag) return false;
+  const text = String(flag).trim();
+  return !/normal/i.test(text) && !NORMAL_FLAG_TOKEN.test(text);
 }
 
 // Whether a result is outside its normal range: the in-range verdict the

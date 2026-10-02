@@ -5,8 +5,10 @@ const {
   buildOrganSummaries,
   buildCardSummaries,
   evaluateResult,
+  GENERIC_QUALITATIVE_NORMAL,
   organKeyForCustomLabel,
 } = require('../services/organHealthService');
+const { reportDisplayTitle } = require('../lib/reportTitle');
 const { getAllReferenceRangesByCode } = require('../medications/referenceRangeService');
 const { groupTestNames, normalizeTestNameKey } = require('../services/customCardService');
 
@@ -42,8 +44,9 @@ async function fetchNeedsAttention(userId) {
   const { rows } = await pool.query(
     `WITH ranked AS (
        SELECT hm.id, hm.report_id, hm.raw_test_name, hm.raw_value, hm.raw_unit, hm.qualitative_value, hm.status_flag,
-              hm.reference_range_raw, hm.numeric_value, hm.normalized_value, hm.needs_review,
-              hp.code, hp.display_name AS parameter_display_name, r.original_filename, r.effective_date,
+              hm.reference_range_raw, hm.numeric_value, hm.normalized_value, hm.normalized_unit, hm.needs_review,
+              hp.code, hp.canonical_unit, hp.display_name AS parameter_display_name,
+              r.original_filename, r.effective_date, r.date_status, r.report_type, r.source_provider,
               row_number() OVER (
                 PARTITION BY COALESCE(hm.health_parameter_id::text, lower(hm.raw_test_name))
                 ORDER BY COALESCE(r.effective_date, hm.sample_datetime::date, r.created_at::date) DESC, hm.created_at DESC
@@ -61,25 +64,80 @@ async function fetchNeedsAttention(userId) {
   );
 
   const standardRangesByCode = await getAllReferenceRangesByCode();
-  return rows
-    .filter((row) => {
-      if (row.needs_review) return true;
-      const evaluation = evaluateResult(
-        {
-          code: row.code,
-          statusFlag: row.status_flag,
-          referenceRangeRaw: row.reference_range_raw,
-          numericValue: row.numeric_value === null ? null : Number(row.numeric_value),
-          normalizedValue: row.normalized_value === null ? null : Number(row.normalized_value),
-          qualitativeValue: row.qualitative_value,
-          rawValue: row.raw_value,
-        },
-        standardRangesByCode.get(row.code)
-      );
-      return evaluation.status === 'abnormal';
-    })
-    .slice(0, 50)
-    .map(({ rank, code, numeric_value, normalized_value, reference_range_raw, ...item }) => item);
+  const SEVERITY_ORDER = { critical: 0, marked: 1, mild: 2 };
+
+  const items = [];
+  for (const row of rows) {
+    const evaluation = evaluateResult(
+      {
+        code: row.code,
+        statusFlag: row.status_flag,
+        referenceRangeRaw: row.reference_range_raw,
+        numericValue: row.numeric_value === null ? null : Number(row.numeric_value),
+        normalizedValue: row.normalized_value === null ? null : Number(row.normalized_value),
+        qualitativeValue: row.qualitative_value,
+        rawValue: row.raw_value,
+      },
+      standardRangesByCode.get(row.code)
+    );
+
+    // A verdict beats the review flag: `needs_review` is raised for plenty of
+    // reasons that say nothing about the value (text-parsed rows, a unit
+    // spelling the registry didn't know), and a result that evaluates as
+    // normal must not be listed as needing attention because of them.
+    let attentionReason = null;
+    if (evaluation.status === 'abnormal') attentionReason = 'abnormal';
+    else if (evaluation.status === 'unknown' && row.needs_review && hasReadableResult(row) && !isNothingFound(row)) {
+      attentionReason = row.code ? 'review' : 'unmapped';
+    }
+    if (!attentionReason) continue;
+
+    const {
+      rank,
+      code,
+      canonical_unit,
+      numeric_value,
+      normalized_value,
+      normalized_unit,
+      reference_range_raw,
+      ...item
+    } = row;
+    items.push({
+      ...item,
+      unit: normalized_unit || canonical_unit || row.raw_unit || null,
+      displayTitle: reportDisplayTitle(row),
+      reference_range: reference_range_raw || null,
+      status: evaluation.status,
+      direction: evaluation.direction,
+      severity: evaluation.severity,
+      attention_reason: attentionReason,
+    });
+  }
+
+  // Genuinely abnormal results first (worst first), then ones that still need
+  // a human look - and only then cap the list, so a long report full of
+  // review rows can't push a real out-of-range result off the end.
+  items.sort((a, b) => {
+    const rank = (i) => (i.attention_reason === 'abnormal' ? SEVERITY_ORDER[i.severity] ?? 2 : 3);
+    return rank(a) - rank(b);
+  });
+  return items.slice(0, 50);
+}
+
+// A row is worth listing for review only if there's an actual result to look
+// at. Lab templates pre-print rows (a "Trichomonas" line with no result) that
+// extraction can pick up as empty / placeholder values.
+const PLACEHOLDER_VALUES = new Set(['', '-', '--', '—', 'na', 'n/a', 'nil value', 'not performed', 'not applicable', 'not done']);
+// An unjudged result that just reads "Absent" / "Nil" / "Not detected" isn't
+// worth asking a person to review (and an unmapped template field such as a
+// pre-printed "Trichomonas: Absent" can't be judged any other way).
+function isNothingFound(row) {
+  const text = String(row.qualitative_value ?? row.raw_value ?? '').trim().toLowerCase();
+  return GENERIC_QUALITATIVE_NORMAL.has(text);
+}
+function hasReadableResult(row) {
+  const value = String(row.raw_value ?? row.qualitative_value ?? '').trim().toLowerCase();
+  return !PLACEHOLDER_VALUES.has(value);
 }
 
 // Latest confirmed measurement per pinned parameter, plus whatever the prior

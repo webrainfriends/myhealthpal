@@ -98,7 +98,7 @@ function ReportRow({ report, onPress, t }) {
     <TouchableOpacity style={[styles.reportRow, cardShadow]} onPress={onPress} activeOpacity={0.7}>
       <View style={styles.reportRowMain}>
         <Text style={typography.body} numberOfLines={1}>
-          {report.original_filename}
+          {report.displayTitle || report.original_filename}
         </Text>
         <Text style={typography.caption}>{formatDate(report.effective_date, t)}</Text>
       </View>

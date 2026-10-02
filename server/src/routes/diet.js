@@ -11,6 +11,7 @@ const { getOrGenerateRecommendations, generateRecommendations } = require('../di
 const dietTextProvider = require('../extraction/providers/dietTextProvider');
 const { NUTRIENT_FIELDS } = require('../extraction/providers/nutrientFields');
 const { nutritionValuesChanged, computeAiVerified } = require('../diet/aiVerificationService');
+const { checkPlausibility } = require('../diet/nutritionPlausibility');
 const dietRecipeService = require('../diet/dietRecipeService');
 const dietReadService = require('../diet/dietReadService');
 const recordRemoval = require('../services/recordRemovalService');
@@ -185,6 +186,11 @@ function validateEntryBody(body) {
       return `${field} must be a number.`;
     }
   }
+  // Values that cannot be true (negative amounts, sugar above total carbs).
+  // Only hard errors reject a save; merely unlikely numbers are surfaced as
+  // warnings by the estimate endpoints instead of blocking the person.
+  const { errors } = checkPlausibility(body);
+  if (errors.length > 0) return errors[0].message;
   return null;
 }
 
@@ -197,7 +203,7 @@ async function estimateNutrition(userId, name, brand, quantityAmount, quantityUn
   const description = brand ? `${name} (${brand})` : name;
   const result = await dietTextProvider.estimate(description, { quantityAmount, quantityUnit, userId });
   if (!result.recognized) {
-    return { recognized: false, matchedFoodDescription: null, confidence: 0, patch: {} };
+    return { recognized: false, matchedFoodDescription: null, confidence: 0, patch: {}, issues: [] };
   }
 
   const patch = {};
@@ -210,7 +216,14 @@ async function estimateNutrition(userId, name, brand, quantityAmount, quantityUn
   }
   if (result.servingSizeGrams != null) patch.serving_size_grams = result.servingSizeGrams;
 
-  return { recognized: true, matchedFoodDescription: result.matchedFoodDescription, confidence: result.confidence, patch };
+  return {
+    recognized: true,
+    matchedFoodDescription: result.matchedFoodDescription,
+    confidence: result.confidence,
+    patch,
+    issues: result.issues || [],
+    suggestedCalories: result.suggestedCalories ?? null,
+  };
 }
 
 // Preview endpoint: given a name (+ optional brand/quantity), returns an
@@ -233,11 +246,18 @@ router.post('/entries/estimate', async (req, res, next) => {
     const quantityAmount = body.quantity_amount != null && Number.isFinite(Number(body.quantity_amount))
       ? Number(body.quantity_amount)
       : null;
-    const { recognized, matchedFoodDescription, confidence, patch } = await estimateNutrition(
+    const { recognized, matchedFoodDescription, confidence, patch, issues, suggestedCalories } = await estimateNutrition(
       req.user.id, body.name, body.brand || null, quantityAmount, body.quantity_unit || null
     );
 
-    res.json({ recognized, matched_food_description: matchedFoodDescription, confidence, ...patch });
+    res.json({
+      recognized,
+      matched_food_description: matchedFoodDescription,
+      confidence,
+      issues: (issues || []).map((i) => ({ code: i.code, field: i.field, message: i.message })),
+      suggested_calories: suggestedCalories ?? null,
+      ...patch,
+    });
   } catch (err) {
     if (err.message && err.message.includes('ANTHROPIC_API_KEY')) {
       return res.status(503).json({ error: err.message });
@@ -277,7 +297,11 @@ router.post('/entries', async (req, res, next) => {
           for (const [key, value] of Object.entries(result.patch)) {
             if (body[key] == null) body[key] = value;
           }
-          aiEstimate = { matchedFoodDescription: result.matchedFoodDescription, confidence: result.confidence };
+          aiEstimate = {
+            matchedFoodDescription: result.matchedFoodDescription,
+            confidence: result.confidence,
+            issues: (result.issues || []).map((i) => ({ code: i.code, field: i.field, message: i.message })),
+          };
         }
       } catch (err) {
         // Swallowed by design - see comment above.
@@ -291,7 +315,7 @@ router.post('/entries', async (req, res, next) => {
     // when the client explicitly says so (e.g. it applied a fresh
     // "Estimate with AI" result and the person hasn't touched a number
     // since) - see computeAiVerified's doc comment for the general rule.
-    const aiVerified = computeAiVerified({ explicitValue: body.ai_verified, nutritionChanged: false, fallback: Boolean(aiEstimate) });
+    const aiVerified = computeAiVerified({ explicitValue: body.ai_verified, nutritionChanged: false, fallback: Boolean(aiEstimate) && aiEstimate.issues.length === 0 });
 
     // Columns/values built from NUTRIENT_FIELDS (a fixed, hardcoded
     // whitelist - never from req.body's own keys) rather than spelled out

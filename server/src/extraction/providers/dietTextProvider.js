@@ -2,6 +2,7 @@ const { getAiClient } = require('../../ai/privacyGateway');
 const config = require('../../config');
 const { recordAiUsage, FEATURES } = require('../../services/aiUsageService');
 const { NUTRIENT_FIELDS, nutrientToolProperties } = require('./nutrientFields');
+const { checkPlausibility, summarizeIssues } = require('../../diet/nutritionPlausibility');
 
 // The manual-entry counterpart to dietPhotoProvider.js: instead of reading
 // a photo, this estimates a food/drink's nutrition from a plain-text name
@@ -23,6 +24,11 @@ const SYSTEM_PROMPT = [
   'Use standard nutritional data (e.g. USDA FoodData Central-style values, or typical recipe nutrition data for named',
   'dishes) for calories, macros (protein/carbs/fat/saturated fat/fiber/sugar), and key micronutrients (sodium,',
   'cholesterol, potassium, calcium, iron, vitamin D).',
+  'Every nutrient value, including calories, must be the TOTAL for quantity_amount x quantity_unit - never a per-gram,',
+  'per-100 g, per-tablespoon or per-single-unit figure. Calories should be close to 4 x protein + 4 x carbs + 9 x fat.',
+  'Condiments, chutneys, sauces and dips are small portions but not near-zero calorie: 1 tbsp is about 15 g.',
+  'Assume the plain, fresh, home-prepared version of a food unless the description says otherwise (canned, in syrup,',
+  'sweetened, fried, with a stated brand); never add such a variant to matched_food_description on your own.',
   'It is fine to leave an individual micronutrient null if standard data does not have a well-known value for it -',
   'never fabricate a precise-looking number you are not reasonably confident of.',
   'Only set recognized to false if the description is too vague, garbled, or unrelated to food/drink to identify any',
@@ -136,7 +142,60 @@ async function estimate(description, { quantityAmount, quantityUnit, userId } = 
     return { ...EMPTY_RESULT, warnings: ['No structured estimate was returned.'] };
   }
 
-  return { ...mapEstimateResult(toolUse.input), warnings: [] };
+  let result = mapEstimateResult(toolUse.input);
+  let check = checkEstimate(description, result, quantityAmount, quantityUnit);
+
+  // An estimate that fails the plausibility check (calories that are really
+  // per-gram, or that disagree with the macros) gets one retry with the
+  // problem spelled out. The retry replaces the first answer only if it is
+  // actually better; either way the remaining issues are reported so the
+  // caller can mark the entry for review.
+  if (result.recognized && !check.ok) {
+    try {
+      const retryResponse = await client.messages.create({
+        model: config.anthropicModel,
+        max_tokens: 1024,
+        system: SYSTEM_PROMPT,
+        tools: [ESTIMATE_TOOL],
+        tool_choice: { type: 'tool', name: ESTIMATE_TOOL.name },
+        messages: [
+          {
+            role: 'user',
+            content:
+              buildUserMessage(description, quantityAmount, quantityUnit) +
+              ` A previous estimate was rejected: ${summarizeIssues(check)} ` +
+              'Report calories and all nutrients as totals for the stated quantity (not per gram, per 100 g or per tablespoon).',
+          },
+        ],
+      });
+      recordAiUsage(FEATURES.DIET_TEXT, retryResponse);
+      const retryUse = retryResponse.content.find((block) => block.type === 'tool_use');
+      if (retryUse) {
+        const retried = mapEstimateResult(retryUse.input);
+        const retriedCheck = checkEstimate(description, retried, quantityAmount, quantityUnit);
+        if (retried.recognized && retriedCheck.issues.length < check.issues.length) {
+          result = retried;
+          check = retriedCheck;
+        }
+      }
+    } catch (err) {
+      // The retry is best-effort: keep the first estimate and its issues.
+    }
+  }
+
+  return { ...result, issues: check.issues, suggestedCalories: check.suggestedCalories, warnings: [] };
 }
 
-module.exports = { name: 'claude', estimate, mapEstimateResult, buildUserMessage };
+// Plausibility of a mapped estimate, judged at the quantity it was made for
+// (the one the person gave, else the typical serving the model reported).
+function checkEstimate(description, result, quantityAmount, quantityUnit) {
+  return checkPlausibility({
+    name: description,
+    quantity_amount: quantityAmount ?? result.quantityAmount,
+    quantity_unit: quantityUnit || result.quantityUnit,
+    serving_size_grams: result.servingSizeGrams,
+    ...result.nutrients,
+  });
+}
+
+module.exports = { name: 'claude', estimate, mapEstimateResult, buildUserMessage, checkEstimate };

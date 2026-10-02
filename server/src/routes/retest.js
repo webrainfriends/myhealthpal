@@ -2,10 +2,11 @@ const express = require('express');
 const { recomputeForUser, listVisiblePlans, snoozePlan, dismissPlan, setCheckin } = require('../retest/retestService');
 const { ServiceError } = require('../lib/serviceError');
 const config = require('../config');
-const { bookingUrl } = require('../retest/retestRules');
+const { bookingFor } = require('../retest/retestRules');
 
 function withBookingUrl(plan) {
-  return { ...plan, bookingUrl: bookingUrl(config.labBookingUrlTemplate, plan.parameterDisplayName) };
+  const booking = bookingFor(config.labBookingUrlTemplate, plan);
+  return { ...plan, bookingUrl: booking.url, booking };
 }
 
 const router = express.Router();

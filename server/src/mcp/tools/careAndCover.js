@@ -1,6 +1,6 @@
 const config = require('../../config');
 const { recomputeForUser, listVisiblePlans } = require('../../retest/retestService');
-const { bookingUrl } = require('../../retest/retestRules');
+const { bookingFor } = require('../../retest/retestRules');
 const insuranceService = require('../../insurance/insuranceService');
 const beneficiaryDashboard = require('../../family/beneficiaryDashboardService');
 const { readTool, evidence } = require('./helpers');
@@ -8,13 +8,13 @@ const { readTool, evidence } = require('./helpers');
 const listRetestPlans = readTool({
   name: 'list_retest_plans',
   description:
-    'Retest Radar: for each out-of-range result (and medicines linked to a lab value), the date to check again by, its status and a booking link.',
+    'Retest Radar: for each out-of-range result (and medicines linked to a lab value), the date to check again by, its status, test-day preparation tips and a booking link for the right panel.',
   async execute(args, { userId }) {
     await recomputeForUser(userId);
-    const plans = (await listVisiblePlans(userId)).map((plan) => ({
-      ...plan,
-      bookingUrl: bookingUrl(config.labBookingUrlTemplate, plan.parameterDisplayName),
-    }));
+    const plans = (await listVisiblePlans(userId)).map((plan) => {
+      const booking = bookingFor(config.labBookingUrlTemplate, plan);
+      return { ...plan, bookingUrl: booking.url, booking };
+    });
     return { data: { plans }, evidence: evidence('retest_plan', plans) };
   },
 });

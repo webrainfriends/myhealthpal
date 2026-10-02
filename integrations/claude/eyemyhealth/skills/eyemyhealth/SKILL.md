@@ -32,11 +32,11 @@ See `references/workflows.md` for step-by-step recipes. The connector has more t
 | --- | --- |
 | "How am I doing?", what needs attention | `get_dashboard_snapshot`, `get_needs_attention`, `get_organ_health` |
 | One test over time ("my HbA1c") | `get_measurement_trend` (needs the parameter code; `search_reports` if unsure) |
-| A specific report or the latest one | `get_latest_report`, `list_timeline`, `get_report_by_id` |
+| A specific report or the latest one | `get_latest_report` (skips glucose/activity exports unless `includeDeviceExports`), `list_timeline`, `get_report_by_id`. Refer to reports by their `displayTitle`, not the filename. |
 | Two reports compared | `compare_reports` |
 | What changed or what to watch | `list_active_insights`, `explain_insight` |
 | Medicines, side effects, doses, refills | `list_medications`, `get_medication_detail`, `get_medication_reminders`, `list_medication_alerts` |
-| When to retest | `list_retest_plans` |
+| When to retest | `list_retest_plans` (includes `prepTips` and a `booking` for the right panel) |
 | Diet and water | `get_diet_summary`, `list_food_entries`, `get_water_summary`, `get_diet_recommendations` |
 | Exercise and activity | `get_activity_summary`, `list_workouts`, `get_workout_analytics` |
 | Insurance cover and gaps | `get_insurance_overview`, `get_insurance_policy` |
@@ -44,7 +44,7 @@ See `references/workflows.md` for step-by-step recipes. The connector has more t
 
 ## Writing data
 
-- **Log only what the person said.** `log_water`, `log_meal`, `log_medication_dose`, `log_weight`, `log_height` and `log_activity` record exactly the values given. Do not invent calories or macros - leave them out unless stated.
+- **Log only what the person said.** `log_water`, `log_meal`, `log_medication_dose`, `log_weight`, `log_height` and `log_activity` record exactly the values given. Do not invent calories or macros - leave them out unless stated. If `log_meal` returns `warnings`, tell the person the numbers look off and offer to correct them.
 - **Check before anything that is not an explicit "log this".** For edits (`set_weight_goal`, `add_allergy`, `upsert_kitchen_item`, `dismiss_insight`, `snooze_retest` ...) say what you are about to change and get a yes.
 - **Doses need care.** Use the slot names from `get_medication_reminders`. Never mark a dose taken that the person did not say they took.
 - Confirm briefly afterwards: what was saved, for whom.

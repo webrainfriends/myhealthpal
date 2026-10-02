@@ -118,8 +118,8 @@ export default function ReportDetailScreen({ route, navigation }) {
   }, [reportId]);
 
   useEffect(() => {
-    navigation.setOptions({ title: report?.original_filename || t('nav.report') });
-  }, [navigation, report?.original_filename, t]);
+    navigation.setOptions({ title: report?.displayTitle || report?.original_filename || t('nav.report') });
+  }, [navigation, report?.displayTitle, report?.original_filename, t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -228,7 +228,7 @@ export default function ReportDetailScreen({ route, navigation }) {
   function handleDelete() {
     showAlert(
       t('reportDetail.deleteConfirmTitle'),
-      t('reportDetail.deleteConfirmMessage', { name: report.original_filename }),
+      t('reportDetail.deleteConfirmMessage', { name: report.displayTitle || report.original_filename }),
       [
         { text: t('common.cancel'), style: 'cancel' },
         {

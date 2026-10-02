@@ -38,7 +38,13 @@ module.exports = [
     canonicalUnit: '10^3/uL',
     displayPrecision: 1,
     aliases: ['wbc', 'wbc count', 'total wbc count', 'white blood cell count', 'white blood cells', 'leukocyte count'],
-    conversions: [{ fromUnit: '10^9/L', factor: 1, offset: 0 }],
+    conversions: [
+      { fromUnit: '10^9/L', factor: 1, offset: 0 },
+      // A raw count per microlitre (/cumm, /mm3, cells/uL) is 1000x the
+      // 10^3/uL canonical unit.
+      { fromUnit: '/uL', factor: 0.001, offset: 0 },
+      { fromUnit: 'cells/uL', factor: 0.001, offset: 0 },
+    ],
   },
   {
     code: 'platelets',
@@ -53,6 +59,8 @@ module.exports = [
     conversions: [
       { fromUnit: '10^9/L', factor: 1, offset: 0 },
       { fromUnit: 'lakhs/cumm', factor: 100, offset: 0 },
+      { fromUnit: '/uL', factor: 0.001, offset: 0 },
+      { fromUnit: 'cells/uL', factor: 0.001, offset: 0 },
     ],
   },
   {
@@ -1249,6 +1257,18 @@ module.exports = [
     canonicalUnit: null,
     displayPrecision: null,
     aliases: ['mucus'],
+    conversions: [],
+  },
+  // Volume of the urine sample: informational, not a health marker, so it
+  // deliberately has no standard reference range (see reference-range-seed-data).
+  {
+    code: 'urine_volume',
+    displayName: 'Urine Volume',
+    category: 'urine',
+    dataType: 'numeric',
+    canonicalUnit: 'mL',
+    displayPrecision: 0,
+    aliases: ['volume', 'urine volume', 'volume (urine)'],
     conversions: [],
   },
 ];

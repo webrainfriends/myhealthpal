@@ -44,7 +44,7 @@ export default function TimelineScreen({ navigation }) {
   function handleDelete(item) {
     showAlert(
       t('timeline.deleteConfirmTitle'),
-      t('timeline.deleteConfirmMessage', { name: item.original_filename }),
+      t('timeline.deleteConfirmMessage', { name: item.displayTitle || item.original_filename }),
       [
         { text: t('common.cancel'), style: 'cancel' },
         {

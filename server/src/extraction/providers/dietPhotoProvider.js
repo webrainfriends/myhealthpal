@@ -2,6 +2,7 @@ const { getAiClient } = require('../../ai/privacyGateway');
 const config = require('../../config');
 const { recordAiUsage, FEATURES } = require('../../services/aiUsageService');
 const { NUTRIENT_FIELDS, nutrientToolProperties } = require('./nutrientFields');
+const { checkPlausibility, summarizeIssues } = require('../../diet/nutritionPlausibility');
 
 const SYSTEM_PROMPT = [
   'You are a precise food/drink identification and nutrition-estimation engine reading a photo of a meal, snack, or drink.',
@@ -10,6 +11,12 @@ const SYSTEM_PROMPT = [
   '(sodium, cholesterol, potassium, calcium, iron, vitamin D) using standard nutritional data (e.g. USDA FoodData',
   'Central-style values) for what a typical serving of that food contains, scaled to the portion actually visible in',
   'the photo.',
+  'Every nutrient value, including calories, must be the TOTAL for quantity_amount x quantity_unit as shown - never a',
+  'per-gram, per-100 g, per-tablespoon or single-unit figure. Calories should be close to 4 x protein + 4 x carbs +',
+  '9 x fat. Condiments, chutneys, sauces and dips are small portions but not near-zero calorie (1 tbsp is about 15 g).',
+  'Name each item for what is visible. Assume the plain, fresh or home-cooked version unless a can, jar, label, syrup',
+  'pool, glaze or frying oil is actually visible; never write "canned", "in syrup", "sweetened" or "fried" in the name',
+  'without that evidence, and report the preparation you assumed in the preparation field.',
   'If the portion size/quantity/serving cannot be confidently judged from the image (no visible package, no countable',
   'unit, an unfamiliar container), do not guess a number - leave quantity_amount, quantity_unit, and serving_size_grams',
   'null and set needs_quantity to true so the person is asked directly instead.',
@@ -41,6 +48,11 @@ const EXTRACTION_TOOL = {
           properties: {
             name: { type: 'string', description: 'Food/drink name, e.g. "Steamed white rice" or "Orange juice".' },
             brand: { type: ['string', 'null'], description: 'Brand name if a legible package identifies one, else null.' },
+            preparation: {
+              type: ['string', 'null'],
+              description:
+                'How the item appears prepared, e.g. "fresh", "cooked", "fried", "canned in syrup" (only if visibly so), else null.',
+            },
             quantity_amount: {
               type: ['number', 'null'],
               description: 'Numeric portion amount (e.g. 1.5), or null if it cannot be confidently judged.',
@@ -88,6 +100,45 @@ function readImageAsContent(fileBuffer, mimeType) {
   ];
 }
 
+// Pure normalization of the model's tool input into entries - exported so it
+// can be tested without the network, like dietTextProvider.mapEstimateResult.
+function mapPhotoItems(input) {
+  const rawItems = Array.isArray(input?.items) ? input.items : [];
+  return rawItems
+    .filter((item) => item && item.name)
+    .map((item) => {
+      const needsQuantity = Boolean(item.needs_quantity) || typeof item.quantity_amount !== 'number';
+      const nutrients = {};
+      for (const field of NUTRIENT_FIELDS) {
+        nutrients[field] = needsQuantity ? null : (typeof item[field] === 'number' ? item[field] : null);
+      }
+      const quantityAmount = needsQuantity ? null : item.quantity_amount;
+      const quantityUnit = needsQuantity ? null : item.quantity_unit || null;
+      const servingSizeGrams = typeof item.serving_size_grams === 'number' ? item.serving_size_grams : null;
+      const check = checkPlausibility({
+        name: String(item.name),
+        quantity_amount: quantityAmount,
+        quantity_unit: quantityUnit,
+        serving_size_grams: servingSizeGrams,
+        ...nutrients,
+      });
+      return {
+        name: String(item.name),
+        brand: item.brand || null,
+        preparation: typeof item.preparation === 'string' ? item.preparation : null,
+        quantity_amount: quantityAmount,
+        quantity_unit: quantityUnit,
+        serving_size_grams: servingSizeGrams,
+        ...nutrients,
+        needs_quantity: needsQuantity,
+        confidence: typeof item.confidence === 'number' ? item.confidence : 0.7,
+        needs_review: needsQuantity || typeof item.confidence !== 'number' || item.confidence < 0.75 || check.issues.length > 0,
+        issues: check.issues,
+        suggested_calories: check.suggestedCalories,
+      };
+    });
+}
+
 // Provider-agnostic contract: extract(document, context) -> { items,
 // warnings, rawModelOutput }, where context carries { fileBuffer, userId, mimeType }.
 async function extract(document, context = {}) {
@@ -124,29 +175,60 @@ async function extract(document, context = {}) {
     return { items: [], warnings: [...warnings, 'No structured extraction result was returned.'], rawModelOutput: response };
   }
 
-  const rawItems = Array.isArray(toolUse.input?.items) ? toolUse.input.items : [];
-  const items = rawItems
-    .filter((item) => item && item.name)
-    .map((item) => {
-      const needsQuantity = Boolean(item.needs_quantity) || typeof item.quantity_amount !== 'number';
-      const nutrients = {};
-      for (const field of NUTRIENT_FIELDS) {
-        nutrients[field] = needsQuantity ? null : (typeof item[field] === 'number' ? item[field] : null);
-      }
-      return {
-        name: String(item.name),
-        brand: item.brand || null,
-        quantity_amount: needsQuantity ? null : item.quantity_amount,
-        quantity_unit: needsQuantity ? null : item.quantity_unit || null,
-        serving_size_grams: typeof item.serving_size_grams === 'number' ? item.serving_size_grams : null,
-        ...nutrients,
-        needs_quantity: needsQuantity,
-        confidence: typeof item.confidence === 'number' ? item.confidence : 0.7,
-        needs_review: needsQuantity || typeof item.confidence !== 'number' || item.confidence < 0.75,
-      };
-    });
+  let rawInput = toolUse.input;
+  let items = mapPhotoItems(rawInput);
 
-  return { items, warnings, rawModelOutput: toolUse.input };
+  // Items whose numbers fail the plausibility check (e.g. 1.5 kcal for a
+  // chutney, a per-gram figure never scaled to the portion) get one retry
+  // with the problem named. The retry's items replace the first set only if
+  // they have fewer problems overall; remaining issues stay on the items so
+  // the person is asked to check them.
+  const problemCount = (list) => list.reduce((n, item) => n + item.issues.length, 0);
+  if (problemCount(items) > 0) {
+    try {
+      const feedback = items
+        .filter((item) => item.issues.length > 0)
+        .map((item) => `"${item.name}": ${item.issues.map((i) => i.message).join(' ')}`)
+        .join(' ');
+      const retry = await client.messages.create({
+        model: config.anthropicModel,
+        max_tokens: 4096,
+        system: SYSTEM_PROMPT,
+        tools: [EXTRACTION_TOOL],
+        tool_choice: { type: 'tool', name: EXTRACTION_TOOL.name },
+        messages: [
+          {
+            role: 'user',
+            content: [
+              ...content,
+              {
+                type: 'text',
+                text:
+                  `A previous attempt was rejected as implausible - ${feedback} Report calories and all nutrients ` +
+                  'as totals for the portion shown, and do not add canned/syrup/sweetened to a name without evidence.',
+              },
+            ],
+          },
+        ],
+      });
+      recordAiUsage(FEATURES.DIET_PHOTO, retry);
+      const retryUse = retry.content.find((block) => block.type === 'tool_use');
+      if (retryUse) {
+        const retried = mapPhotoItems(retryUse.input);
+        if (retried.length > 0 && problemCount(retried) < problemCount(items)) {
+          items = retried;
+          rawInput = retryUse.input;
+        }
+      }
+    } catch (err) {
+      warnings.push('A second pass to correct implausible numbers could not be completed.');
+    }
+  }
+  if (problemCount(items) > 0) {
+    warnings.push('Some estimated values look implausible and were marked for review.');
+  }
+
+  return { items, warnings, rawModelOutput: rawInput };
 }
 
-module.exports = { name: 'claude', extract };
+module.exports = { name: 'claude', extract, mapPhotoItems };

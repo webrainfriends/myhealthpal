@@ -7,6 +7,7 @@ const { logActivity } = require('../../services/activitySummaryService');
 const { classifyMealType } = require('../../diet/dietScanService');
 const { ServiceError } = require('../../lib/serviceError');
 const { writeTool } = require('./helpers');
+const { checkPlausibility } = require('../../diet/nutritionPlausibility');
 
 const MEAL_TYPES = ['breakfast', 'lunch', 'snack', 'dinner', 'supper'];
 
@@ -44,7 +45,7 @@ const logWater = writeTool({
 const logMeal = writeTool({
   name: 'log_meal',
   description:
-    'Log something the person ate or drank. Give calories/macros only if the user stated them - do not guess. ' +
+    'Log something the person ate or drank. Give calories/macros only if the user stated them - do not guess, and give totals for the whole portion, not per 100 g. ' +
     'The meal type is worked out from the time when omitted.',
   properties: {
     name: { type: 'string', description: 'What was eaten, e.g. "2 idlis with sambar".' },
@@ -64,6 +65,12 @@ const logMeal = writeTool({
       throw new ServiceError(400, `mealType must be one of ${MEAL_TYPES.join(', ')}.`);
     }
     const consumedAt = parseWhen(args.consumedAt);
+    const calories = optionalNumber(args.calories, 'calories', { max: 20000 });
+    const proteinG = optionalNumber(args.proteinG, 'proteinG', { max: 2000 });
+    const carbsG = optionalNumber(args.carbsG, 'carbsG', { max: 5000 });
+    const fatG = optionalNumber(args.fatG, 'fatG', { max: 2000 });
+    const plausibility = checkPlausibility({ name, calories, protein_g: proteinG, carbs_g: carbsG, fat_g: fatG });
+    if (plausibility.errors.length > 0) throw new ServiceError(400, plausibility.errors[0].message);
     const { rows } = await pool.query(
       `INSERT INTO food_entries (user_id, name, meal_type, consumed_at, calories, protein_g, carbs_g, fat_g, source_type, notes, is_confirmed, ai_verified)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'manual', $9, true, false) RETURNING *`,
@@ -72,14 +79,22 @@ const logMeal = writeTool({
         name,
         args.mealType || classifyMealType(consumedAt),
         consumedAt,
-        optionalNumber(args.calories, 'calories', { max: 20000 }),
-        optionalNumber(args.proteinG, 'proteinG', { max: 2000 }),
-        optionalNumber(args.carbsG, 'carbsG', { max: 5000 }),
-        optionalNumber(args.fatG, 'fatG', { max: 2000 }),
+        calories,
+        proteinG,
+        carbsG,
+        fatG,
         typeof args.notes === 'string' ? args.notes.slice(0, 500) : null,
       ]
     );
-    return { data: { entry: rows[0] }, evidence: [{ type: 'food_entry', id: rows[0].id, label: name }] };
+    return {
+      data: {
+        entry: rows[0],
+        // Numbers that look off (calories far from the macros, a tiny calorie
+        // figure for real food): saved as given, but worth double-checking.
+        ...(plausibility.warnings.length > 0 ? { warnings: plausibility.warnings.map((w) => w.message) } : {}),
+      },
+      evidence: [{ type: 'food_entry', id: rows[0].id, label: name }],
+    };
   },
 });
 

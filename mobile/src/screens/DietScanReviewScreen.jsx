@@ -22,6 +22,11 @@ const EDIT_DEBOUNCE_MS = 600;
 function CandidateCard({ entry, onChange, onConfirm, onDiscard, busy }) {
   const [local, setLocal] = useState(entry);
   const [estimating, setEstimating] = useState(false);
+  // Why the numbers look doubtful (server plausibility check) - from the scan
+  // itself, or from the latest "Estimate with AI" result.
+  const [warning, setWarning] = useState(
+    typeof entry.notes === 'string' && entry.notes.startsWith('Check these numbers') ? entry.notes : null
+  );
   const pendingEdits = useRef({});
   const debounceTimer = useRef(null);
 
@@ -59,8 +64,11 @@ function CandidateCard({ entry, onChange, onConfirm, onDiscard, busy }) {
         showAlert('Could not identify this food', `"${local.name}" wasn't recognized - enter the nutrition details manually.`);
         return;
       }
-      const { recognized, matched_food_description, confidence, ...patch } = result;
-      handleChange({ ...local, ...patch, needs_quantity: false, ai_verified: true });
+      const { recognized, matched_food_description, confidence, issues, suggested_calories, ...patch } = result;
+      const problems = Array.isArray(issues) ? issues : [];
+      setWarning(problems.length > 0 ? `Check these numbers: ${problems.map((i) => i.message).join(' ')}` : null);
+      // Numbers that failed the server's sanity check are not "verified".
+      handleChange({ ...local, ...patch, needs_quantity: false, ai_verified: problems.length === 0 });
     } catch (err) {
       showAlert('Could not estimate nutrition', err.message);
     } finally {
@@ -75,6 +83,7 @@ function CandidateCard({ entry, onChange, onConfirm, onDiscard, busy }) {
         {local.ai_verified && !local.needs_quantity && !local.needs_review && <StatusBadge status="AI estimate" />}
         {(local.needs_quantity || local.needs_review) && <StatusBadge status="Needs Review" />}
       </View>
+      {warning ? <Text style={styles.warningBox}>{warning}</Text> : null}
       <FoodEntryForm value={local} onChange={handleChange} onEstimate={handleEstimate} estimating={estimating} />
       <View style={styles.cardActions}>
         <PrimaryButton title="Confirm" onPress={() => onConfirm(entry.id)} loading={busy} />
@@ -243,6 +252,14 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   reviewNote: {},
+  warningBox: {
+    backgroundColor: colors.warningMuted,
+    color: colors.warning,
+    borderRadius: radii.md,
+    padding: spacing.sm,
+    marginBottom: spacing.sm,
+    fontSize: 13,
+  },
   errorBox: {
     backgroundColor: colors.dangerMuted,
     borderRadius: radii.md,

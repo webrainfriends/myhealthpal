@@ -1,5 +1,5 @@
 const pool = require('../db/pool');
-const { evaluateRetest, daysUntil, weekStart, checkinStreak, addDays } = require('./retestRules');
+const { evaluateRetest, daysUntil, weekStart, checkinStreak, addDays, prepFor } = require('./retestRules');
 const { ServiceError } = require('../lib/serviceError');
 
 // Same exclusion the dashboard uses - a suspected/confirmed duplicate is
@@ -140,6 +140,10 @@ async function listVisiblePlans(userId, today = new Date()) {
       reason: row.reason,
       medicationName: row.medication_name,
       microAction: row.micro_action,
+      ...(() => {
+        const prep = prepFor({ parameterCode: row.parameter_code, reason: row.reason, medicationName: row.medication_name });
+        return { testPanel: prep.panel, prepTips: prep.tips };
+      })(),
       dueDate: row.due_date,
       daysLeft: daysUntil(row.due_date, today),
       checkedInThisWeek: weeks.includes(thisWeek),

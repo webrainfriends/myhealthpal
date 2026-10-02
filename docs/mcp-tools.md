@@ -11,7 +11,7 @@ Read-only. Nothing is changed.
 | Tool | What it does | Arguments |
 | --- | --- | --- |
 | `list_profiles` | List the people this account can look at: the user themself plus any family members they look after. | - |
-| `get_latest_report` | Get the user's most recent uploaded health report, optionally filtered by report type. | reportType |
+| `get_latest_report` | Get the user's most recent health report (lab results or imaging), optionally filtered by report type. | reportType, includeDeviceExports |
 | `get_report_by_id` | Get full detail (measurements, summary, dates) for one of the user's reports by its ID. | **reportId** |
 | `compare_reports` | Deterministically compare shared canonical parameters between two of the user's reports. | **reportIdA**, **reportIdB** |
 | `get_measurement_trend` | Get the user's confirmed measurement history for one canonical parameter (by code, e.g. "hba1c", "hemoglobin"), with deterministic min/max/average/direction already calculated. | **parameterCode**, range |
@@ -30,7 +30,7 @@ Read-only. Nothing is changed.
 | `list_kitchen_items` | Items in the person's kitchen/pantry that recipe and meal suggestions draw on. | category, search, availableOnly |
 | `get_medication_reminders` | Today's (or a given date's) medicine doses: what is due, taken, skipped, and recently missed. | date |
 | `get_privacy_consents` | Which privacy choices this person has made (record storage, AI document reading, AI insights, AI apps). | - |
-| `list_retest_plans` | Retest Radar: for each out-of-range result (and medicines linked to a lab value), the date to check again by, its status and a booking link. | - |
+| `list_retest_plans` | Retest Radar: for each out-of-range result (and medicines linked to a lab value), the date to check again by, its status, test-day preparation tips and a booking link for the right panel. | - |
 | `get_insurance_overview` | Health-insurance policies on file with insurer, cover period, premium and renewal dates, and which lab results each policy covers or doesn't (coverage gaps). | - |
 | `get_insurance_summary` | A short insurance summary: number of policies, upcoming premium/renewal dates and coverage gaps raised by out-of-range results. | - |
 | `get_insurance_policy` | Full detail for one insurance policy by id: contacts, premium schedule and organ-wise clauses with ceilings, co-pay and waiting periods. | **policyId** |
@@ -53,7 +53,7 @@ Read-only. Nothing is changed.
 | `list_devices` | Health devices (BLE monitors, wearables) paired to this profile. | - |
 | `get_dashboard_snapshot` | The person's dashboard: pinned metrics with latest and previous values, results that need attention (latest out-of-range or awaiting review), and active insights. | - |
 | `get_organ_health` | One card per body organ group (liver, kidney, heart, blood, thyroid, diabetes ...): how many of its latest results are in range and which are high or low, judged by the lab's own range or a standard reference range. | - |
-| `get_needs_attention` | Only the latest results per test that are out of range or still need review, with the report each came from. | - |
+| `get_needs_attention` | Only the latest results per test that are out of range (with direction, severity and unit) or are unmapped/unreadable and still need review, with the report each came from. | - |
 | `list_timeline` | Chronological list of reports, newest first, with abnormal-result counts and summaries. | dateFrom, dateTo, reportType, source, category, search |
 | `search` | Search the person's own EyeMyHealth records - reports (by file name, test name or summary), insights and medicines - for a keyword or phrase. | **query** |
 | `fetch` | Get the full content of one item returned by `search` (a report with its results, an insight with its evidence, or a medicine), by its id. | **id** |

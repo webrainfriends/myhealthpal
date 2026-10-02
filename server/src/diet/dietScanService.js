@@ -39,6 +39,19 @@ function classifyMealType(date) {
   return band ? band.type : 'snack';
 }
 
+// A short note the review screen shows when the AI's numbers failed the
+// plausibility check, so the person knows why an entry is marked for review.
+function scanNote(item) {
+  const parts = [];
+  if (item.issues && item.issues.length > 0) {
+    parts.push(`Check these numbers: ${item.issues.map((i) => i.message).join(' ')}`);
+  }
+  if (item.preparation && !/^(fresh|raw|plain)$/i.test(item.preparation.trim())) {
+    parts.push(`Assumed preparation: ${item.preparation.trim()}.`);
+  }
+  return parts.length > 0 ? parts.join(' ').slice(0, 500) : null;
+}
+
 async function processDietScan(scanId) {
   const { rows } = await pool.query('SELECT * FROM diet_scans WHERE id = $1', [scanId]);
   const scan = rows[0];
@@ -73,8 +86,8 @@ async function processDietScan(scanId) {
            calories, protein_g, carbs_g, fat_g, saturated_fat_g, fiber_g, sugar_g, sodium_mg,
            cholesterol_mg, potassium_mg, calcium_mg, iron_mg, vitamin_d_mcg,
            meal_type, consumed_at, source_type, extraction_confidence, needs_quantity, needs_review,
-           ai_verified, is_confirmed
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,'photo_scan',$23,$24,$25,$26,false)`,
+           ai_verified, notes, is_confirmed
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,'photo_scan',$23,$24,$25,$26,$27,false)`,
         [
           scan.user_id,
           scanId,
@@ -105,7 +118,8 @@ async function processDietScan(scanId) {
           // didn't need a quantity to be supplied first - a needs_quantity
           // item has no AI-sourced numbers yet, so it isn't "verified" until
           // one is provided (via PATCH or the estimate endpoint).
-          !item.needs_quantity,
+          !item.needs_quantity && !(item.issues && item.issues.length > 0),
+          scanNote(item),
         ]
       );
     }
@@ -128,4 +142,4 @@ async function processDietScan(scanId) {
   }
 }
 
-module.exports = { enqueueDietScanProcessing, processDietScan, classifyMealType };
+module.exports = { enqueueDietScanProcessing, processDietScan, classifyMealType, scanNote };

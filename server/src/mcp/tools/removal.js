@@ -7,6 +7,7 @@ const workoutService = require('../../services/workoutService');
 const confirmation = require('../confirmation');
 const { ServiceError } = require('../../lib/serviceError');
 const { schema } = require('./helpers');
+const { reportDisplayTitle } = require('../../lib/reportTitle');
 
 // Permanent removals. Each is a two-step tool: called with just the target id
 // it changes nothing and returns what would be deleted plus a confirmation
@@ -70,13 +71,13 @@ const deleteReport = removeTool({
   idField: 'reportId',
   async describe(userId, id) {
     const r = await one(
-      `SELECT r.original_filename, r.effective_date, r.report_type,
+      `SELECT r.original_filename, r.effective_date, r.report_type, r.source_provider, r.modality, r.body_region,
               (SELECT count(*)::int FROM health_measurements hm WHERE hm.report_id = r.id) AS results
        FROM reports r WHERE r.id = $1 AND r.user_id = $2`,
       [id, userId],
       'Report not found'
     );
-    return `Report "${r.original_filename}" (${r.report_type || 'report'}, ${day(r.effective_date)}) and its ${r.results} extracted results.`;
+    return `Report "${reportDisplayTitle(r)}" (file: ${r.original_filename}) and its ${r.results} extracted results.`;
   },
   run: (userId, id) => removal.deleteReport(userId, id),
 });
