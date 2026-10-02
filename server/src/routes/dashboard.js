@@ -6,10 +6,11 @@ const {
   buildCardSummaries,
   evaluateResult,
   DERIVED_PARAMETERS,
+  MARKED_HIGH_AT,
   referenceFor,
   organKeyForCustomLabel,
 } = require('../services/organHealthService');
-const registry = require('../extraction/registry');
+const { latestResults } = require('../services/latestResults');
 const { attentionFor, toEvalRow } = require('../services/attentionService');
 const { reportDisplayTitle } = require('../lib/reportTitle');
 const { displayUnit } = require('../lib/displayUnit');
@@ -56,38 +57,9 @@ async function fetchNeedsAttention(userId) {
 }
 
 async function fetchNeedsAttentionDetailed(userId) {
-  const { rows: ranked } = await pool.query(
-    `WITH ranked AS (
-       SELECT hm.id, hm.report_id, hm.raw_test_name, hm.raw_value, hm.raw_unit, hm.qualitative_value, hm.status_flag,
-              hm.reference_range_raw, hm.numeric_value, hm.normalized_value, hm.normalized_unit, hm.normalization_confidence,
-              hm.health_parameter_id, hm.needs_review, hm.sample_datetime,
-              hp.code, hp.canonical_unit, hp.display_name AS parameter_display_name,
-              r.original_filename, r.effective_date, r.date_status, r.report_type, r.source_provider,
-              row_number() OVER (
-                PARTITION BY COALESCE(hm.health_parameter_id::text, regexp_replace(lower(hm.raw_test_name), '[^a-z0-9]', '', 'g'))
-                ORDER BY COALESCE(r.effective_date, hm.sample_datetime::date) DESC NULLS LAST,
-                         r.created_at DESC, hm.created_at DESC
-              ) AS rank
-       FROM health_measurements hm
-       JOIN reports r ON r.id = hm.report_id
-       LEFT JOIN health_parameters hp ON hp.id = hm.health_parameter_id
-       WHERE r.user_id = $1
-         AND r.ingestion_status IN ('Needs Review', 'Completed')
-         AND ${EXCLUDE_DUPLICATES_SQL}
-     )
-     SELECT * FROM ranked WHERE rank = 1`,
-    [userId]
-  );
-
-  // The same test can sit under two keys - mapped to a parameter in one
-  // report, still unmapped (a spelling the registry didn't know then) in
-  // another - so "latest per test" is decided on a resolved identity: an
-  // unmapped row takes the parameter its name now resolves to (only when that
-  // is unambiguous), or the parameter a mapped row with the same printed name
-  // belongs to. Only the newest row of each identity survives; an undated
-  // report counts as the oldest.
-  const rows = await keepNewestPerIdentity(ranked);
-  const supersededHidden = ranked.length - rows.length;
+  // Newest result per test, however it was spelled or dated - the same
+  // definition the organ and custom cards use (services/latestResults.js).
+  const { rows, supersededHidden, staleHidden: staleUnmappedHidden } = await latestResults(userId);
 
   const standardRangesByCode = await getAllReferenceRangesByCode();
   const SEVERITY_ORDER = { critical: 0, marked: 1, mild: 2 };
@@ -100,6 +72,7 @@ async function fetchNeedsAttentionDetailed(userId) {
 
     const reference = referenceFor(toEvalRow(row), standardRange);
     const derivedFrom = DERIVED_PARAMETERS[row.code] || null;
+    const cutoff = MARKED_HIGH_AT[row.code];
     const {
       rank,
       code,
@@ -111,6 +84,12 @@ async function fetchNeedsAttentionDetailed(userId) {
       reference_range_raw,
       raw_unit,
       sample_datetime,
+      needs_review,
+      identity,
+      has_parameter,
+      category,
+      display_name,
+      health_parameter_id,
       ...item
     } = row;
     items.push({
@@ -119,8 +98,17 @@ async function fetchNeedsAttentionDetailed(userId) {
       // a unitless ratio); raw_unit itself isn't returned.
       unit: displayUnit(row),
       displayTitle: reportDisplayTitle(row),
+      // What the report printed (even a multi-tier scale the app can't parse),
+      // which range the verdict used, and the app's standard range for
+      // context - so a standard range never silently replaces the lab's.
       reference_range: reference.text,
       reference_source: reference.source,
+      ...(reference.standardText ? { standard_range: reference.standardText } : {}),
+      ...(cutoff !== undefined ? { diagnostic_cutoff: cutoff } : {}),
+      // Whether a person needs to look at it, as opposed to the stored
+      // extraction-confidence flag, which is kept separately.
+      needs_review: attentionReason !== 'abnormal',
+      low_confidence: Boolean(needs_review),
       status: evaluation.status,
       direction: evaluation.direction,
       severity: evaluation.severity,
@@ -159,46 +147,11 @@ async function fetchNeedsAttentionDetailed(userId) {
       abnormal: abnormal.length - derivedAbnormal,
       derivedAbnormal,
       review: review.length,
-      staleHidden: items.length - fresh.length,
+      staleHidden: items.length - fresh.length + staleUnmappedHidden,
       supersededHidden,
     },
     truncated: abnormal.length > 50 || review.length > MAX_REVIEW_ITEMS,
   };
-}
-
-// Newest row per resolved test identity (see fetchNeedsAttentionDetailed).
-async function keepNewestPerIdentity(rows) {
-  const nameKey = (row) => registry.squash(row.raw_test_name);
-  const mappedByName = new Map();
-  for (const row of rows) {
-    if (row.health_parameter_id) mappedByName.set(nameKey(row), row.health_parameter_id);
-  }
-
-  const resolvedByName = new Map();
-  for (const row of rows) {
-    if (row.health_parameter_id) continue;
-    const key = nameKey(row);
-    if (!key || resolvedByName.has(key)) continue;
-    let parameterId = mappedByName.get(key) || null;
-    if (!parameterId) {
-      const matches = await registry.findCanonicalMatches(row.raw_test_name);
-      if (matches.length === 1) parameterId = matches[0].id;
-    }
-    resolvedByName.set(key, parameterId);
-  }
-
-  const dateOf = (row) => {
-    const d = row.effective_date || row.sample_datetime;
-    const t = d ? new Date(d).getTime() : NaN;
-    return Number.isNaN(t) ? -Infinity : t;
-  };
-  const newest = new Map();
-  for (const row of rows) {
-    const identity = row.health_parameter_id || resolvedByName.get(nameKey(row)) || `name:${nameKey(row)}`;
-    const current = newest.get(identity);
-    if (!current || dateOf(row) > dateOf(current)) newest.set(identity, row);
-  }
-  return [...newest.values()];
 }
 
 // Latest confirmed measurement per pinned parameter, plus whatever the prior
@@ -211,7 +164,7 @@ async function buildSnapshot(userId) {
        SELECT hm.*, hp.display_name, hp.category, hp.canonical_unit, r.original_filename, r.effective_date,
               row_number() OVER (
                 PARTITION BY hm.health_parameter_id
-                ORDER BY COALESCE(hm.sample_datetime::date, r.effective_date, r.created_at::date) DESC
+                ORDER BY COALESCE(hm.sample_datetime::date, r.effective_date) DESC NULLS LAST, r.created_at DESC
               ) AS rank
        FROM health_measurements hm
        JOIN reports r ON r.id = hm.report_id
@@ -267,29 +220,11 @@ router.get('/snapshot', async (req, res, next) => {
 // returned (even with no data yet)
 // so a user can see the full picture of what is and isn't being tracked.
 async function buildOrgans(userId, language) {
-
-  const { rows } = await pool.query(
-    `WITH ranked AS (
-       SELECT hm.report_id, hm.raw_value, hm.raw_unit, hm.qualitative_value, hm.status_flag,
-              hm.reference_range_raw, hm.numeric_value, hm.normalized_value, hm.normalized_unit,
-              hm.normalization_confidence, hm.health_parameter_id,
-              hp.code, hp.display_name, hp.category, hp.canonical_unit, r.effective_date,
-              row_number() OVER (
-                PARTITION BY hm.health_parameter_id
-                ORDER BY COALESCE(r.effective_date, r.created_at::date) DESC, hm.created_at DESC
-              ) AS rank
-       FROM health_measurements hm
-       JOIN reports r ON r.id = hm.report_id
-       JOIN health_parameters hp ON hp.id = hm.health_parameter_id
-       WHERE r.user_id = $1 AND r.ingestion_status IN ('Needs Review', 'Completed') AND ${EXCLUDE_DUPLICATES_SQL}
-     )
-     SELECT report_id, raw_value, raw_unit, qualitative_value, status_flag,
-            reference_range_raw, numeric_value, normalized_value, normalized_unit, normalization_confidence,
-            health_parameter_id, code, display_name, category, canonical_unit, effective_date
-     FROM ranked
-     WHERE rank = 1`,
-    [userId]
-  );
+  // The same "current result per test" the needs-attention list uses; only
+  // results that belong to a registry parameter get an organ card slot (the
+  // rest reach the custom cards below).
+  const { rows: allCurrent } = await latestResults(userId);
+  const rows = allCurrent.filter((row) => row.has_parameter || row.health_parameter_id);
 
   const measurements = rows.map((row) => ({
     code: row.code,
@@ -356,32 +291,22 @@ function slugifyGroupLabel(label) {
 // (see the route comment above for why this deliberately does NOT also
 // require hm.is_confirmed).
 async function fetchLatestUnmappedMeasurements(userId) {
-  const { rows } = await pool.query(
-    `WITH ranked AS (
-       SELECT hm.raw_test_name, hm.raw_value, hm.raw_unit, hm.qualitative_value, hm.status_flag,
-              hm.reference_range_raw, hm.numeric_value, hm.normalized_value, r.effective_date, r.id AS report_id,
-              row_number() OVER (
-                PARTITION BY lower(hm.raw_test_name)
-                ORDER BY COALESCE(r.effective_date, r.created_at::date) DESC, hm.created_at DESC
-              ) AS rank
-       FROM health_measurements hm
-       JOIN reports r ON r.id = hm.report_id
-       WHERE r.user_id = $1
-         AND hm.health_parameter_id IS NULL
-         AND ${EXCLUDE_DUPLICATES_SQL}
-         AND r.ingestion_status IN ('Needs Review', 'Completed')
-     )
-     SELECT raw_test_name, raw_value, raw_unit, qualitative_value, status_flag,
-            reference_range_raw, numeric_value, normalized_value, effective_date, report_id
-     FROM ranked
-     WHERE rank = 1`,
-    [userId]
-  );
-  return rows;
+  const { rows } = await latestResults(userId);
+  return rows
+    .filter((row) => !row.has_parameter && !row.health_parameter_id)
+    .map((row) => ({
+      raw_test_name: row.raw_test_name,
+      raw_value: row.raw_value,
+      raw_unit: row.raw_unit,
+      qualitative_value: row.qualitative_value,
+      status_flag: row.status_flag,
+      reference_range_raw: row.reference_range_raw,
+      numeric_value: row.numeric_value,
+      normalized_value: row.normalized_value,
+      effective_date: row.effective_date,
+      report_id: row.report_id,
+    }));
 }
-
-// Every latest unmapped result paired with its custom-card grouping (see
-// customCardService.groupTestNames - cached per test name and language).
 async function classifyUnmappedMeasurements(userId, language) {
   const rows = await fetchLatestUnmappedMeasurements(userId);
   const groupByKey = await groupTestNames(

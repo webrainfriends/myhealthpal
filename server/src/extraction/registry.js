@@ -125,6 +125,82 @@ function squash(text) {
     .replace(/[^a-z0-9]/g, '');
 }
 
+// A looser, order-insensitive key for telling whether two printed names are
+// the same test: "Cholesterol - HDL", "HDL Cholesterol" and "HDL-C
+// Cholesterol" share one. Used only to decide whether an older result has
+// been replaced by a newer one (never to assign a result to a parameter),
+// so it can afford to be a bit looser than registry matching - but it keeps
+// every word that changes the test ("total", "direct", "ratio", "%").
+const TOKEN_SYNONYMS = {
+  tc: 'cholesterol',
+  chol: 'cholesterol',
+  tg: 'triglyceride',
+  tgl: 'triglyceride',
+  trig: 'triglyceride',
+  leucocyte: 'wbc',
+  leukocyte: 'wbc',
+  sgot: 'ast',
+  sgpt: 'alt',
+  hb: 'hemoglobin',
+  haemoglobin: 'hemoglobin',
+};
+const TOKEN_STOPWORDS = new Set(['serum', 'plasma', 'level', 'test', 'estimation', 'value', 'count']);
+
+function tokenKey(text) {
+  // A slash between two names ("TC/HDL", "AST/ALT") is a ratio of them; one
+  // inside parentheses ("AST (SGOT/SGPT)") is just two names for one test.
+  const phrase = String(text || '')
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, (group) => group.replace(/\//g, ' '))
+    .replace(/\//g, ' ratio ')
+    .replace(/\btotal\s+(leu[ck]ocytes?|wbc)\b/g, 'wbc')
+    .replace(/\bt\.?\s*(c|g)\b/g, (m, c) => (c === 'c' ? 'cholesterol' : 'triglyceride'));
+  const tokens = phrase
+    .split(/[^a-z0-9%]+/)
+    .filter(Boolean)
+    .map((t) => (t.length > 3 && t.endsWith('s') && !t.endsWith('ss') ? t.slice(0, -1) : t))
+    .map((t) => TOKEN_SYNONYMS[t] || t)
+    .filter((t) => !TOKEN_STOPWORDS.has(t));
+  return [...new Set(tokens)].sort().join(' ');
+}
+
+// tokenKey -> the parameters (code, display name, aliases) that produce it,
+// loaded once so a whole list can be resolved without a query per name.
+async function loadTokenIndex() {
+  const { rows } = await pool.query(
+    `SELECT hp.id, hp.code, hp.display_name, hp.category, hp.canonical_unit, pa.alias_text
+     FROM health_parameters hp
+     LEFT JOIN parameter_aliases pa ON pa.health_parameter_id = hp.id`
+  );
+  const byId = new Map();
+  const index = new Map();
+  const add = (key, parameter) => {
+    if (!key) return;
+    if (!index.has(key)) index.set(key, new Map());
+    index.get(key).set(parameter.id, parameter);
+  };
+  for (const row of rows) {
+    const parameter = byId.get(row.id) || {
+      id: row.id,
+      code: row.code,
+      display_name: row.display_name,
+      category: row.category,
+      canonical_unit: row.canonical_unit,
+    };
+    byId.set(row.id, parameter);
+    add(tokenKey(row.code.replace(/_/g, ' ')), parameter);
+    add(tokenKey(row.display_name), parameter);
+    if (row.alias_text) add(tokenKey(row.alias_text), parameter);
+  }
+  // A name that several parameters share is ambiguous, not a match.
+  return {
+    resolve(name) {
+      const hits = index.get(tokenKey(name));
+      return hits && hits.size === 1 ? [...hits.values()][0] : null;
+    },
+  };
+}
+
 async function matchSquashed(names) {
   const keys = [...new Set(names.map(squash).filter(Boolean))];
   if (keys.length === 0) return [];
@@ -199,5 +275,7 @@ module.exports = {
   convertToCanonicalUnit,
   isUnitPlausible,
   squash,
+  tokenKey,
+  loadTokenIndex,
   unitKey,
 };

@@ -357,16 +357,26 @@ const DERIVED_PARAMETERS = { glucose_mean: 'hba1c' };
 // 'printed' (the report's own) or 'standard' (the app's reference range).
 // Lets a caller show the basis for a verdict even when the report printed no
 // usable range.
+function formatLimits(low, high) {
+  if (low !== null && low !== undefined && high !== null && high !== undefined) return `${Number(low)}-${Number(high)}`;
+  if (high !== null && high !== undefined) return `<= ${Number(high)}`;
+  if (low !== null && low !== undefined) return `>= ${Number(low)}`;
+  return null;
+}
+
+// `text` is what the report printed when it printed anything (a multi-tier
+// scale the app can't parse still shows as printed), else the standard range;
+// `source` is the range the verdict actually used; `standardText` is the
+// app's own range for context.
 function referenceFor(row, standardRange) {
   const limits = limitsFor(row, standardRange);
-  if (!limits) return { text: row.referenceRangeRaw || null, source: row.referenceRangeRaw ? 'printed' : null };
-  if (limits.source === 'printed') return { text: String(row.referenceRangeRaw).trim(), source: 'printed' };
-  const { low, high } = limits;
-  let text = null;
-  if (low !== null && high !== null) text = `${low}-${high}`;
-  else if (high !== null) text = `<= ${high}`;
-  else if (low !== null) text = `>= ${low}`;
-  return { text, source: text ? 'standard' : null };
+  const printed = row.referenceRangeRaw ? String(row.referenceRangeRaw).trim() : null;
+  const standardText = standardRange ? formatLimits(standardRange.range_low, standardRange.range_high) : null;
+  return {
+    text: printed || standardText,
+    source: limits ? limits.source : printed ? 'printed' : null,
+    standardText,
+  };
 }
 
 // Full per-result evaluation: { status, direction, deviationPercent,
@@ -636,6 +646,7 @@ module.exports = {
   ABNORMAL_FLAGS,
   DERIVED_PARAMETERS,
   GENERIC_QUALITATIVE_NORMAL,
+  MARKED_HIGH_AT,
   referenceFor,
   NORMAL_FLAGS,
   determineResultStatus,

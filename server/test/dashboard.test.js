@@ -35,7 +35,7 @@ test.before(async () => {
   // result: health_parameter_id NULL, is_confirmed false (the DB default).
   await pool.query(
     `INSERT INTO health_measurements (report_id, raw_test_name, raw_value, value_type, numeric_value)
-     VALUES ($1, 'A/G Ratio', '1.4', 'numeric', 1.4)`,
+     VALUES ($1, 'Zeta Custom Marker', '1.4', 'numeric', 1.4)`,
     [reportId]
   );
 });
@@ -48,7 +48,7 @@ test.after(async () => {
 test('fetchLatestUnmappedMeasurements finds an unmapped result even before the report is confirmed', async () => {
   const rows = await fetchLatestUnmappedMeasurements(userId);
   assert.equal(rows.length, 1);
-  assert.equal(rows[0].raw_test_name, 'A/G Ratio');
+  assert.equal(rows[0].raw_test_name, 'Zeta Custom Marker');
   assert.equal(rows[0].report_id, reportId);
 });
 
