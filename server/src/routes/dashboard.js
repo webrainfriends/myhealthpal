@@ -5,10 +5,14 @@ const {
   buildOrganSummaries,
   buildCardSummaries,
   evaluateResult,
-  GENERIC_QUALITATIVE_NORMAL,
+  DERIVED_PARAMETERS,
+  referenceFor,
   organKeyForCustomLabel,
 } = require('../services/organHealthService');
+const registry = require('../extraction/registry');
+const { attentionFor, toEvalRow } = require('../services/attentionService');
 const { reportDisplayTitle } = require('../lib/reportTitle');
+const { displayUnit } = require('../lib/displayUnit');
 const { getAllReferenceRangesByCode } = require('../medications/referenceRangeService');
 const { groupTestNames, normalizeTestNameKey } = require('../services/customCardService');
 
@@ -52,15 +56,17 @@ async function fetchNeedsAttention(userId) {
 }
 
 async function fetchNeedsAttentionDetailed(userId) {
-  const { rows } = await pool.query(
+  const { rows: ranked } = await pool.query(
     `WITH ranked AS (
        SELECT hm.id, hm.report_id, hm.raw_test_name, hm.raw_value, hm.raw_unit, hm.qualitative_value, hm.status_flag,
-              hm.reference_range_raw, hm.numeric_value, hm.normalized_value, hm.normalized_unit, hm.needs_review,
+              hm.reference_range_raw, hm.numeric_value, hm.normalized_value, hm.normalized_unit, hm.normalization_confidence,
+              hm.health_parameter_id, hm.needs_review, hm.sample_datetime,
               hp.code, hp.canonical_unit, hp.display_name AS parameter_display_name,
               r.original_filename, r.effective_date, r.date_status, r.report_type, r.source_provider,
               row_number() OVER (
                 PARTITION BY COALESCE(hm.health_parameter_id::text, regexp_replace(lower(hm.raw_test_name), '[^a-z0-9]', '', 'g'))
-                ORDER BY COALESCE(r.effective_date, hm.sample_datetime::date, r.created_at::date) DESC, hm.created_at DESC
+                ORDER BY COALESCE(r.effective_date, hm.sample_datetime::date) DESC NULLS LAST,
+                         r.created_at DESC, hm.created_at DESC
               ) AS rank
        FROM health_measurements hm
        JOIN reports r ON r.id = hm.report_id
@@ -69,40 +75,31 @@ async function fetchNeedsAttentionDetailed(userId) {
          AND r.ingestion_status IN ('Needs Review', 'Completed')
          AND ${EXCLUDE_DUPLICATES_SQL}
      )
-     SELECT * FROM ranked WHERE rank = 1
-     ORDER BY COALESCE(effective_date, now()::date) DESC`,
+     SELECT * FROM ranked WHERE rank = 1`,
     [userId]
   );
+
+  // The same test can sit under two keys - mapped to a parameter in one
+  // report, still unmapped (a spelling the registry didn't know then) in
+  // another - so "latest per test" is decided on a resolved identity: an
+  // unmapped row takes the parameter its name now resolves to (only when that
+  // is unambiguous), or the parameter a mapped row with the same printed name
+  // belongs to. Only the newest row of each identity survives; an undated
+  // report counts as the oldest.
+  const rows = await keepNewestPerIdentity(ranked);
+  const supersededHidden = ranked.length - rows.length;
 
   const standardRangesByCode = await getAllReferenceRangesByCode();
   const SEVERITY_ORDER = { critical: 0, marked: 1, mild: 2 };
 
   const items = [];
   for (const row of rows) {
-    const evaluation = evaluateResult(
-      {
-        code: row.code,
-        statusFlag: row.status_flag,
-        referenceRangeRaw: row.reference_range_raw,
-        numericValue: row.numeric_value === null ? null : Number(row.numeric_value),
-        normalizedValue: row.normalized_value === null ? null : Number(row.normalized_value),
-        qualitativeValue: row.qualitative_value,
-        rawValue: row.raw_value,
-      },
-      standardRangesByCode.get(row.code)
-    );
-
-    // A verdict beats the review flag: `needs_review` is raised for plenty of
-    // reasons that say nothing about the value (text-parsed rows, a unit
-    // spelling the registry didn't know), and a result that evaluates as
-    // normal must not be listed as needing attention because of them.
-    let attentionReason = null;
-    if (evaluation.status === 'abnormal') attentionReason = 'abnormal';
-    else if (evaluation.status === 'unknown' && row.needs_review && hasReadableResult(row) && !isNothingFound(row)) {
-      attentionReason = row.code ? 'review' : 'unmapped';
-    }
+    const standardRange = standardRangesByCode.get(row.code);
+    const { evaluation, attentionReason } = attentionFor(row, standardRange);
     if (!attentionReason) continue;
 
+    const reference = referenceFor(toEvalRow(row), standardRange);
+    const derivedFrom = DERIVED_PARAMETERS[row.code] || null;
     const {
       rank,
       code,
@@ -110,27 +107,35 @@ async function fetchNeedsAttentionDetailed(userId) {
       numeric_value,
       normalized_value,
       normalized_unit,
+      normalization_confidence,
       reference_range_raw,
+      raw_unit,
+      sample_datetime,
       ...item
     } = row;
     items.push({
       ...item,
-      unit: normalized_unit || canonical_unit || row.raw_unit || null,
+      // The printed unit, unless it can't belong to this result (a "%" beside
+      // a unitless ratio); raw_unit itself isn't returned.
+      unit: displayUnit(row),
       displayTitle: reportDisplayTitle(row),
-      reference_range: reference_range_raw || null,
+      reference_range: reference.text,
+      reference_source: reference.source,
       status: evaluation.status,
       direction: evaluation.direction,
       severity: evaluation.severity,
       attention_reason: attentionReason,
+      ...(derivedFrom ? { derived: true, derived_from: derivedFrom } : {}),
     });
   }
 
   // Genuinely abnormal results first (worst first), then ones that still need
   // a human look - and only then cap the list, so a long report full of
   // review rows can't push a real out-of-range result off the end.
+  const dateOf = (i) => (i.effective_date ? new Date(i.effective_date).getTime() : -Infinity);
   items.sort((a, b) => {
     const rank = (i) => (i.attention_reason === 'abnormal' ? SEVERITY_ORDER[i.severity] ?? 2 : 3);
-    return rank(a) - rank(b);
+    return rank(a) - rank(b) || dateOf(b) - dateOf(a);
   });
 
   // Unjudged items from reports much older than the newest one are stale.
@@ -144,28 +149,56 @@ async function fetchNeedsAttentionDetailed(userId) {
   });
   const abnormal = fresh.filter((i) => i.attention_reason === 'abnormal');
   const review = fresh.filter((i) => i.attention_reason !== 'abnormal');
+  const derivedAbnormal = abnormal.filter((i) => i.derived).length;
   const shown = [...abnormal.slice(0, 50), ...review.slice(0, MAX_REVIEW_ITEMS)];
   return {
     items: shown,
-    counts: { abnormal: abnormal.length, review: review.length, staleHidden: items.length - fresh.length },
+    counts: {
+      // Derived values (estimated average glucose) are listed but counted on
+      // their own, so they don't read as an extra problem beside their source.
+      abnormal: abnormal.length - derivedAbnormal,
+      derivedAbnormal,
+      review: review.length,
+      staleHidden: items.length - fresh.length,
+      supersededHidden,
+    },
     truncated: abnormal.length > 50 || review.length > MAX_REVIEW_ITEMS,
   };
 }
 
-// A row is worth listing for review only if there's an actual result to look
-// at. Lab templates pre-print rows (a "Trichomonas" line with no result) that
-// extraction can pick up as empty / placeholder values.
-const PLACEHOLDER_VALUES = new Set(['', '-', '--', '—', 'na', 'n/a', 'nil value', 'not performed', 'not applicable', 'not done']);
-// An unjudged result that just reads "Absent" / "Nil" / "Not detected" isn't
-// worth asking a person to review (and an unmapped template field such as a
-// pre-printed "Trichomonas: Absent" can't be judged any other way).
-function isNothingFound(row) {
-  const text = String(row.qualitative_value ?? row.raw_value ?? '').trim().toLowerCase();
-  return GENERIC_QUALITATIVE_NORMAL.has(text);
-}
-function hasReadableResult(row) {
-  const value = String(row.raw_value ?? row.qualitative_value ?? '').trim().toLowerCase();
-  return !PLACEHOLDER_VALUES.has(value);
+// Newest row per resolved test identity (see fetchNeedsAttentionDetailed).
+async function keepNewestPerIdentity(rows) {
+  const nameKey = (row) => registry.squash(row.raw_test_name);
+  const mappedByName = new Map();
+  for (const row of rows) {
+    if (row.health_parameter_id) mappedByName.set(nameKey(row), row.health_parameter_id);
+  }
+
+  const resolvedByName = new Map();
+  for (const row of rows) {
+    if (row.health_parameter_id) continue;
+    const key = nameKey(row);
+    if (!key || resolvedByName.has(key)) continue;
+    let parameterId = mappedByName.get(key) || null;
+    if (!parameterId) {
+      const matches = await registry.findCanonicalMatches(row.raw_test_name);
+      if (matches.length === 1) parameterId = matches[0].id;
+    }
+    resolvedByName.set(key, parameterId);
+  }
+
+  const dateOf = (row) => {
+    const d = row.effective_date || row.sample_datetime;
+    const t = d ? new Date(d).getTime() : NaN;
+    return Number.isNaN(t) ? -Infinity : t;
+  };
+  const newest = new Map();
+  for (const row of rows) {
+    const identity = row.health_parameter_id || resolvedByName.get(nameKey(row)) || `name:${nameKey(row)}`;
+    const current = newest.get(identity);
+    if (!current || dateOf(row) > dateOf(current)) newest.set(identity, row);
+  }
+  return [...newest.values()];
 }
 
 // Latest confirmed measurement per pinned parameter, plus whatever the prior
@@ -238,8 +271,9 @@ async function buildOrgans(userId, language) {
   const { rows } = await pool.query(
     `WITH ranked AS (
        SELECT hm.report_id, hm.raw_value, hm.raw_unit, hm.qualitative_value, hm.status_flag,
-              hm.reference_range_raw, hm.numeric_value, hm.normalized_value,
-              hp.code, hp.display_name, hp.category, r.effective_date,
+              hm.reference_range_raw, hm.numeric_value, hm.normalized_value, hm.normalized_unit,
+              hm.normalization_confidence, hm.health_parameter_id,
+              hp.code, hp.display_name, hp.category, hp.canonical_unit, r.effective_date,
               row_number() OVER (
                 PARTITION BY hm.health_parameter_id
                 ORDER BY COALESCE(r.effective_date, r.created_at::date) DESC, hm.created_at DESC
@@ -250,7 +284,8 @@ async function buildOrgans(userId, language) {
        WHERE r.user_id = $1 AND r.ingestion_status IN ('Needs Review', 'Completed') AND ${EXCLUDE_DUPLICATES_SQL}
      )
      SELECT report_id, raw_value, raw_unit, qualitative_value, status_flag,
-            reference_range_raw, numeric_value, normalized_value, code, display_name, category, effective_date
+            reference_range_raw, numeric_value, normalized_value, normalized_unit, normalization_confidence,
+            health_parameter_id, code, display_name, category, canonical_unit, effective_date
      FROM ranked
      WHERE rank = 1`,
     [userId]
@@ -261,7 +296,7 @@ async function buildOrgans(userId, language) {
     displayName: row.display_name,
     category: row.category,
     rawValue: row.raw_value,
-    rawUnit: row.raw_unit,
+    rawUnit: displayUnit(row),
     qualitativeValue: row.qualitative_value,
     statusFlag: row.status_flag,
     referenceRangeRaw: row.reference_range_raw,

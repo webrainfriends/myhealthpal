@@ -79,3 +79,40 @@ test('a glucometer log that has extracted glucose results is still not the lates
     await pool.query('DELETE FROM users WHERE id = $1', [uid]);
   }
 });
+
+test('get_latest_report counts agree with the needs-attention list, and the timeline uses the same rule', async () => {
+  const { listTimeline } = require('../src/services/timelineService');
+  const { fetchNeedsAttentionDetailed } = require('../src/routes/dashboard');
+  const user = await pool.query(`INSERT INTO users (email, display_name) VALUES ('latest-report-counts@example.com', 'LC') RETURNING id`);
+  const uid = user.rows[0].id;
+  try {
+    const rid = (
+      await pool.query(
+        `INSERT INTO reports (user_id, original_filename, mime_type, file_extension, file_size_bytes, storage_path, ingestion_status, effective_date, generated_summary)
+         VALUES ($1, 'p.pdf', 'application/pdf', 'pdf', 10, '/tmp/x', 'Needs Review', '2026-08-31', 'Extracted 3 health parameters. 16 flagged outside the reference range: stale snapshot.') RETURNING id`,
+        [uid]
+      )
+    ).rows[0].id;
+    const param = async (code) => (await pool.query('SELECT id FROM health_parameters WHERE code = $1', [code])).rows[0].id;
+    const add = async (code, name, value, flag, range) =>
+      pool.query(
+        `INSERT INTO health_measurements (report_id, health_parameter_id, raw_test_name, raw_value, value_type, numeric_value, normalized_value, status_flag, reference_range_raw)
+         VALUES ($1, $2, $3, $4, 'numeric', $5, $5, $6, $7)`,
+        [rid, await param(code), name, String(value), value, flag, range]
+      );
+    await add('hemoglobin', 'Hb', 9, 'Low', '13-17'); // out of range
+    await add('vitamin_d', 'Vit D', 20.6, null, '30-100'); // out of range, no flag printed
+    await add('creatinine', 'Creatinine', 0.9, 'Normal', '0.7-1.3'); // in range
+
+    const { data } = await executeTool('get_latest_report', {}, { userId: uid });
+    assert.equal(data.counts.outOfRange, 2);
+    assert.match(data.summary, /2 outside the reference range/);
+    const list = await fetchNeedsAttentionDetailed(uid);
+    assert.equal(list.counts.abnormal, data.counts.outOfRange);
+
+    const [timelineRow] = await listTimeline(uid);
+    assert.equal(timelineRow.abnormal_count, 2);
+  } finally {
+    await pool.query('DELETE FROM users WHERE id = $1', [uid]);
+  }
+});

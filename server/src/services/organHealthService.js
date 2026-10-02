@@ -347,6 +347,28 @@ function deviationPast(limit, value, direction) {
   return Math.round((delta / Math.abs(limit)) * 100);
 }
 
+// Values calculated from another test rather than measured (the estimated
+// average glucose is a formula applied to HbA1c). They are judged against
+// their range like any result, but are reported as derived so they aren't
+// counted as a separate problem alongside the test they come from.
+const DERIVED_PARAMETERS = { glucose_mean: 'hba1c' };
+
+// The range a result is judged against, as text, and where it came from:
+// 'printed' (the report's own) or 'standard' (the app's reference range).
+// Lets a caller show the basis for a verdict even when the report printed no
+// usable range.
+function referenceFor(row, standardRange) {
+  const limits = limitsFor(row, standardRange);
+  if (!limits) return { text: row.referenceRangeRaw || null, source: row.referenceRangeRaw ? 'printed' : null };
+  if (limits.source === 'printed') return { text: String(row.referenceRangeRaw).trim(), source: 'printed' };
+  const { low, high } = limits;
+  let text = null;
+  if (low !== null && high !== null) text = `${low}-${high}`;
+  else if (high !== null) text = `<= ${high}`;
+  else if (low !== null) text = `>= ${low}`;
+  return { text, source: text ? 'standard' : null };
+}
+
 // Full per-result evaluation: { status, direction, deviationPercent,
 // severity }. `status` is 'normal' | 'abnormal' | 'unknown' (not enough
 // information to judge - excluded from the counts rather than guessed at).
@@ -612,7 +634,9 @@ module.exports = {
   buildOrganSummaries,
   buildCardSummaries,
   ABNORMAL_FLAGS,
+  DERIVED_PARAMETERS,
   GENERIC_QUALITATIVE_NORMAL,
+  referenceFor,
   NORMAL_FLAGS,
   determineResultStatus,
   evaluateResult,

@@ -16,7 +16,8 @@ const NORMAL_FLAG_TOKEN = /^(n|wnl|within range|sufficient|optimal|desirable|neg
 function isAbnormalFlag(flag) {
   if (!flag) return false;
   const text = String(flag).trim();
-  return !/normal/i.test(text) && !NORMAL_FLAG_TOKEN.test(text);
+  // "normal" as a word: "Within normal limits" is normal, "Abnormal" is not.
+  return !/(^|[^a-z])normal/i.test(text) && !NORMAL_FLAG_TOKEN.test(text);
 }
 
 // Whether a result is outside its normal range: the in-range verdict the

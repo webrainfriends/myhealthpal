@@ -1,5 +1,6 @@
 const { getAiClient, isAllowed } = require('../ai/privacyGateway');
 const pool = require('../db/pool');
+const { isAbnormalFlag } = require('../insights/insightRules');
 const config = require('../config');
 const { recordAiUsage, FEATURES } = require('../services/aiUsageService');
 const { normalizeLanguage, languageInstruction, DEFAULT_LANGUAGE } = require('../services/languageService');
@@ -87,7 +88,7 @@ function buildHeuristicNarrative(report, measurements, comparisons) {
     }.`
   );
 
-  const flagged = measurements.filter((m) => m.status_flag && !/normal/i.test(m.status_flag));
+  const flagged = measurements.filter((m) => m.status_flag && isAbnormalFlag(m.status_flag));
   if (flagged.length > 0) {
     parts.push(
       `The source report flags ${flagged.length} value${flagged.length === 1 ? '' : 's'} as outside its reference range: ${flagged

@@ -132,7 +132,7 @@ module.exports = [
     dataType: 'numeric',
     canonicalUnit: 'mg/dL',
     displayPrecision: 0,
-    aliases: ['hdl cholesterol', 'hdl', 'hdl-c', 'hdl cholesterol direct'],
+    aliases: ['hdl cholesterol', 'hdl', 'hdl-c', 'hdl cholesterol direct', 'cholesterol - hdl', 'hdl cholesterol (direct)', 'hdl-cholesterol'],
     conversions: [{ fromUnit: 'mmol/L', factor: 38.67, offset: 0 }],
   },
   {
@@ -419,7 +419,7 @@ module.exports = [
     canonicalUnit: null,
     displayPrecision: 2,
     // A calculated ratio of the two enzymes above, distinct from either.
-    aliases: ['ast/alt', 'ast/alt ratio', 'de ritis ratio'],
+    aliases: ['ast/alt', 'ast/alt ratio', 'de ritis ratio', 'sgot/sgpt', 'sgot/sgpt ratio', 'ast:alt', 'ast : alt ratio', 'ast/alt ratio (sgot/sgpt)'],
     conversions: [],
   },
   {
@@ -690,7 +690,7 @@ module.exports = [
     dataType: 'numeric',
     canonicalUnit: null,
     displayPrecision: 1,
-    aliases: ['cho / hdl ratio', 'cho/hdl ratio', 'cholesterol/hdl ratio', 'total cholesterol/hdl ratio'],
+    aliases: ['cho / hdl ratio', 'cho/hdl ratio', 'cholesterol/hdl ratio', 'total cholesterol/hdl ratio', 'tc/hdl', 'tc/hdl ratio', 'tc/hdl cholesterol ratio', 'chol/hdl ratio', 'total cholesterol/hdl ratio', 'cholesterol/hdl ratio'],
     conversions: [],
   },
   {
@@ -700,7 +700,7 @@ module.exports = [
     dataType: 'numeric',
     canonicalUnit: null,
     displayPrecision: 1,
-    aliases: ['ldl/hdl ratio', 'ldl / hdl ratio'],
+    aliases: ['ldl/hdl ratio', 'ldl / hdl ratio', 'ldl/hdl', 'ldl/hdl cholesterol ratio'],
     conversions: [],
   },
   {
@@ -710,7 +710,7 @@ module.exports = [
     dataType: 'numeric',
     canonicalUnit: null,
     displayPrecision: 1,
-    aliases: ['tgl/hdl ratio', 'tgl / hdl ratio', 'triglycerides/hdl ratio'],
+    aliases: ['tgl/hdl ratio', 'tgl / hdl ratio', 'triglycerides/hdl ratio', 'tg/hdl', 'tg/hdl ratio', 'trig/hdl ratio', 'triglyceride/hdl ratio'],
     conversions: [],
   },
   // Kidney: eGFR and microalbumin are important early kidney-damage
