@@ -7,7 +7,7 @@ import { formatCalendarDate } from '../utils/date';
 const ACTIVITY_IMAGE = require('../../assets/dashboard/activity-buddy.jpg');
 // A light, mostly-transparent green wash - just enough to tie the photo
 // into the app's color system without hiding the character it's a photo of.
-const OVERLAY = ['rgba(15, 185, 129, 0)', 'rgba(6, 110, 76, 0.3)'];
+const OVERLAY = ['rgba(4, 51, 31, 0)', 'rgba(4, 51, 31, 0.7)'];
 
 // Candy-bright ring colors for THIS card only (not the shared
 // activityRingColors token, which is tuned for white backgrounds elsewhere
@@ -48,8 +48,15 @@ export default function ActivityCard({ current, isCurrentToday, onPress }) {
       <Image source={ACTIVITY_IMAGE} style={StyleSheet.absoluteFill} resizeMode="cover" />
       <GradientFill colors={OVERLAY} angle="vertical" />
 
-      <View style={styles.badgeGloss}>
-        <ActivityRings rings={rings} size={RING_SIZE} strokeWidth={4.5} gap={1.5} />
+      <View style={styles.topRow}>
+        <View style={styles.titleChip}>
+          <Text style={styles.titleText} numberOfLines={1}>
+            {t('activity.title')}
+          </Text>
+        </View>
+        <View style={styles.badgeGloss}>
+          <ActivityRings rings={rings} size={RING_SIZE} strokeWidth={4.5} gap={1.5} />
+        </View>
       </View>
 
       <View style={styles.textBlock}>
@@ -76,21 +83,34 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     overflow: 'hidden',
     justifyContent: 'space-between',
-    padding: 10,
+    padding: 12,
+  },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 6,
+  },
+  titleChip: {
+    flexShrink: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.88)',
+  },
+  titleText: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+    color: '#066E4C',
   },
   badgeGloss: {
-    alignSelf: 'flex-end',
-    width: RING_SIZE + 14,
-    height: RING_SIZE + 14,
-    borderRadius: (RING_SIZE + 14) / 2,
+    width: RING_SIZE + 8,
+    height: RING_SIZE + 8,
+    borderRadius: (RING_SIZE + 8) / 2,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#04331F',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
   },
   textBlock: {
     gap: 2,
