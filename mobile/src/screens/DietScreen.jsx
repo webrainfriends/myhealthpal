@@ -4,8 +4,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import FoodEntryCard from '../components/FoodEntryCard';
 import PrimaryButton from '../components/PrimaryButton';
+import GradientFill from '../components/brand/GradientFill';
+import ActivityRings from '../components/ActivityRings';
 import SpeakButton from '../components/SpeakButton';
-import { alertSeverityColors, cardShadow, colors, radii, spacing, typography } from '../theme/theme';
+import { alertSeverityColors, brandShadow, card3D, cardShadow, colors, gradients, radii, spacing, typography } from '../theme/theme';
 import {
   fetchDietEntries,
   fetchDietRecommendations,
@@ -39,6 +41,17 @@ const MICRONUTRIENT_LABELS = [
   { key: 'vitamin_d_mcg', labelKey: 'diet.microVitaminD', suffix: 'mcg' },
 ];
 
+// Reference daily targets for the progress rings/bars - a general-purpose
+// guide (2000 kcal diet), not a personalised prescription.
+const DAILY_TARGETS = { calories: 2000, protein_g: 75, carbs_g: 250, fat_g: 65 };
+
+const MACRO_TILES = [
+  { key: 'protein_g', labelKey: 'diet.macroProtein', icon: '💪', color: '#0E9FB4', soft: '#E1F7FA', target: DAILY_TARGETS.protein_g },
+  { key: 'carbs_g', labelKey: 'diet.macroCarbs', icon: '🌾', color: '#6C4DFF', soft: '#EFEBFF', target: DAILY_TARGETS.carbs_g },
+  { key: 'fat_g', labelKey: 'diet.macroFat', icon: '🥑', color: '#0FB981', soft: '#E2F9F0', target: DAILY_TARGETS.fat_g },
+  { key: 'fiber_g', labelKey: 'diet.macroFiber', icon: '🥦', color: '#FF9500', soft: '#FFF3E0', target: 28 },
+];
+
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -62,9 +75,14 @@ function buildDietSpeech(today, macroLabels, recommendation, t) {
 function TipRow({ tip }) {
   const palette = alertSeverityColors[tip.severity] || alertSeverityColors.info;
   return (
-    <View style={[styles.tipRow, { backgroundColor: palette.bg, borderLeftColor: palette.fg }]}>
-      <Text style={[typography.body, styles.tipTitle, { color: palette.fg }]}>{tip.title}</Text>
-      <Text style={typography.bodySecondary}>{tip.detail}</Text>
+    <View style={[styles.tipRow, card3D(palette.fg)]}>
+      <View style={[styles.tipIcon, { backgroundColor: palette.bg }]}>
+        <Text style={styles.tipIconText}>{tip.severity === 'important' ? '⚠️' : tip.severity === 'attention' ? '💡' : '✨'}</Text>
+      </View>
+      <View style={styles.tipBody}>
+        <Text style={[typography.body, styles.tipTitle, { color: palette.fg }]}>{tip.title}</Text>
+        <Text style={typography.bodySecondary}>{tip.detail}</Text>
+      </View>
     </View>
   );
 }
@@ -74,6 +92,13 @@ function TipRow({ tip }) {
 // is a free read (already-generated recipes, no AI call) - see
 // fetchSavedRecipes.
 const RECIPE_IDEAS_LIMIT = 6;
+
+const RECIPE_GRADIENTS = [
+  ['#FF8A4C', '#FF4F9A'],
+  ['#1FD1C1', '#4F7BFF'],
+  ['#34D399', '#0FB981'],
+  ['#6C4DFF', '#A94BFF'],
+];
 
 export default function DietScreen({ navigation }) {
   const t = useT();
@@ -211,15 +236,123 @@ export default function DietScreen({ navigation }) {
         </View>
         <Text style={[typography.bodySecondary, styles.subtitle]}>{t('diet.subtitle')}</Text>
 
-        <View style={styles.scanSection}>
-          <View style={styles.scanRow}>
-            <PrimaryButton title={t('diet.takePhoto')} onPress={photograph} loading={scanning} />
-            <PrimaryButton title={t('diet.fromLibrary')} variant="secondary" onPress={pickFromLibrary} loading={scanning} />
+        {/* Hero: calorie ring + the day's headline numbers */}
+        <View style={[styles.hero, brandShadow]}>
+          <GradientFill />
+          <View style={styles.heroBlob} />
+          <View style={styles.heroTop}>
+            <View style={styles.heroRing}>
+              <ActivityRings
+                size={132}
+                strokeWidth={11}
+                gap={3}
+                rings={[
+                  { percent: (today?.calories || 0) / DAILY_TARGETS.calories, fg: '#FFFFFF', track: 'rgba(255,255,255,0.25)' },
+                  { percent: (today?.protein_g || 0) / DAILY_TARGETS.protein_g, fg: '#7DF9E0', track: 'rgba(255,255,255,0.18)' },
+                ]}
+              />
+              <View style={styles.heroRingCenter} pointerEvents="none">
+                <Text style={styles.heroRingValue}>{Math.round(today?.calories || 0)}</Text>
+                <Text style={styles.heroRingUnit}>{t('diet.calSuffix').trim()}</Text>
+              </View>
+            </View>
+            <View style={styles.heroStats}>
+              <Text style={styles.heroLabel}>{t('diet.today')}</Text>
+              <Text style={styles.heroLeft}>
+                {Math.max(0, DAILY_TARGETS.calories - Math.round(today?.calories || 0))}
+                <Text style={styles.heroLeftUnit}> / {DAILY_TARGETS.calories} left</Text>
+              </Text>
+              <View style={styles.heroChips}>
+                {MACRO_TILES.slice(0, 3).map((m) => (
+                  <View key={m.key} style={styles.heroChip}>
+                    <Text style={styles.heroChipText}>
+                      {m.icon} {Math.round(today?.[m.key] || 0)}g
+                    </Text>
+                  </View>
+                ))}
+              </View>
+              <TouchableOpacity onPress={() => navigation.navigate('DietStats')}>
+                <Text style={styles.heroLink}>{t('diet.viewStats')}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-          <TouchableOpacity onPress={() => navigation.navigate('DietEntryForm')}>
-            <Text style={styles.altAction}>{t('diet.orAddManually')}</Text>
+        </View>
+
+        {/* Scan: the primary action, big and tactile */}
+        <TouchableOpacity style={[styles.scanCta, card3D('#FF4F9A')]} onPress={photograph} disabled={scanning} activeOpacity={0.85}>
+          <GradientFill colors={gradients.sunrise} angle="horizontal" />
+          <View style={styles.scanIcon}>
+            <Text style={styles.scanIconText}>{scanning ? '⏳' : '📸'}</Text>
+          </View>
+          <View style={styles.scanCopy}>
+            <Text style={styles.scanTitle}>{t('diet.takePhoto')}</Text>
+            <Text style={styles.scanSub}>{t('diet.subtitle')}</Text>
+          </View>
+          <Text style={styles.scanArrow}>›</Text>
+        </TouchableOpacity>
+        <View style={styles.scanRow}>
+          <TouchableOpacity style={[styles.quickAction, cardShadow]} onPress={pickFromLibrary} disabled={scanning}>
+            <Text style={styles.quickIcon}>🖼️</Text>
+            <Text style={styles.quickText}>{t('diet.fromLibrary')}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.quickAction, cardShadow]} onPress={() => navigation.navigate('DietEntryForm')}>
+            <Text style={styles.quickIcon}>✍️</Text>
+            <Text style={styles.quickText}>{t('diet.orAddManually')}</Text>
           </TouchableOpacity>
         </View>
+
+        {summary && summary.pendingReviewCount > 0 && (
+          <TouchableOpacity style={[styles.reviewBanner, card3D(colors.warning)]} onPress={openPendingReview}>
+            <Text style={styles.reviewIcon}>🔔</Text>
+            <Text style={[typography.body, styles.reviewBannerText]}>
+              {t('diet.itemsNeedReview', { count: summary.pendingReviewCount, plural: summary.pendingReviewCount === 1 ? '' : 's' })}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Macro tiles: 2x2 raised tiles with progress */}
+        {today && (
+          <>
+            <View style={styles.tileGrid}>
+              {MACRO_TILES.map((m) => {
+                const value = today[m.key] || 0;
+                const pct = Math.min(1, value / m.target);
+                return (
+                  <View key={m.key} style={[styles.tile, card3D(m.color)]}>
+                    <View style={styles.tileTop}>
+                      <View style={[styles.tileIcon, { backgroundColor: m.soft }]}>
+                        <Text style={styles.tileIconText}>{m.icon}</Text>
+                      </View>
+                      <Text style={styles.tileLabel}>{t(m.labelKey)}</Text>
+                    </View>
+                    <Text style={styles.tileValue}>
+                      {Math.round(value)}
+                      <Text style={styles.tileUnit}>g</Text>
+                    </Text>
+                    <View style={[styles.tileTrack, { backgroundColor: m.soft }]}>
+                      <View style={[styles.tileFill, { width: `${Math.max(pct * 100, value > 0 ? 6 : 0)}%`, backgroundColor: m.color }]} />
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+            <TouchableOpacity style={styles.moreToggle} onPress={() => setShowMicronutrients((s) => !s)}>
+              <Text style={styles.altAction}>{t(showMicronutrients ? 'diet.hideMore' : 'diet.showMore')}</Text>
+            </TouchableOpacity>
+            {showMicronutrients && (
+              <View style={[styles.microCard, cardShadow]}>
+                {[...MACRO_LABELS.slice(4), ...MICRONUTRIENT_LABELS].map((m) => (
+                  <View key={m.key} style={styles.microItem}>
+                    <Text style={typography.caption}>{t(m.labelKey)}</Text>
+                    <Text style={styles.microValue}>
+                      {Math.round(today[m.key] || 0)}{m.suffix}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </>
+        )}
 
         <View style={styles.sectionHeaderRow}>
           <Text style={typography.heading}>AI recipe ideas</Text>
@@ -233,78 +366,43 @@ export default function DietScreen({ navigation }) {
           </Text>
         ) : (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recipeIdeasRow}>
-            {recipeIdeas.map((recipe) => (
-              <View key={recipe.id} style={[styles.recipeIdeaCard, cardShadow]}>
-                <Text style={typography.body} numberOfLines={2}>{recipe.title}</Text>
-                {recipe.mealType && <Text style={styles.recipeIdeaMeal}>{recipe.mealType}</Text>}
-                {recipe.nutritionPerServing.calories != null && (
-                  <Text style={typography.caption}>{Math.round(recipe.nutritionPerServing.calories)} cal</Text>
-                )}
-                <PrimaryButton
-                  title={recipe.addedAt ? 'Added ✓' : 'Add'}
-                  variant="secondary"
-                  onPress={() => handleAddRecipeIdea(recipe)}
-                  loading={addingRecipeId === recipe.id}
-                  disabled={addingRecipeId === recipe.id}
-                />
-              </View>
-            ))}
+            {recipeIdeas.map((recipe, index) => {
+              const palette = RECIPE_GRADIENTS[index % RECIPE_GRADIENTS.length];
+              return (
+                <View key={recipe.id} style={[styles.recipeIdeaCard, card3D(palette[1])]}>
+                  <View style={styles.recipeBanner}>
+                    <GradientFill colors={palette} />
+                    <Text style={styles.recipeEmoji}>🍽️</Text>
+                    {recipe.nutritionPerServing.calories != null && (
+                      <View style={styles.recipeCal}>
+                        <Text style={styles.recipeCalText}>{Math.round(recipe.nutritionPerServing.calories)} cal</Text>
+                      </View>
+                    )}
+                  </View>
+                  <View style={styles.recipeBody}>
+                    <Text style={[typography.body, styles.recipeTitle]} numberOfLines={2}>{recipe.title}</Text>
+                    {recipe.mealType && <Text style={[styles.recipeIdeaMeal, { color: palette[1] }]}>{recipe.mealType}</Text>}
+                    <PrimaryButton
+                      title={recipe.addedAt ? 'Added ✓' : '+ Add'}
+                      variant="secondary"
+                      onPress={() => handleAddRecipeIdea(recipe)}
+                      loading={addingRecipeId === recipe.id}
+                      disabled={addingRecipeId === recipe.id}
+                    />
+                  </View>
+                </View>
+              );
+            })}
           </ScrollView>
         )}
 
-        <View style={styles.sectionHeaderRow}>
-          <Text style={typography.heading}>Diet schedules</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('DietSchedules')}>
-            <Text style={styles.addLabel}>See all →</Text>
-          </TouchableOpacity>
-        </View>
-
-        {summary && summary.pendingReviewCount > 0 && (
-          <TouchableOpacity style={styles.reviewBanner} onPress={openPendingReview}>
-            <Text style={[typography.body, styles.reviewBannerText]}>
-              {t('diet.itemsNeedReview', { count: summary.pendingReviewCount, plural: summary.pendingReviewCount === 1 ? '' : 's' })}
-            </Text>
-          </TouchableOpacity>
-        )}
-
-        <View style={styles.sectionHeaderRow}>
-          <Text style={typography.heading}>{t('diet.today')}</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('DietStats')}>
-            <Text style={styles.addLabel}>{t('diet.viewStats')}</Text>
-          </TouchableOpacity>
-        </View>
-        {today && (
-          <View style={[styles.totalsCard, cardShadow]}>
-            <Text style={styles.caloriesValue}>
-              {Math.round(today.calories)} <Text style={styles.caloriesUnit}>{t('diet.calSuffix').trim()}</Text>
-            </Text>
-            <View style={styles.macroGrid}>
-              {MACRO_LABELS.map((m) => (
-                <View key={m.key} style={styles.macroItem}>
-                  <Text style={typography.caption}>{t(m.labelKey)}</Text>
-                  <Text style={typography.body}>
-                    {Math.round(today[m.key] || 0)}{m.suffix}
-                  </Text>
-                </View>
-              ))}
-            </View>
-            <TouchableOpacity onPress={() => setShowMicronutrients((s) => !s)}>
-              <Text style={styles.altAction}>{t(showMicronutrients ? 'diet.hideMore' : 'diet.showMore')}</Text>
-            </TouchableOpacity>
-            {showMicronutrients && (
-              <View style={styles.macroGrid}>
-                {MICRONUTRIENT_LABELS.map((m) => (
-                  <View key={m.key} style={styles.macroItem}>
-                    <Text style={typography.caption}>{t(m.labelKey)}</Text>
-                    <Text style={typography.body}>
-                      {Math.round(today[m.key] || 0)}{m.suffix}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            )}
+        <TouchableOpacity style={[styles.schedulesRow, card3D(colors.teal)]} onPress={() => navigation.navigate('DietSchedules')} activeOpacity={0.85}>
+          <View style={[styles.tileIcon, { backgroundColor: colors.tealMuted }]}>
+            <Text style={styles.tileIconText}>🗓️</Text>
           </View>
-        )}
+          <Text style={[typography.heading, styles.schedulesText]}>Diet schedules</Text>
+          <Text style={styles.addLabel}>See all →</Text>
+        </TouchableOpacity>
 
         <View style={styles.sectionHeaderRow}>
           <Text style={typography.heading}>{t('diet.aiRecommendations')}</Text>
@@ -352,14 +450,7 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     marginTop: spacing.xs,
-  },
-  scanSection: {
-    marginTop: spacing.md,
-    gap: spacing.sm,
-  },
-  scanRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
+    marginBottom: spacing.md,
   },
   altAction: {
     color: colors.primary,
@@ -367,32 +458,247 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
   },
-  recipeIdeasRow: {
-    gap: spacing.sm,
-    paddingBottom: spacing.xs,
+  // Hero
+  hero: {
+    borderRadius: radii.xl,
+    padding: spacing.md,
+    overflow: 'hidden',
   },
-  recipeIdeaCard: {
-    width: 150,
+  heroBlob: {
+    position: 'absolute',
+    right: -50,
+    top: -50,
+    width: 170,
+    height: 170,
+    borderRadius: 85,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  heroTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  heroRing: {
+    width: 132,
+    height: 132,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroRingCenter: {
+    position: 'absolute',
+    alignItems: 'center',
+  },
+  heroRingValue: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: colors.onBrand,
+  },
+  heroRingUnit: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.onBrandMuted,
+  },
+  heroStats: {
+    flex: 1,
+    gap: 6,
+  },
+  heroLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: colors.onBrandMuted,
+  },
+  heroLeft: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: colors.onBrand,
+  },
+  heroLeftUnit: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.onBrandMuted,
+  },
+  heroChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  heroChip: {
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    borderRadius: radii.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  heroChipText: {
+    color: colors.onBrand,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  heroLink: {
+    color: colors.onBrand,
+    fontWeight: '700',
+    fontSize: 13,
+    textDecorationLine: 'underline',
+  },
+  // Scan CTA
+  scanCta: {
+    marginTop: spacing.md,
+    borderRadius: radii.xl,
+    overflow: 'hidden',
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    gap: spacing.md,
+  },
+  scanIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(255,255,255,0.28)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scanIconText: { fontSize: 26 },
+  scanCopy: { flex: 1 },
+  scanTitle: { color: colors.onBrand, fontSize: 18, fontWeight: '800' },
+  scanSub: { color: colors.onBrandMuted, fontSize: 12, marginTop: 2 },
+  scanArrow: { color: colors.onBrand, fontSize: 32, fontWeight: '300' },
+  scanRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  quickAction: {
+    flex: 1,
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
-    padding: spacing.sm,
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  quickIcon: { fontSize: 18 },
+  quickText: { color: colors.primary, fontWeight: '700', fontSize: 13 },
+  // Macro tiles
+  tileGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm + 2,
+    marginTop: spacing.lg,
+  },
+  tile: {
+    width: '48%',
+    flexGrow: 1,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  tileTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  tileIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tileIconText: { fontSize: 17 },
+  tileLabel: { fontSize: 13, fontWeight: '700', color: colors.textSecondary },
+  tileValue: { fontSize: 30, fontWeight: '800', color: colors.textPrimary },
+  tileUnit: { fontSize: 14, fontWeight: '600', color: colors.textSecondary },
+  tileTrack: {
+    height: 8,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  tileFill: {
+    height: 8,
+    borderRadius: 4,
+  },
+  moreToggle: {
+    marginTop: spacing.md,
+  },
+  microCard: {
+    marginTop: spacing.sm,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+  },
+  microItem: { minWidth: 80 },
+  microValue: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
+  // Recipes
+  recipeIdeasRow: {
+    gap: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
+    paddingHorizontal: 2,
+  },
+  recipeIdeaCard: {
+    width: 170,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    overflow: 'hidden',
+  },
+  recipeBanner: {
+    height: 78,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recipeEmoji: { fontSize: 34 },
+  recipeCal: {
+    position: 'absolute',
+    right: 8,
+    top: 8,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderRadius: radii.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  recipeCalText: { fontSize: 11, fontWeight: '800', color: colors.textPrimary },
+  recipeBody: {
+    padding: spacing.sm + 2,
     gap: 4,
   },
+  recipeTitle: { fontWeight: '700', minHeight: 40 },
   recipeIdeaMeal: {
     fontSize: 11,
-    fontWeight: '700',
-    color: colors.primary,
+    fontWeight: '800',
     textTransform: 'uppercase',
   },
+  schedulesRow: {
+    marginTop: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  schedulesText: { flex: 1 },
   reviewBanner: {
     marginTop: spacing.md,
     backgroundColor: colors.warningMuted,
-    borderRadius: radii.md,
+    borderRadius: radii.lg,
     padding: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
+  reviewIcon: { fontSize: 20 },
   reviewBannerText: {
+    flex: 1,
     color: colors.warning,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   sectionHeading: {
     marginTop: spacing.lg,
@@ -408,42 +714,29 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '600',
   },
-  totalsCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    padding: spacing.md,
-    gap: spacing.sm,
-  },
-  caloriesValue: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  caloriesUnit: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.textSecondary,
-  },
-  macroGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
-  },
-  macroItem: {
-    minWidth: 70,
-  },
   recSummary: {
+    marginTop: spacing.xs,
     marginBottom: spacing.sm,
   },
   tipsList: {
-    gap: spacing.sm,
+    gap: spacing.sm + 2,
   },
   tipRow: {
-    borderRadius: radii.md,
-    borderLeftWidth: 4,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
     padding: spacing.md,
-    gap: 2,
+    flexDirection: 'row',
+    gap: spacing.sm + 2,
   },
+  tipIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tipIconText: { fontSize: 17 },
+  tipBody: { flex: 1, gap: 2 },
   tipTitle: {
     fontWeight: '700',
   },
