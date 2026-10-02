@@ -1,0 +1,81 @@
+# Publishes the mobile app (mobile/) to Expo's servers with EAS Update so
+# anyone can open the latest version in the Expo Go app - no dev server and
+# nothing to run by hand on the EC2 host.
+#
+# One-time setup: a repository secret named EXPO_TOKEN (expo.dev -> Account
+# settings -> Access tokens). Nothing else.
+#
+# The published app talks to the same server deploy.yml deploys, so the API
+# address is read from that file rather than repeated here. Expo Go cannot
+# load BLE, Apple Health, Health Connect, the AI workout camera or push -
+# those are off there; use "Continue as Guest" to sign in.
+name: Expo Go
+
+on:
+  push:
+    branches: ["main", "claude/kind-heisenberg-jruaif"]
+    paths: ["mobile/**", ".github/workflows/expo-go.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: expo-go
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Check token
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::error::Add a repository secret named EXPO_TOKEN (expo.dev -> Account settings -> Access tokens)."
+            exit 1
+          fi
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        working-directory: mobile
+        run: npm ci --legacy-peer-deps --ignore-scripts
+
+      - name: Link the EAS project and enable updates
+        working-directory: mobile
+        run: |
+          eas init --non-interactive --force
+          eas update:configure --non-interactive --platform all
+
+      - name: Publish update
+        id: publish
+        working-directory: mobile
+        env:
+          CI: "1"
+        run: |
+          HOST=$(sed -n 's/^ *EC2_HOST: *//p' ../.github/workflows/deploy.yml | head -1)
+          PORT=$(sed -n 's/^ *NGINX_PORT: *//p' ../.github/workflows/deploy.yml | head -1)
+          export EXPO_PUBLIC_API_BASE_URL="http://${HOST}:${PORT}"
+          eas channel:create expo-go --non-interactive || true
+          eas update --branch expo-go --message "${GITHUB_SHA::7}" --non-interactive --json > update.json
+          cat update.json
+          eas channel:edit expo-go --branch expo-go --non-interactive
+          PROJECT_ID=$(node -e "const j=require('./update.json');console.log((Array.isArray(j)?j[0]:j).projectId||'')")
+          {
+            echo "## Open in Expo Go"
+            echo
+            echo "On a phone with Expo Go (SDK 57), open: \`exp://u.expo.dev/${PROJECT_ID}?channel-name=expo-go\`"
+            echo
+            echo "Or sign in to the same Expo account in Expo Go and pick the project. Use Continue as Guest."
+          } >> "$GITHUB_STEP_SUMMARY"
