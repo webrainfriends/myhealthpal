@@ -23,6 +23,7 @@ function AttentionRow({ item, onPress, t }) {
             ? `· ${item.status_flag}`
             : `· ${t('needsAttention.needsReview')}`}{' '}
         · {item.displayTitle || item.original_filename} · {formatDate(item.effective_date)}
+        {item.low_confidence ? ' · check value' : ''}
       </Text>
     </TouchableOpacity>
   );

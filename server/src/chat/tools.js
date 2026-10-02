@@ -2,7 +2,7 @@ const pool = require('../db/pool');
 const { toPublicRecord } = require('../security/reportAccess');
 const { reportDisplayTitle } = require('../lib/reportTitle');
 const { displayUnit } = require('../lib/displayUnit');
-const { countReports, describeCounts } = require('../services/attentionService');
+const { countReports, describeCounts, liveSummary } = require('../services/attentionService');
 const registry = require('../extraction/registry');
 const { findKnowledgeEntry } = require('../medications/medicationLinkingService');
 const { getMedicationKnowledge } = require('../medications/medicationKnowledgeService');
@@ -43,6 +43,12 @@ const LAB_STYLE_REPORT_SQL = `(
     )
   )
 )`;
+
+// The summary stored at upload counts flags as they were then; the live one
+// (liveSummary) replaces it, so a result carries one summary, not two.
+function withoutStoredSummary({ generated_summary, ...rest }) {
+  return rest;
+}
 
 function withTitle(row) {
   return row ? { ...row, displayTitle: reportDisplayTitle(row) } : row;
@@ -90,7 +96,7 @@ const getLatestReport = {
     const counts = (await countReports([report.id])).get(report.id);
     return {
       data: {
-        ...report,
+        ...withoutStoredSummary(report),
         displayTitle,
         measurementCount: Number(measurementCount.rows[0].count),
         counts: {
@@ -98,7 +104,7 @@ const getLatestReport = {
           derivedOutOfRange: counts.derivedAbnormal,
           needReview: counts.review,
         },
-        summary: describeCounts(counts),
+        summary: liveSummary(report, counts) ?? describeCounts(counts),
       },
       evidence: [{ type: 'report', id: report.id, label: displayTitle }],
     };
@@ -137,10 +143,19 @@ const getReportById = {
         unit: displayUnit({ raw_unit, health_parameter_id, normalized_unit, normalization_confidence, canonical_unit }),
       })
     );
+    const reportCounts = (await countReports([report.id])).get(report.id);
+    const publicReport = toPublicRecord(report);
+    if (publicReport.generated_summary !== undefined) {
+      publicReport.generated_summary = liveSummary(report, reportCounts);
+    }
     return {
       // Only the report's public fields - never storage paths or key
       // metadata - reach the model (ids are stripped by the AI gateway).
-      data: { report: toPublicRecord(report), measurements: shown },
+      data: {
+        report: publicReport,
+        counts: { outOfRange: reportCounts.abnormal, derivedOutOfRange: reportCounts.derivedAbnormal, needReview: reportCounts.review },
+        measurements: shown,
+      },
       evidence: [
         { type: 'report', id: report.id, label: reportDisplayTitle(report) },
         ...evidenceFor('measurement', shown),

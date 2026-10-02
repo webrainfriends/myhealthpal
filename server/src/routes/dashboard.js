@@ -109,6 +109,9 @@ async function fetchNeedsAttentionDetailed(userId) {
       // extraction-confidence flag, which is kept separately.
       needs_review: attentionReason !== 'abnormal',
       low_confidence: Boolean(needs_review),
+      ...(needs_review
+        ? { confidence_note: 'Read from the report with low confidence - check the value against the original.' }
+        : {}),
       status: evaluation.status,
       direction: evaluation.direction,
       severity: evaluation.severity,
@@ -147,6 +150,7 @@ async function fetchNeedsAttentionDetailed(userId) {
       abnormal: abnormal.length - derivedAbnormal,
       derivedAbnormal,
       review: review.length,
+      lowConfidence: abnormal.filter((i) => i.low_confidence).length,
       staleHidden: items.length - fresh.length + staleUnmappedHidden,
       supersededHidden,
     },

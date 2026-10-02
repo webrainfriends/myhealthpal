@@ -3,6 +3,7 @@ const pool = require('../db/pool');
 const config = require('../config');
 const { reportDisplayTitle } = require('../lib/reportTitle');
 const { displayUnit } = require('../lib/displayUnit');
+const { countReports, liveSummary } = require('../services/attentionService');
 const { upload, extensionOf, maxBytesFor } = require('../middleware/upload');
 const { enqueueProcessing } = require('../services/ingestionService');
 const registry = require('../extraction/registry');
@@ -43,7 +44,14 @@ router.get('/', async (req, res, next) => {
        FROM reports WHERE user_id = $1 ORDER BY COALESCE(effective_date, created_at::date) DESC, created_at DESC`,
       [currentUserId(req)]
     );
-    res.json({ reports: rows.map((r) => ({ ...r, displayTitle: reportDisplayTitle(r) })) });
+    const counts = await countReports(rows.map((r) => r.id));
+    res.json({
+      reports: rows.map((r) => ({
+        ...r,
+        displayTitle: reportDisplayTitle(r),
+        generated_summary: liveSummary(r, counts.get(r.id)),
+      })),
+    });
   } catch (err) {
     next(err);
   }
@@ -67,7 +75,10 @@ router.get('/:id', async (req, res, next) => {
     );
 
     res.json({
-      report: toPublicRecord(report),
+      report: {
+        ...toPublicRecord(report),
+        generated_summary: liveSummary(report, (await countReports([report.id])).get(report.id)),
+      },
       measurements: measurements.rows.map((m) => ({ ...m, display_unit: displayUnit(m) })),
       dates: dates.rows,
       narrativeSummary: narrative.rows[0] || null,
