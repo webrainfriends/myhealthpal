@@ -40,7 +40,18 @@ const EXCLUDE_DUPLICATES_SQL = `hm.duplicate_status NOT IN ('suspected', 'confir
 // printed flag/range, else the standard range - so the dashboard count and
 // this list always agree with the cards. Results that still need review
 // (unmapped or low-confidence) stay listed until resolved.
+// How many review-only items (not out of range, just unjudged) are listed,
+// and how old one may be relative to the person's newest report. Real
+// out-of-range results are always listed; unjudged leftovers from years-old
+// reports would otherwise bury them.
+const MAX_REVIEW_ITEMS = 15;
+const REVIEW_MAX_AGE_DAYS = 365;
+
 async function fetchNeedsAttention(userId) {
+  return (await fetchNeedsAttentionDetailed(userId)).items;
+}
+
+async function fetchNeedsAttentionDetailed(userId) {
   const { rows } = await pool.query(
     `WITH ranked AS (
        SELECT hm.id, hm.report_id, hm.raw_test_name, hm.raw_value, hm.raw_unit, hm.qualitative_value, hm.status_flag,
@@ -48,7 +59,7 @@ async function fetchNeedsAttention(userId) {
               hp.code, hp.canonical_unit, hp.display_name AS parameter_display_name,
               r.original_filename, r.effective_date, r.date_status, r.report_type, r.source_provider,
               row_number() OVER (
-                PARTITION BY COALESCE(hm.health_parameter_id::text, lower(hm.raw_test_name))
+                PARTITION BY COALESCE(hm.health_parameter_id::text, regexp_replace(lower(hm.raw_test_name), '[^a-z0-9]', '', 'g'))
                 ORDER BY COALESCE(r.effective_date, hm.sample_datetime::date, r.created_at::date) DESC, hm.created_at DESC
               ) AS rank
        FROM health_measurements hm
@@ -121,7 +132,24 @@ async function fetchNeedsAttention(userId) {
     const rank = (i) => (i.attention_reason === 'abnormal' ? SEVERITY_ORDER[i.severity] ?? 2 : 3);
     return rank(a) - rank(b);
   });
-  return items.slice(0, 50);
+
+  // Unjudged items from reports much older than the newest one are stale.
+  const newest = items.reduce((max, i) => {
+    const t = i.effective_date ? new Date(i.effective_date).getTime() : NaN;
+    return Number.isNaN(t) ? max : Math.max(max, t);
+  }, 0);
+  const fresh = items.filter((i) => {
+    if (i.attention_reason === 'abnormal' || !newest || !i.effective_date) return true;
+    return newest - new Date(i.effective_date).getTime() <= REVIEW_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+  });
+  const abnormal = fresh.filter((i) => i.attention_reason === 'abnormal');
+  const review = fresh.filter((i) => i.attention_reason !== 'abnormal');
+  const shown = [...abnormal.slice(0, 50), ...review.slice(0, MAX_REVIEW_ITEMS)];
+  return {
+    items: shown,
+    counts: { abnormal: abnormal.length, review: review.length, staleHidden: items.length - fresh.length },
+    truncated: abnormal.length > 50 || review.length > MAX_REVIEW_ITEMS,
+  };
 }
 
 // A row is worth listing for review only if there's an actual result to look
@@ -499,3 +527,4 @@ module.exports.fetchLatestUnmappedMeasurements = fetchLatestUnmappedMeasurements
 module.exports.buildSnapshot = buildSnapshot;
 module.exports.buildOrgans = buildOrgans;
 module.exports.fetchNeedsAttention = fetchNeedsAttention;
+module.exports.fetchNeedsAttentionDetailed = fetchNeedsAttentionDetailed;

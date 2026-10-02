@@ -50,3 +50,32 @@ test('includeDeviceExports opts back in; an undated export never outranks a date
   const again = await executeTool('get_latest_report', { includeDeviceExports: true }, { userId });
   assert.equal(again.data.id, glucoseId);
 });
+
+test('a glucometer log that has extracted glucose results is still not the latest lab report', async () => {
+  const user = await pool.query(`INSERT INTO users (email, display_name) VALUES ('latest-report-glucose-log@example.com', 'LG') RETURNING id`);
+  const uid = user.rows[0].id;
+  try {
+    const mk = async (name, date) =>
+      (
+        await pool.query(
+          `INSERT INTO reports (user_id, original_filename, mime_type, file_extension, file_size_bytes, storage_path, ingestion_status, effective_date)
+           VALUES ($1, $2, 'application/pdf', 'pdf', 10, '/tmp/x', 'Needs Review', $3) RETURNING id`,
+          [uid, name, date]
+        )
+      ).rows[0].id;
+    const lab = await mk('panel.pdf', '2026-08-31');
+    const log = await mk('meter.xlsx', '2026-09-20');
+    const param = async (code) => (await pool.query('SELECT id FROM health_parameters WHERE code = $1', [code])).rows[0].id;
+    const add = (report, parameterId, name) =>
+      pool.query(
+        `INSERT INTO health_measurements (report_id, health_parameter_id, raw_test_name, raw_value, value_type, numeric_value) VALUES ($1, $2, $3, '100', 'numeric', 100)`,
+        [report, parameterId, name]
+      );
+    await add(lab, await param('hemoglobin'), 'Hb');
+    await add(log, await param('glucose'), 'Glucose');
+    const { data } = await executeTool('get_latest_report', {}, { userId: uid });
+    assert.equal(data.id, lab);
+  } finally {
+    await pool.query('DELETE FROM users WHERE id = $1', [uid]);
+  }
+});

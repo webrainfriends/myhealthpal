@@ -432,3 +432,23 @@ test('eGFR 117 against its standard range is normal', () => {
   const standard = { range_low: 90, range_high: 130 };
   assert.equal(evaluateResult({ code: 'egfr', numericValue: 117 }, standard).status, 'normal');
 });
+
+test('a unit-converted value is compared with the printed range in the printed units, not the converted ones', () => {
+  // Platelets printed "1.5-4.1" lakhs/cumm; normalized to 10^3/uL that is 250.
+  const row = { code: 'platelets', numericValue: 2.5, normalizedValue: 250, referenceRangeRaw: '1.5-4.1 lakhs/cumm' };
+  assert.equal(evaluateResult(row).status, 'normal');
+  assert.equal(evaluateResult({ ...row, numericValue: 5.2, normalizedValue: 520 }).status, 'abnormal');
+  // Against the standard range (canonical unit) the converted value is used.
+  assert.equal(evaluateResult({ code: 'platelets', numericValue: 2.5, normalizedValue: 250 }, { range_low: 150, range_high: 410 }).status, 'normal');
+});
+
+test('urine microscopy counts such as "2-3" are judged against the printed or typical ceiling', () => {
+  const pus = (v, range) => evaluateResult({ code: 'urine_pus_cells', qualitativeValue: v, referenceRangeRaw: range }).status;
+  assert.equal(pus('2-3', '0-5/HPF'), 'normal');
+  assert.equal(pus('2-3', null), 'normal');
+  assert.equal(pus('Occasional', null), 'normal');
+  assert.equal(pus('8-10', '0-5/HPF'), 'abnormal');
+  assert.equal(evaluateResult({ code: 'urine_epithelial_cells', qualitativeValue: '1-2' }).status, 'normal');
+  assert.equal(evaluateResult({ code: 'urine_rbc', qualitativeValue: '4-5' }).status, 'abnormal');
+  assert.equal(evaluateResult({ code: 'urine_pus_cells', qualitativeValue: 'weird text' }).status, 'unknown');
+});
