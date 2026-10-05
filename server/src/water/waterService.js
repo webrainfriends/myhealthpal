@@ -25,15 +25,30 @@ function validateAmountMl(amountMl) {
   return Math.round(amount);
 }
 
-async function logWaterEntry(userId, { amountMl, loggedAt } = {}) {
+// `clientEntryId` makes a retried log (a watch that lost its connection mid-
+// request) return the original row instead of adding a second one. The
+// returned row carries `duplicate: true` in that case.
+async function logWaterEntry(userId, { amountMl, loggedAt, clientEntryId } = {}) {
   const amount = validateAmountMl(amountMl);
   const when = loggedAt instanceof Date && !Number.isNaN(loggedAt.getTime()) ? loggedAt : new Date();
 
-  const { rows } = await pool.query(
-    `INSERT INTO water_entries (user_id, amount_ml, logged_at) VALUES ($1, $2, $3) RETURNING *`,
-    [userId, amount, when]
+  const key = typeof clientEntryId === 'string' && clientEntryId.trim() ? clientEntryId.trim().slice(0, 80) : null;
+  if (!key) {
+    const { rows } = await pool.query(
+      `INSERT INTO water_entries (user_id, amount_ml, logged_at) VALUES ($1, $2, $3) RETURNING *`,
+      [userId, amount, when]
+    );
+    return rows[0];
+  }
+
+  const inserted = await pool.query(
+    `INSERT INTO water_entries (user_id, amount_ml, logged_at, client_entry_id) VALUES ($1, $2, $3, $4)
+     ON CONFLICT (user_id, client_entry_id) WHERE client_entry_id IS NOT NULL DO NOTHING RETURNING *`,
+    [userId, amount, when, key]
   );
-  return rows[0];
+  if (inserted.rows[0]) return inserted.rows[0];
+  const { rows } = await pool.query('SELECT * FROM water_entries WHERE user_id = $1 AND client_entry_id = $2', [userId, key]);
+  return { ...rows[0], duplicate: true };
 }
 
 // Entries for one calendar day (device-local "today" by default) plus the

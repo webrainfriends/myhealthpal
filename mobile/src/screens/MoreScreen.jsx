@@ -71,6 +71,12 @@ export default function MoreScreen({ navigation }) {
           onPress={() => navigation.navigate('Kitchen')}
         />
         <MoreRow
+          icon="⌚"
+          title={t('wearables.title')}
+          subtitle={t('wearables.moreSubtitle')}
+          onPress={() => navigation.navigate('Wearables')}
+        />
+        <MoreRow
           icon="⚙️"
           title={t('nav.settings')}
           subtitle="Recipe preferences, connected sources, language, voice"

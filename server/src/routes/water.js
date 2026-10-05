@@ -67,8 +67,11 @@ router.post('/entries', async (req, res, next) => {
     const entry = await waterService.logWaterEntry(currentUserId(req), {
       amountMl: body.amount_ml,
       loggedAt: parseLoggedAt(body.logged_at),
+      clientEntryId: body.client_entry_id,
     });
-    res.status(201).json({ entry });
+    // A retried log returns the original entry (200) rather than a new one (201).
+    const { duplicate, ...saved } = entry;
+    res.status(duplicate ? 200 : 201).json({ entry: saved });
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     next(err);

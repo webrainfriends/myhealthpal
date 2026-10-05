@@ -5,9 +5,44 @@ import { Platform } from 'react-native';
 // way the session token in tokenStorage.js is device/browser-local rather
 // than server state. Mirrors that file's storage strategy exactly: web
 // localStorage so a preference survives a refresh/reopen, an in-memory
-// fallback everywhere else since no persistent-storage dependency is
-// installed for native builds yet.
+// fallback if the native secure store is unavailable. On native the settings
+// are kept as one small JSON blob in expo-secure-store (the same store the
+// session token uses), so they survive a restart.
+const NATIVE_KEY = 'myhealthpal.settings';
 const memoryStore = {};
+let nativeLoaded = false;
+
+function nativeStore() {
+  if (Platform.OS === 'web') return null;
+  try {
+    return require('expo-secure-store');
+  } catch {
+    return null;
+  }
+}
+
+function loadNative() {
+  if (nativeLoaded) return;
+  nativeLoaded = true;
+  const store = nativeStore();
+  if (!store) return;
+  try {
+    const raw = store.getItem(NATIVE_KEY);
+    if (raw) Object.assign(memoryStore, JSON.parse(raw));
+  } catch {
+    // start empty
+  }
+}
+
+function persistNative() {
+  const store = nativeStore();
+  if (!store) return;
+  try {
+    store.setItem(NATIVE_KEY, JSON.stringify(memoryStore));
+  } catch {
+    // keep the in-memory copy
+  }
+}
 
 function webStorageAvailable() {
   try {
@@ -26,6 +61,7 @@ export function getSetting(key, fallback) {
       return fallback;
     }
   }
+  loadNative();
   return key in memoryStore ? memoryStore[key] : fallback;
 }
 
@@ -38,5 +74,7 @@ export function setSetting(key, value) {
       // fall through to memory
     }
   }
+  loadNative();
   memoryStore[key] = value;
+  persistNative();
 }

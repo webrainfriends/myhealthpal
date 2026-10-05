@@ -3,9 +3,31 @@ const authService = require('../services/authService');
 const { runWithContext } = require('../lib/requestContext');
 const familyService = require('../services/familyService');
 const config = require('../config');
+const watchService = require('../services/watchService');
 
 const READ_ONLY_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// What a watch token may call - the first-release watch features only
+// (dose reminders, water, weight, a few read-only glances). Everything else,
+// including account, family and file routes, is refused for it.
+const WATCH_ALLOWED = [
+  ['GET', /^\/api\/medications\/reminders\/today$/],
+  ['POST', /^\/api\/medications\/[0-9a-f-]{36}\/doses$/i],
+  ['GET', /^\/api\/medications\/alerts$/],
+  ['GET', /^\/api\/water\/(summary|target)$/],
+  ['POST', /^\/api\/water\/entries$/],
+  ['GET', /^\/api\/health-profile\/weight-history$/],
+  ['POST', /^\/api\/health-profile\/weight$/],
+  ['GET', /^\/api\/weight-goal$/],
+  ['GET', /^\/api\/dashboard\/snapshot$/],
+  ['GET', /^\/api\/devices\/vitals\/summary$/],
+];
+
+function watchMayCall(req) {
+  const path = req.originalUrl.split('?')[0].replace(/\/+$/, '');
+  return WATCH_ALLOWED.some(([method, re]) => method === req.method && re.test(path));
+}
 
 // Attaches req.user from a verified "Authorization: Bearer <token>" -
 // the only source of identity for any user-scoped route from here on.
@@ -22,8 +44,10 @@ function authenticate({ allowProfile }) {
 
     let userId;
     let sessionId;
+    let scope;
+    let watchId;
     try {
-      ({ userId, sessionId } = authService.verifySession(token));
+      ({ userId, sessionId, scope, watchId } = authService.verifySession(token));
     } catch (err) {
       return res.status(401).json({ error: 'Session expired or invalid. Please sign in again.' });
     }
@@ -32,6 +56,15 @@ function authenticate({ allowProfile }) {
       const user = await authService.findUserById(userId);
       if (!user) {
         return res.status(401).json({ error: 'Session expired or invalid. Please sign in again.' });
+      }
+      if (scope === 'watch') {
+        // Account-level routes (family, push tokens, pairing) never accept a watch.
+        if (!allowProfile || !watchMayCall(req)) {
+          return res.status(403).json({ error: 'This watch is not allowed to do that.' });
+        }
+        if (!(await watchService.checkWatchSession(watchId, userId))) {
+          return res.status(401).json({ error: 'This watch was removed. Pair it again from your phone.' });
+        }
       }
       // The signed-in account itself - family management, push tokens and
       // reminder settings always belong to it, whichever profile is active.
@@ -52,7 +85,8 @@ function authenticate({ allowProfile }) {
         if (link.role === 'sponsor') {
           return res.status(403).json({ error: 'Sponsors can view the beneficiary dashboard only, not the full profile.' });
         }
-        if (link.access === 'view' && !READ_ONLY_METHODS.has(req.method)) {
+        // A watch only ever looks at a family member's data, never edits it.
+        if ((link.access === 'view' || scope === 'watch') && !READ_ONLY_METHODS.has(req.method)) {
           return res.status(403).json({ error: 'You have view-only access to this profile.' });
         }
         const member = await authService.findUserById(profileId);

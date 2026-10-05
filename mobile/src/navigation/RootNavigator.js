@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, AppState, Platform, Pressable, Text, View } from 'react-native';
 import { NavigationContainer, DefaultTheme, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -50,9 +50,11 @@ import WorkoutPlanEditScreen from '../screens/workout/WorkoutPlanEditScreen';
 import LiveWorkoutScreen from '../screens/workout/LiveWorkoutScreen';
 import WorkoutSummaryScreen from '../screens/workout/WorkoutSummaryScreen';
 import PrivacyConsentScreen from '../screens/PrivacyConsentScreen';
+import WearablesScreen from '../screens/WearablesScreen';
 import ConnectedAppsScreen from '../screens/ConnectedAppsScreen';
 import { onRetestNotificationTap, registerForRetestPush } from '../notifications/retestNotifications';
 import { onWaterNotificationTap } from '../notifications/waterNotifications';
+import { onDoseNotificationResponse, syncDoseReminders } from '../notifications/medicationNotifications';
 import { useAuth } from '../auth/AuthContext';
 import { useT } from '../i18n/I18nContext';
 import Mascot from '../components/brand/Mascot';
@@ -246,6 +248,29 @@ export default function RootNavigator() {
     });
   }, [userId]);
 
+  // Dose reminders (with Taken / Snooze / Skip buttons that also show on a
+  // paired watch): re-planned whenever the app opens or comes back to the
+  // foreground, for the account's own medicines only - a family member's
+  // reminders are never scheduled on this phone.
+  const viewingFamily = !!activeProfile;
+  useEffect(() => {
+    if (!userId) return undefined;
+    const unsubscribeTap = onDoseNotificationResponse((screen) => {
+      if (navigationRef.isReady()) navigationRef.navigate(screen);
+    }, t);
+    const refresh = () => {
+      if (!viewingFamily) syncDoseReminders({ t });
+    };
+    refresh();
+    const appState = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refresh();
+    });
+    return () => {
+      unsubscribeTap();
+      appState.remove();
+    };
+  }, [userId, viewingFamily, t]);
+
   if (loading) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, backgroundColor: colors.background }}>
@@ -285,6 +310,7 @@ export default function RootNavigator() {
         <Stack.Screen name="Family" component={FamilyScreen} options={{ title: t('nav.family') }} />
         <Stack.Screen name="BeneficiaryDashboard" component={BeneficiaryDashboardScreen} options={{ title: t('nav.beneficiaries') }} />
         <Stack.Screen name="PrivacyConsent" component={PrivacyConsentScreen} options={{ title: t('nav.privacy') }} />
+        <Stack.Screen name="Wearables" component={WearablesScreen} options={{ title: t('wearables.title') }} />
         <Stack.Screen name="ConnectedApps" component={ConnectedAppsScreen} options={{ title: t('privacy.connectedApps.title') }} />
         <Stack.Screen name="MedicationDetail" component={MedicationDetailScreen} options={{ title: t('nav.medication') }} />
         <Stack.Screen
