@@ -20,6 +20,23 @@ router.get('/', async (req, res, next) => {
   }
 });
 
+router.get('/weight-history', async (req, res, next) => {
+  try {
+    res.json(await healthProfileService.getWeightHistory(currentUserId(req), req.query.days));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/weight/:id', async (req, res, next) => {
+  try {
+    res.json(await healthProfileService.deleteWeightEntry(currentUserId(req), req.params.id));
+  } catch (err) {
+    if (err.code === '22P02') return res.status(400).json({ error: 'Invalid entry id.' });
+    next(err);
+  }
+});
+
 router.post('/weight', async (req, res, next) => {
   try {
     res.status(201).json(await healthProfileService.addWeightEntry(currentUserId(req), req.body.weightKg));

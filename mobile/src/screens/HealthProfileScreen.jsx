@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import WeightTracker from '../components/WeightTracker';
 import PrimaryButton from '../components/PrimaryButton';
 import { alertSeverityColors, colors, radii, spacing, typography } from '../theme/theme';
-import { addAllergy, addHeightEntry, addWeightEntry, fetchHealthProfile, removeAllergy } from '../api/client';
+import { addAllergy, addHeightEntry, fetchHealthProfile, removeAllergy } from '../api/client';
 import { showAlert } from '../utils/alert';
 import { useT } from '../i18n/I18nContext';
 
@@ -127,6 +128,7 @@ export default function HealthProfileScreen() {
   const t = useT();
   const [profile, setProfile] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [weightRefresh, setWeightRefresh] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -164,17 +166,7 @@ export default function HealthProfileScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={typography.bodySecondary}>{t('healthProfile.intro')}</Text>
 
-        <StatCard
-          title={t('healthProfile.weightTitle')}
-          unit="kg"
-          current={profile.weight.currentKg}
-          firstRecorded={profile.weight.firstRecordedKg}
-          firstRecordedAt={profile.weight.firstRecordedAt}
-          latestRecordedAt={profile.weight.latestRecordedAt}
-          onAdd={(value) => withBusy(() => addWeightEntry(value))}
-          busy={busy}
-          t={t}
-        />
+        <WeightTracker refreshKey={weightRefresh} onChanged={load} />
 
         <StatCard
           title={t('healthProfile.heightTitle')}
@@ -183,7 +175,7 @@ export default function HealthProfileScreen() {
           firstRecorded={profile.height.firstRecordedCm}
           firstRecordedAt={profile.height.firstRecordedAt}
           latestRecordedAt={profile.height.latestRecordedAt}
-          onAdd={(value) => withBusy(() => addHeightEntry(value))}
+          onAdd={(value) => withBusy(() => addHeightEntry(value)).then(() => setWeightRefresh((n) => n + 1))}
           busy={busy}
           t={t}
         />

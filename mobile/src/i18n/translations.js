@@ -140,7 +140,7 @@ export const TRANSLATIONS = {
       deleteAccountConfirm: 'Delete forever',
       deleteAccountFailedTitle: 'Could not delete account',
       healthProfileTitle: 'Health profile',
-      healthProfileSubtitle: 'Weight, height, BMI, and allergies',
+      healthProfileSubtitle: 'Weight tracker, BMI, height, and allergies',
     },
     healthProfile: {
       intro: 'Log your weight and height to track them over time and see your BMI. Add any allergies so they can be taken into account elsewhere in the app.',
@@ -168,6 +168,15 @@ export const TRANSLATIONS = {
       allergyPlaceholder: 'e.g. Peanuts',
       add: 'Add',
       refresh: 'Refresh',
+      healthyRange: 'Healthy range for your height: {{min}}–{{max}} kg',
+      statChange: 'Total change',
+      statSinceLast: 'Since last',
+      statAverage: 'Average',
+      statLowest: 'Lowest',
+      statHighest: 'Highest',
+      statDays: 'Days logged',
+      history: 'Daily log',
+      noEntriesInRange: 'No weight logged in this period.',
     },
     aiUsage: {
       intro:

@@ -509,6 +509,16 @@ export async function addWeightEntry(weightKg) {
   return handleResponse(response);
 }
 
+export async function fetchWeightHistory(days = 90) {
+  const response = await apiFetch(`/api/health-profile/weight-history?days=${days}`);
+  return handleResponse(response);
+}
+
+export async function deleteWeightEntry(id) {
+  const response = await apiFetch(`/api/health-profile/weight/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  return handleResponse(response);
+}
+
 export async function addHeightEntry(heightCm) {
   const response = await apiFetch('/api/health-profile/height', {
     method: 'POST',
