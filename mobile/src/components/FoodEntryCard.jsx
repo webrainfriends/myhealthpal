@@ -1,8 +1,8 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { card3D, colors, mealTypeColors, radii, spacing, typography } from '../theme/theme';
 import { useT } from '../i18n/I18nContext';
+import { foodIcon } from '../utils/foodIcon';
 
-const MEAL_ICONS = { breakfast: '🍳', lunch: '🥗', snack: '🍎', dinner: '🍝', supper: '🌙' };
 
 const MEAL_LABEL_KEYS = {
   breakfast: 'diet.mealBreakfast',
@@ -32,7 +32,7 @@ export default function FoodEntryCard({ entry, onPress }) {
   return (
     <TouchableOpacity style={[styles.card, card3D(mealPalette.fg)]} onPress={onPress} activeOpacity={0.8}>
       <View style={[styles.iconBubble, { backgroundColor: mealPalette.bg }]}>
-        <Text style={styles.icon}>{MEAL_ICONS[entry.meal_type] || MEAL_ICONS.snack}</Text>
+        <Text style={styles.icon}>{foodIcon(entry.name, entry.meal_type)}</Text>
       </View>
       <View style={styles.main}>
         <View style={[styles.mealPill, { backgroundColor: mealPalette.bg }]}>
