@@ -128,6 +128,13 @@ export function AuthProvider({ children }) {
   // (e.g. LanguagePreferenceScreen) and just needs the cached `user` object
   // to reflect it, without a full re-fetch.
   const updateUser = useCallback((nextUser) => setUser(nextUser), []);
+  // Re-reads the account from the server - how a pending account notices an
+  // admin has approved (or rejected) it without signing out and back in.
+  const refreshUser = useCallback(async () => {
+    const { user: me } = await fetchMe();
+    setUser(me);
+    return me;
+  }, []);
 
   return (
     <AuthContext.Provider
@@ -139,6 +146,7 @@ export function AuthProvider({ children }) {
         signInWithApple,
         signOut,
         updateUser,
+        refreshUser,
         activeProfile,
         switchProfile,
         switchProfileById,

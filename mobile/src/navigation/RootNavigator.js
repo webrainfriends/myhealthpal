@@ -4,6 +4,7 @@ import { NavigationContainer, DefaultTheme, createNavigationContainerRef } from 
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import DashboardScreen from '../screens/DashboardScreen';
+import { AccessRejectedScreen, PendingApprovalBanner } from '../screens/PendingApprovalScreen';
 import TimelineScreen from '../screens/TimelineScreen';
 import MoreScreen from '../screens/MoreScreen';
 import UploadScreen from '../screens/UploadScreen';
@@ -220,7 +221,10 @@ const navigationRef = createNavigationContainerRef();
 export default function RootNavigator() {
   const { user, loading, activeProfile, switchProfileById } = useAuth();
   const t = useT();
-  const userId = user?.id;
+  // Push registration and reminder scheduling are write calls, so they wait
+  // until an admin has approved the account (pending/rejected get none).
+  const approvalStatus = user?.approvalStatus || 'approved';
+  const userId = approvalStatus === 'approved' ? user?.id : undefined;
 
   // Once per signed-in account on this device: let the server push Retest
   // Radar reminders here, and open Retest Radar when one is tapped.
@@ -282,6 +286,25 @@ export default function RootNavigator() {
 
   if (!user) {
     return <LoginScreen />;
+  }
+
+  if (approvalStatus === 'rejected') {
+    return <AccessRejectedScreen />;
+  }
+
+  // New sign-ins wait for an admin: just the dashboard, read-only (the server
+  // refuses uploads, AI features and every write for a pending account).
+  if (approvalStatus === 'pending') {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
+        <PendingApprovalBanner />
+        <NavigationContainer theme={navigationTheme}>
+          <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: TABLET_CONTENT_STYLE }}>
+            <Stack.Screen name="DashboardTab" component={DashboardScreen} />
+          </Stack.Navigator>
+        </NavigationContainer>
+      </View>
+    );
   }
 
   return (

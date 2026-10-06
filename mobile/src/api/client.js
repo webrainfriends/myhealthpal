@@ -573,6 +573,18 @@ export async function bulkDeleteAdminSessions(userIds) {
   return handleResponse(response);
 }
 
+// Approve / reject flow for new sign-ins (server: routes/admin.js). Both are
+// reversible, so a mistaken reject is just an approve away.
+export async function approveAdminSession(userId) {
+  const response = await apiFetch(`/api/admin/sessions/${userId}/approve`, { method: 'POST' });
+  return handleResponse(response);
+}
+
+export async function rejectAdminSession(userId) {
+  const response = await apiFetch(`/api/admin/sessions/${userId}/reject`, { method: 'POST' });
+  return handleResponse(response);
+}
+
 export async function cleanupGuestSessions() {
   const response = await apiFetch('/api/admin/sessions/cleanup/guests', { method: 'DELETE' });
   return handleResponse(response);

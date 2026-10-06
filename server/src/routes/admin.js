@@ -31,6 +31,7 @@ function publicSession(row, req, { storageBytesByUser, aiUsageByUser }) {
     email: row.email,
     displayName: row.display_name,
     authProvider: row.auth_provider,
+    approvalStatus: row.approval_status,
     createdAt: row.created_at,
     lastLoginAt: row.last_login_at,
     isSelf: row.id === req.accountUser.id,
@@ -54,10 +55,10 @@ router.get('/sessions', async (req, res, next) => {
   try {
     const [{ rows }, storageBytesByUser, aiUsageRows] = await Promise.all([
       pool.query(
-        `SELECT id, email, display_name, auth_provider, created_at, last_login_at
+        `SELECT id, email, display_name, auth_provider, approval_status, created_at, last_login_at
          FROM users
          WHERE auth_provider IN ('guest', 'google', 'apple')
-         ORDER BY COALESCE(last_login_at, created_at) DESC`
+         ORDER BY (approval_status = 'pending') DESC, COALESCE(last_login_at, created_at) DESC`
       ),
       getStorageBytesByUser(),
       getAllUsersUsageReport({ days: null }),
@@ -68,6 +69,31 @@ router.get('/sessions', async (req, res, next) => {
     next(err);
   }
 });
+
+// Approve / reject flow for new sign-ins. New accounts start 'pending'
+// (read-only dashboard, no AI or uploads); only an approved account can use
+// the app, and a rejected one can't use it at all. Either decision can be
+// changed later, so a mistaken reject is just an approve away.
+async function decide(req, res, next, decision) {
+  try {
+    const { userId } = req.params;
+    if (!UUID_RE.test(userId)) return res.status(400).json({ error: 'Invalid session id.' });
+    if (userId === req.accountUser.id) return res.status(400).json({ error: 'You cannot change your own access.' });
+    const { rows } = await pool.query(
+      `UPDATE users SET approval_status = $2, approval_decided_at = now(), approval_decided_by = $3
+       WHERE id = $1 AND auth_provider IN ('guest', 'google', 'apple')
+       RETURNING id, approval_status`,
+      [userId, decision, req.accountUser.id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Session not found.' });
+    res.json({ id: rows[0].id, approvalStatus: rows[0].approval_status });
+  } catch (err) {
+    next(err);
+  }
+}
+
+router.post('/sessions/:userId/approve', (req, res, next) => decide(req, res, next, 'approved'));
+router.post('/sessions/:userId/reject', (req, res, next) => decide(req, res, next, 'rejected'));
 
 // Deletes one login (skipping a nonexistent/managed/self id, same rule the
 // single- and multi-delete routes below both need) via the exact routine

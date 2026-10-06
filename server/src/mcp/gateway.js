@@ -3,6 +3,7 @@ const familyService = require('../services/familyService');
 const consentService = require('../security/consentService');
 const audit = require('../security/auditLog');
 const config = require('../config');
+const { effectiveApprovalStatus } = require('../middleware/approval');
 const { getTool } = require('./tools');
 const { ToolError } = require('./toolError');
 
@@ -94,6 +95,9 @@ async function callTool(auth, name, rawArgs) {
 
   const account = await authService.findUserById(auth.userId);
   if (!account) throw new ToolError('unauthorized', 'Account no longer exists.');
+  if (effectiveApprovalStatus(account) !== 'approved') {
+    return deny(account.id, 'not_approved', new ToolError('unauthorized', 'This account is not approved yet.'));
+  }
 
   const { profileId, ...args } = rawArgs && typeof rawArgs === 'object' ? rawArgs : {};
   let resolved;

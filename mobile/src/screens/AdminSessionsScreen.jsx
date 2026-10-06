@@ -3,10 +3,12 @@ import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, Toucha
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { cardShadow, colors, radii, spacing, typography } from '../theme/theme';
 import {
+  approveAdminSession,
   bulkDeleteAdminSessions,
   cleanupGuestSessions,
   deleteAdminSession,
   fetchAdminSessions,
+  rejectAdminSession,
 } from '../api/client';
 import { showAlert } from '../utils/alert';
 
@@ -59,8 +61,34 @@ function formatCost(value) {
 // on the left feeds the multi-select bulk-delete bar below; you can't
 // select or delete your own row (self-delete stays Settings > Delete
 // account).
-function SessionRow({ session, selected, onToggleSelect, onDeleted }) {
+const APPROVAL_LABELS = { pending: 'Pending approval', approved: 'Approved', rejected: 'Rejected' };
+
+function SessionRow({ session, selected, onToggleSelect, onDeleted, onDecided }) {
   const [busy, setBusy] = useState(false);
+
+  async function decide(action, nextStatus) {
+    setBusy(true);
+    try {
+      await action(session.id);
+      onDecided(session.id, nextStatus);
+    } catch (err) {
+      showAlert('Could not update access', err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function confirmReject() {
+    showAlert(
+      'Reject this login?',
+      `${session.email || session.displayName || 'This guest session'} will be signed out of the app's features ` +
+        'and shown a "not approved" screen. You can approve it again later.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Reject', style: 'destructive', onPress: () => decide(rejectAdminSession, 'rejected') },
+      ]
+    );
+  }
 
   function confirmDelete() {
     showAlert(
@@ -104,6 +132,16 @@ function SessionRow({ session, selected, onToggleSelect, onDeleted }) {
           {providerLabel(session.authProvider)}
           {session.isSelf ? ' · You' : ''}
         </Text>
+        <Text
+          style={[
+            typography.caption,
+            styles.statusText,
+            session.approvalStatus === 'pending' && styles.statusPending,
+            session.approvalStatus === 'rejected' && styles.statusRejected,
+          ]}
+        >
+          {APPROVAL_LABELS[session.approvalStatus] || 'Approved'}
+        </Text>
         <Text style={typography.caption}>Created {formatDateTime(session.createdAt)}</Text>
         <Text style={typography.caption}>Last used {formatDateTime(session.lastLoginAt)}</Text>
         <Text style={typography.caption}>
@@ -112,14 +150,36 @@ function SessionRow({ session, selected, onToggleSelect, onDeleted }) {
         <Text style={typography.caption}>Doc storage: {formatBytes(session.storageBytes)}</Text>
       </View>
       {!session.isSelf && (
-        <TouchableOpacity
-          style={[styles.deleteButton, busy && styles.deleteButtonDisabled]}
-          onPress={confirmDelete}
-          disabled={busy}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.deleteButtonText}>Delete</Text>
-        </TouchableOpacity>
+        <View style={styles.actionColumn}>
+          {session.approvalStatus !== 'approved' && (
+            <TouchableOpacity
+              style={[styles.approveButton, busy && styles.deleteButtonDisabled]}
+              onPress={() => decide(approveAdminSession, 'approved')}
+              disabled={busy}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.approveButtonText}>Approve</Text>
+            </TouchableOpacity>
+          )}
+          {session.approvalStatus !== 'rejected' && (
+            <TouchableOpacity
+              style={[styles.deleteButton, busy && styles.deleteButtonDisabled]}
+              onPress={confirmReject}
+              disabled={busy}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.deleteButtonText}>Reject</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={[styles.deleteButton, busy && styles.deleteButtonDisabled]}
+            onPress={confirmDelete}
+            disabled={busy}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.deleteButtonText}>Delete</Text>
+          </TouchableOpacity>
+        </View>
       )}
     </View>
   );
@@ -170,6 +230,10 @@ export default function AdminSessionsScreen() {
     });
   }
 
+  function handleDecided(userId, approvalStatus) {
+    setSessions((current) => (current || []).map((s) => (s.id === userId ? { ...s, approvalStatus } : s)));
+  }
+
   function toggleSelect(userId) {
     setSelectedIds((current) => {
       const next = new Set(current);
@@ -186,6 +250,7 @@ export default function AdminSessionsScreen() {
     setSelectedIds(allSelected ? new Set() : new Set(selectableIds));
   }
 
+  const pendingCount = (sessions || []).filter((s) => s.approvalStatus === 'pending' && !s.isSelf).length;
   const guestCount = (sessions || []).filter((s) => s.authProvider === 'guest' && !s.isSelf).length;
 
   function confirmCleanupGuests() {
@@ -245,6 +310,12 @@ export default function AdminSessionsScreen() {
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
       >
+        {pendingCount > 0 && (
+          <Text style={styles.pendingNotice}>
+            {pendingCount} new login{pendingCount === 1 ? ' is' : 's are'} waiting for your approval. Until approved,
+            they only see a read-only dashboard - no uploads or AI features.
+          </Text>
+        )}
         <Text style={typography.bodySecondary}>
           Every registered and guest login, with when it was created and last used, its all-time AI usage, and how
           much stored file data (reports, scans) it holds. Deleting one is permanent.
@@ -297,6 +368,7 @@ export default function AdminSessionsScreen() {
             selected={selectedIds.has(session.id)}
             onToggleSelect={toggleSelect}
             onDeleted={handleDeleted}
+            onDecided={handleDecided}
           />
         ))}
       </ScrollView>
@@ -363,7 +435,36 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  actionColumn: {
+    gap: spacing.xs,
+    alignItems: 'stretch',
+  },
+  approveButton: {
+    backgroundColor: colors.primary,
+    borderRadius: radii.md,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    alignItems: 'center',
+  },
+  approveButtonText: {
+    color: colors.surface,
+    fontWeight: '700',
+  },
+  statusText: {
+    fontWeight: '700',
+  },
+  statusPending: {
+    color: colors.warning,
+  },
+  statusRejected: {
+    color: colors.danger,
+  },
+  pendingNotice: {
+    color: colors.textPrimary,
+    fontWeight: '600',
+  },
   deleteButton: {
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: colors.dangerMuted,
     borderRadius: radii.md,

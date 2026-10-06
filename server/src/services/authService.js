@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const pool = require('../db/pool');
 const config = require('../config');
+const { isAdminUser } = require('../middleware/approval');
 
 // Long-lived on purpose - there is no refresh-token flow yet, so a short
 // expiry would just log people out with no way back in short of signing in
@@ -184,7 +185,8 @@ async function countUsers() {
 async function createGuestUser() {
   return withRegistrationCap((client) =>
     client
-      .query(`INSERT INTO users (auth_provider, display_name, last_login_at) VALUES ('guest', 'Guest', now()) RETURNING *`)
+      .query(`INSERT INTO users (auth_provider, display_name, last_login_at, approval_status)
+         VALUES ('guest', 'Guest', now(), 'pending') RETURNING *`)
       .then((r) => r.rows[0])
   );
 }
@@ -200,9 +202,10 @@ async function upsertOAuthUser({ provider, providerUserId, email, displayName })
   ]);
   if (existing.rows.length > 0) {
     const { rows } = await pool.query(
-      `UPDATE users SET email = COALESCE($2, email), display_name = COALESCE($3, display_name), last_login_at = now()
+      `UPDATE users SET email = COALESCE($2, email), display_name = COALESCE($3, display_name), last_login_at = now(),
+         approval_status = CASE WHEN $4 THEN 'approved' ELSE approval_status END
        WHERE id = $1 RETURNING *`,
-      [existing.rows[0].id, email || null, displayName || null]
+      [existing.rows[0].id, email || null, displayName || null, isAdminUser({ email: email || existing.rows[0].email })]
     );
     return rows[0];
   }
@@ -211,9 +214,16 @@ async function upsertOAuthUser({ provider, providerUserId, email, displayName })
   return withRegistrationCap((client) =>
     client
       .query(
-        `INSERT INTO users (auth_provider, provider_user_id, email, display_name, last_login_at)
-         VALUES ($1, $2, $3, $4, now()) RETURNING *`,
-        [provider, providerUserId, email || null, displayName || null]
+        `INSERT INTO users (auth_provider, provider_user_id, email, display_name, last_login_at, approval_status)
+         VALUES ($1, $2, $3, $4, now(), $5) RETURNING *`,
+        [
+          provider,
+          providerUserId,
+          email || null,
+          displayName || null,
+          // Admins never wait on themselves; everyone else waits for one.
+          isAdminUser({ email }) ? 'approved' : 'pending',
+        ]
       )
       .then((r) => r.rows[0])
   );
