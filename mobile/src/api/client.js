@@ -834,6 +834,27 @@ export async function logMedicationDose(medicationId, slot, status, date) {
   return handleResponse(response);
 }
 
+// Watch pairing (Apple Watch / Wear OS): the watch shows a 6-digit code, the
+// person types it here. Account-level - not tied to a family profile.
+export async function confirmWatchPairing(code) {
+  const response = await apiFetch('/api/watch/pair/confirm', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
+  });
+  return handleResponse(response);
+}
+
+export async function fetchWatchDevices() {
+  const response = await apiFetch('/api/watch/devices');
+  return handleResponse(response);
+}
+
+export async function removeWatchDevice(id) {
+  const response = await apiFetch(`/api/watch/devices/${id}`, { method: 'DELETE' });
+  if (!response.ok) await handleResponse(response);
+}
+
 export async function uploadDietScan(file, consumedAt) {
   const formData = new FormData();
   if (file.file) {

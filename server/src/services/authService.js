@@ -18,6 +18,17 @@ function signSession(user) {
 // Throws (jsonwebtoken's own error) on a missing/expired/tampered token -
 // callers (the auth middleware) turn that into a 401, never a silent
 // fallback to some default identity.
+// A watch gets its own token: same signing key, but `scope: 'watch'` plus the
+// id of its watch_pairings row. The auth middleware limits it to an allow-list
+// of routes and checks that row on every request, so it can be revoked.
+const WATCH_TTL = '90d';
+
+function signWatchSession(user, watchId) {
+  return jwt.sign({ sub: user.id, sid: `watch-${watchId}`, scope: 'watch', wid: watchId }, config.jwtSecret, {
+    expiresIn: WATCH_TTL,
+  });
+}
+
 function verifySessionUserId(token) {
   return verifySession(token).userId;
 }
@@ -27,7 +38,12 @@ function verifySessionUserId(token) {
 // per sign-in for a given user.
 function verifySession(token) {
   const payload = jwt.verify(token, config.jwtSecret);
-  return { userId: payload.sub, sessionId: payload.sid || `iat-${payload.iat}` };
+  return {
+    userId: payload.sub,
+    sessionId: payload.sid || `iat-${payload.iat}`,
+    scope: payload.scope || null,
+    watchId: payload.wid || null,
+  };
 }
 
 // A file-open link (window.open/Linking.openURL, or a plain <a href>) can't
@@ -225,6 +241,7 @@ function verifyGmailOAuthState(token) {
 }
 
 module.exports = {
+  signWatchSession,
   signSession,
   verifySessionUserId,
   verifySession,
