@@ -77,13 +77,13 @@ function FeaturePill({ icon, label }) {
 
 // Non-dismissible - unlike MedicationsScreen's AlertBanner, there's nothing
 // to tap or clear here, it just reflects server state until a slot opens up.
-function BetaCapacityBanner() {
+function BetaCapacityBanner({ closed }) {
   const { t } = useI18n();
   const palette = alertSeverityColors.attention;
   return (
     <View style={[styles.capacityBanner, { backgroundColor: palette.bg, borderLeftColor: palette.fg }]}>
       <Text style={[typography.body, styles.capacityBannerText, { color: palette.fg }]}>
-        {t('login.registrationClosed')}
+        {closed ? t('login.registrationClosed') : t('login.betaNotice')}
       </Text>
     </View>
   );
@@ -210,7 +210,7 @@ export default function LoginScreen() {
           <View style={styles.sheet}>
             <Text style={styles.sheetTitle}>{t('login.getStarted')}</Text>
             <Text style={[typography.bodySecondary, styles.subtitle]}>{t('login.subtitle')}</Text>
-            {guestClosed && <BetaCapacityBanner />}
+            <BetaCapacityBanner closed={guestClosed} />
 
             <View style={styles.actions}>
               {busy && <ActivityIndicator color={colors.primary} style={styles.spinner} />}

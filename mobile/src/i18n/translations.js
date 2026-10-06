@@ -80,6 +80,7 @@ export const TRANSLATIONS = {
       signInFailedTitle: 'Sign-in failed',
       couldNotContinueGuest: 'Could not continue as guest',
       registrationClosed: 'This app is under beta testing — see you soon!',
+      betaNotice: 'This app is under beta testing and is not for public use.',
     },
     dashboard: {
       greetingMorning: 'Good morning',
@@ -1305,6 +1306,7 @@ export const TRANSLATIONS = {
       signInFailedTitle: 'Error al iniciar sesión',
       couldNotContinueGuest: 'No se pudo continuar como invitado',
       registrationClosed: 'Esta app está en fase beta — ¡nos vemos pronto!',
+      betaNotice: 'Esta app está en fase de pruebas beta y no es para uso público.',
     },
     dashboard: {
       greetingMorning: 'Buenos días',
@@ -1758,6 +1760,7 @@ export const TRANSLATIONS = {
       signInFailedTitle: 'Échec de la connexion',
       couldNotContinueGuest: 'Impossible de continuer en tant qu\'invité',
       registrationClosed: 'Cette application est en version bêta — à bientôt !',
+      betaNotice: 'Cette application est en phase de test bêta et n’est pas destinée au grand public.',
     },
     dashboard: {
       greetingMorning: 'Bonjour',
@@ -2210,6 +2213,7 @@ export const TRANSLATIONS = {
       signInFailedTitle: 'Anmeldung fehlgeschlagen',
       couldNotContinueGuest: 'Konnte nicht als Gast fortfahren',
       registrationClosed: 'Diese App befindet sich in der Betaphase — bis bald!',
+      betaNotice: 'Diese App befindet sich im Beta-Test und ist nicht für die Öffentlichkeit bestimmt.',
     },
     dashboard: {
       greetingMorning: 'Guten Morgen',
@@ -2662,6 +2666,7 @@ export const TRANSLATIONS = {
       signInFailedTitle: 'Falha no login',
       couldNotContinueGuest: 'Não foi possível continuar como convidado',
       registrationClosed: 'Este aplicativo está em fase beta — até breve!',
+      betaNotice: 'Este aplicativo está em teste beta e não é para uso público.',
     },
     dashboard: {
       greetingMorning: 'Bom dia',
@@ -3114,6 +3119,7 @@ export const TRANSLATIONS = {
       signInFailedTitle: 'Не удалось войти',
       couldNotContinueGuest: 'Не удалось продолжить как гость',
       registrationClosed: 'Это приложение находится в закрытом бета-тестировании — до скорой встречи!',
+      betaNotice: 'Это приложение находится на стадии бета-тестирования и не предназначено для публичного использования.',
     },
     dashboard: {
       greetingMorning: 'Доброе утро',
@@ -3569,6 +3575,7 @@ export const TRANSLATIONS = {
       signInFailedTitle: 'साइन-इन विफल',
       couldNotContinueGuest: 'अतिथि के रूप में जारी नहीं रखा जा सका',
       registrationClosed: 'यह ऐप बीटा परीक्षण में है — जल्द मिलते हैं!',
+      betaNotice: 'यह ऐप बीटा परीक्षण में है और सार्वजनिक उपयोग के लिए नहीं है।',
     },
     dashboard: {
       greetingMorning: 'सुप्रभात',
@@ -4177,6 +4184,7 @@ export const TRANSLATIONS = {
       signInFailedTitle: '登录失败',
       couldNotContinueGuest: '无法以访客身份继续',
       registrationClosed: '本应用目前处于测试阶段——我们很快回来！',
+      betaNotice: '本应用正处于测试阶段，不供公众使用。',
     },
     dashboard: {
       greetingMorning: '早上好',
@@ -4621,6 +4629,7 @@ export const TRANSLATIONS = {
       signInFailedTitle: 'サインインに失敗しました',
       couldNotContinueGuest: 'ゲストとして続行できませんでした',
       registrationClosed: 'このアプリは現在ベータテスト中です — また近いうちに！',
+      betaNotice: 'このアプリはベータテスト中であり、一般公開されていません。',
     },
     dashboard: {
       greetingMorning: 'おはようございます',
@@ -5067,6 +5076,7 @@ export const TRANSLATIONS = {
       signInFailedTitle: 'فشل تسجيل الدخول',
       couldNotContinueGuest: 'تعذّرت المتابعة كضيف',
       registrationClosed: 'هذا التطبيق في مرحلة الاختبار التجريبي — أراك قريبًا!',
+      betaNotice: 'هذا التطبيق قيد الاختبار التجريبي وليس للاستخدام العام.',
     },
     dashboard: {
       greetingMorning: 'صباح الخير',
@@ -5519,6 +5529,7 @@ export const TRANSLATIONS = {
       signInFailedTitle: 'உள்நுழைவு தோல்வியடைந்தது',
       couldNotContinueGuest: 'விருந்தினராக தொடர முடியவில்லை',
       registrationClosed: 'இந்த ஆப் பீட்டா சோதனையில் உள்ளது — விரைவில் சந்திப்போம்!',
+      betaNotice: 'இந்த ஆப் பீட்டா சோதனையில் உள்ளது; பொதுப் பயன்பாட்டிற்கானது அல்ல.',
     },
     dashboard: {
       greetingMorning: 'காலை வணக்கம்',
@@ -6134,6 +6145,7 @@ export const TRANSLATIONS = {
       signInFailedTitle: 'సైన్-ఇన్ విఫలమైంది',
       couldNotContinueGuest: 'అతిథిగా కొనసాగించలేకపోయింది',
       registrationClosed: 'ఈ యాప్ బీటా టెస్టింగ్‌లో ఉంది — త్వరలో కలుద్దాం!',
+      betaNotice: 'ఈ యాప్ బీటా టెస్టింగ్‌లో ఉంది మరియు ప్రజా వినియోగానికి కాదు.',
     },
     dashboard: {
       greetingMorning: 'శుభోదయం',
@@ -6739,6 +6751,7 @@ export const TRANSLATIONS = {
       signInFailedTitle: 'Log masuk gagal',
       couldNotContinueGuest: 'Tidak dapat meneruskan sebagai tetamu',
       registrationClosed: 'Aplikasi ini sedang dalam tahap uji coba beta — sampai jumpa lagi segera!',
+      betaNotice: 'Aplikasi ini sedang dalam uji coba beta dan tidak untuk penggunaan publik.',
     },
     dashboard: {
       greetingMorning: 'Selamat pagi',
