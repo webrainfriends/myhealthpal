@@ -1,5 +1,6 @@
 const express = require('express');
 const config = require('../config');
+const { effectiveApprovalStatus, isAdminUser } = require('../middleware/approval');
 const authService = require('../services/authService');
 const { verifyGoogleIdToken } = require('../services/googleAuthService');
 const { verifyAppleIdentityToken } = require('../services/appleAuthService');
@@ -18,7 +19,10 @@ function publicUser(user) {
     preferredLanguage: user.preferred_language,
     // Lets the client show/hide the admin session-cleanup screen without
     // ever shipping the admin email list itself into the app bundle.
-    isAdmin: Boolean(user.email) && config.adminEmails.includes(user.email.toLowerCase()),
+    isAdmin: isAdminUser(user),
+    // 'pending' | 'approved' | 'rejected' - the client shows a read-only
+    // dashboard with a waiting banner until an admin approves the account.
+    approvalStatus: effectiveApprovalStatus(user),
   };
 }
 

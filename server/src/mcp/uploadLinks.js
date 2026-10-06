@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const config = require('../config');
+const { effectiveApprovalStatus } = require('../middleware/approval');
 const pool = require('../db/pool');
 const authService = require('../services/authService');
 const familyService = require('../services/familyService');
@@ -59,6 +60,9 @@ async function verify(token) {
   const account = await authService.findUserById(p.a);
   const subject = await authService.findUserById(p.s);
   if (!account || !subject) throw new UploadLinkError(410, 'This upload link is not valid.');
+  if (effectiveApprovalStatus(account) !== 'approved') {
+    throw new UploadLinkError(403, 'This account is not approved yet.');
+  }
   if (subject.id !== account.id) {
     const link = await familyService.findLink(account.id, subject.id);
     if (!link || link.role === 'sponsor' || link.access !== 'manage') {

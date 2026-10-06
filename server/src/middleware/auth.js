@@ -4,6 +4,7 @@ const { runWithContext } = require('../lib/requestContext');
 const familyService = require('../services/familyService');
 const config = require('../config');
 const watchService = require('../services/watchService');
+const { approvalBlock, isAdminUser } = require('./approval');
 
 const READ_ONLY_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -57,6 +58,10 @@ function authenticate({ allowProfile }) {
       if (!user) {
         return res.status(401).json({ error: 'Session expired or invalid. Please sign in again.' });
       }
+      // New sign-ins wait for an admin: pending accounts are read-only with no
+      // AI, rejected ones are shut out (see middleware/approval.js).
+      const blocked = approvalBlock(user, req);
+      if (blocked) return res.status(blocked.status).json(blocked.body);
       if (scope === 'watch') {
         // Account-level routes (family, push tokens, pairing) never accept a watch.
         if (!allowProfile || !watchMayCall(req)) {
@@ -130,8 +135,7 @@ const requireAccountAuth = authenticate({ allowProfile: false });
 // by email (config.adminEmails) rather than any role/flag stored on the
 // user row, since there is no admin role in the schema at all yet.
 function requireAdmin(req, res, next) {
-  const email = (req.accountUser?.email || '').toLowerCase();
-  if (!email || !config.adminEmails.includes(email)) {
+  if (!isAdminUser(req.accountUser)) {
     return res.status(403).json({ error: 'Admin access required.' });
   }
   next();
